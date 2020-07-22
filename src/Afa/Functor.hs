@@ -1,5 +1,13 @@
-{-# LANGUAGE LambdaCase #-}
+{-# LANGUAGE DeriveFunctor #-}
+{-# LANGUAGE DeriveGeneric #-}
+{-# LANGUAGE DerivingVia #-}
+
 module Afa.Functor where
+
+import GHC.Generics
+import Data.Functor.Classes
+import Generic.Data (Generically1(..))
+import Generic.Data.Orphans ()
 
 data Term rec
   = LTrue
@@ -9,12 +17,6 @@ data Term rec
   | Not rec
   | And [rec]
   | Or [rec]
-
-statesArePositive_alg :: Term (Maybe Bool) -> Maybe Bool
-statesArePositive_alg LTrue = Just False
-statesArePositive_alg LFalse = Just False
-statesArePositive_alg (Var _) = Just False
-statesArePositive_alg (State _) = Just True
-statesArePositive_alg (Not x) = x >>= \case True -> Nothing; False -> Just False
-statesArePositive_alg (And xs) = or <$> sequence xs
-statesArePositive_alg (Or xs) = or <$> sequence xs
+  deriving (Functor, Eq, Generic, Generic1)
+  deriving Eq1 via (Generically1 Term)
+  deriving Show1 via (Generically1 Term)
