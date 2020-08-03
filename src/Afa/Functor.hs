@@ -1,4 +1,4 @@
-{-# LANGUAGE DeriveFunctor #-}
+{-# LANGUAGE DeriveTraversable #-}
 {-# LANGUAGE DeriveGeneric #-}
 {-# LANGUAGE DerivingVia #-}
 
@@ -17,6 +17,6 @@ data Term rec
   | Not rec
   | And [rec]
   | Or [rec]
-  deriving (Functor, Eq, Generic, Generic1)
+  deriving (Functor, Foldable, Traversable, Eq, Generic, Generic1)
   deriving Eq1 via (Generically1 Term)
   deriving Show1 via (Generically1 Term)

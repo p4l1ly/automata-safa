@@ -1,6 +1,6 @@
 {-# LANGUAGE LambdaCase #-}
 
-module Tree.StatePositiveness (tests) where
+module Test.Tree.StatePositiveness (tests) where
 
 import Test.HUnit hiding (State)
 import Data.Functor.Foldable

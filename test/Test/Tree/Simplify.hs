@@ -1,4 +1,4 @@
-module Tree.Simplify (tests) where
+module Test.Tree.Simplify (tests) where
 
 import Test.HUnit
 import Data.Functor.Foldable
