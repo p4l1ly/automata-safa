@@ -1,6 +1,7 @@
 {-# LANGUAGE DeriveTraversable #-}
 {-# LANGUAGE DeriveGeneric #-}
 {-# LANGUAGE DerivingVia #-}
+{-# LANGUAGE DeriveAnyClass #-}
 
 module Afa.Functor where
 
@@ -8,6 +9,8 @@ import GHC.Generics
 import Data.Functor.Classes
 import Generic.Data (Generically1(..))
 import Generic.Data.Orphans ()
+import Data.Hashable
+import Data.Hashable.Lifted
 
 data Term rec
   = LTrue
@@ -17,6 +20,6 @@ data Term rec
   | Not rec
   | And [rec]
   | Or [rec]
-  deriving (Functor, Foldable, Traversable, Eq, Generic, Generic1)
+  deriving (Functor, Foldable, Traversable, Eq, Generic, Generic1, Hashable, Hashable1)
   deriving Eq1 via (Generically1 Term)
   deriving Show1 via (Generically1 Term)

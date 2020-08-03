@@ -2,19 +2,28 @@
 {-# LANGUAGE TupleSections #-}
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE LambdaCase #-}
+{-# LANGUAGE RankNTypes #-}
 
 module Afa where
 
 import Control.Arrow
 import Control.Monad (join)
+import Control.Monad.State
+import Control.Monad.ST
 import Data.Array
+import Data.Array.ST (freeze)
+import Data.Bitraversable
+import Data.Foldable (toList)
 import Data.Functor.Compose
 import Data.Functor.Foldable
-import Data.Functor.Foldable.Dag.Pure (cocoScan)
-import Data.Functor.Foldable.Dag.TreeHybrid (TreeHybrid(..))
+import Data.Functor.Foldable.Dag.Consing (hashState_empty, hashCons, HashState(..))
+import Data.Functor.Foldable.Dag.Monadic (cataScanM)
+import Data.Functor.Foldable.Dag.Pure (cataScan)
+import Data.Functor.Foldable.Dag.TreeHybrid (TreeHybrid(..), treeDagCataScanMAlg, treeDagAlg)
 import qualified Data.Functor.Foldable.Dag.Utils as Dag.Utils
 import Data.Functor.Foldable.Dag.TreeHybrid.Utils
   ( treehybridizeTreeDag
+  , treehybridizeDag
   , Swallow(..)
   )
 import qualified Data.Functor.Foldable.Dag.TreeHybrid.Utils as TreeDag.Utils
@@ -25,6 +34,7 @@ import Data.Monoid
 import Afa.Simplify (simplify_alg)
 import Afa.Prism (isRecursive)
 import Afa.TreeDag.Patterns.Builder
+import qualified Afa.Functor as F
 
 
 data Afa = Afa
@@ -54,7 +64,6 @@ swallowOnlyChilds afa@Afa{terms, states} = afa{terms = terms', states = states'}
           if parentCount > 1 || extPtrMask!ix then Keep else Swallow
       | otherwise = if extPtrMask!ix then Copy else Swallow
 
-
 simplify :: Afa -> Afa
 simplify afa@Afa{terms} = afa{terms=fmap (cata simplify_alg) terms}
 
@@ -78,3 +87,40 @@ removeOrphans afa@Afa{terms, states} =
       (\(a1, t) a2 -> (a1 || a2, t))
       (fmap (False,) terms)
       (map (, True)$ elems states)
+
+
+hashConsThenSwallow :: Afa -> Afa
+hashConsThenSwallow afa@Afa{terms, states} = afa{terms = terms2, states = states2}
+  where
+
+  ixMapping1 :: Array Int Int
+  (ixMapping1, HashState len termsList _) = runST$ flip runStateT hashState_empty$
+    cataScanM (treeDagCataScanMAlg$ hashCons id . sortUniq) terms
+    >>= lift . freeze
+
+  sortUniq :: F.Term Int -> F.Term Int
+  sortUniq (F.And ixs) = F.And$ map head$ group$ sort ixs
+  sortUniq (F.Or ixs) = F.Or$ map head$ group$ sort ixs
+  sortUniq x = x
+
+  terms1 :: Array Int (F.Term Int)
+  terms1 = listArray (0, len - 1)$ reverse termsList
+
+  states1 = fmap (ixMapping1!) states
+
+  extPtrMask = array (bounds terms1)$
+    fmap (, False) (indices terms1) ++ map (, True) (elems states1)
+
+  swallow ix parentCount t
+    | isRecursive (project t) =
+        if parentCount > 1 || extPtrMask!ix then Keep else Swallow
+    | otherwise = if extPtrMask!ix then Copy else Swallow
+
+  (ixMapping2, terms2) = treehybridizeDag swallow terms1
+  states2 = fmap (ixMapping2!) states1
+
+
+separateTerminals :: (Functor f, Foldable f) => f b -> Either (f b) (f a)
+separateTerminals node
+  | null (toList node) = Right (fmap undefined node)
+  | otherwise = Left node

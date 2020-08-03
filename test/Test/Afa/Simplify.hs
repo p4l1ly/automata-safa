@@ -98,6 +98,18 @@ tests =
               , {- q1 -} 1
               ]
           }
+      assertEqual "afterHashConsThenSwallow"
+        afa_afterHashConsThenSwallow Afa
+          { varCount = 2
+          , terms = listArray (0, 1)
+              [ {- t0 -} Or [a, b]
+              , {- t1 -} And [a, Ref 0, Or [And [a, Ref 0], And [b, Ref 0]]]
+              ]
+          , states = listArray (0, 1)
+              [ {- q0 -} 0
+              , {- q1 -} 1
+              ]
+          }
   ]
 
 
@@ -142,3 +154,6 @@ afa_afterSimplify = simplify afa_afterSwallowOnlyChilds
 afa_afterCostFixpoint :: Afa
 afa_afterCostFixpoint =
   costFixpoint (simplify . swallowOnlyChilds) afa_afterRemoveOrphans
+
+afa_afterHashConsThenSwallow :: Afa
+afa_afterHashConsThenSwallow = hashConsThenSwallow afa_afterCostFixpoint
