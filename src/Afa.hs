@@ -1,8 +1,8 @@
 {-# LANGUAGE NamedFieldPuns #-}
 {-# LANGUAGE TupleSections #-}
 {-# LANGUAGE FlexibleContexts #-}
-{-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE RankNTypes #-}
+{-# LANGUAGE LambdaCase #-}
 
 module Afa where
 
@@ -64,6 +64,7 @@ swallowOnlyChilds afa@Afa{terms, states} = afa{terms = terms', states = states'}
           if parentCount > 1 || extPtrMask!ix then Keep else Swallow
       | otherwise = if extPtrMask!ix then Copy else Swallow
 
+
 simplify :: Afa -> Afa
 simplify afa@Afa{terms} = afa{terms=fmap (cata simplify_alg) terms}
 
@@ -124,3 +125,22 @@ separateTerminals :: (Functor f, Foldable f) => f b -> Either (f b) (f a)
 separateTerminals node
   | null (toList node) = Right (fmap undefined node)
   | otherwise = Left node
+
+
+removeFalseStates :: Afa -> Maybe Afa
+removeFalseStates afa@Afa{terms, states}
+  | qixFalse 0 = Nothing
+  | otherwise = Just afa{terms = terms', states = states'}
+  where
+  qixFalse ix = terms!(states!ix) == LFalse
+  qixMap = listArray (0, length list - 1) list
+    where list = scanl (\ix q -> if qixFalse ix then ix else succ ix) 0$ elems states
+
+  terms' = (`fmap` terms)$ cata$ \case
+    Compose (Left ix)
+      | qixFalse ix -> LFalse
+      | otherwise -> Ref$ qixMap!ix
+    t -> embed t
+
+  states' = array (0, length list - 1) list
+    where list = filter (not . qixFalse . fst)$ assocs states
