@@ -127,20 +127,34 @@ separateTerminals node
   | otherwise = Left node
 
 
-removeFalseStates :: Afa -> Maybe Afa
-removeFalseStates afa@Afa{terms, states}
-  | qixFalse 0 = Nothing
+removeLiteralStates :: Term -> Afa -> Maybe Afa
+removeLiteralStates lit afa@Afa{terms, states}
+  | qixLit 0 = Nothing
   | otherwise = Just afa{terms = terms', states = states'}
   where
-  qixFalse ix = terms!(states!ix) == LFalse
+  qixLit ix = terms!(states!ix) == lit
   qixMap = listArray (0, length list - 1) list
-    where list = scanl (\ix q -> if qixFalse ix then ix else succ ix) 0$ elems states
+    where list = scanl (\ix q -> if qixLit ix then ix else succ ix) 0$ elems states
 
   terms' = (`fmap` terms)$ cata$ \case
     Compose (Left ix)
-      | qixFalse ix -> LFalse
+      | qixLit ix -> lit
       | otherwise -> Ref$ qixMap!ix
     t -> embed t
 
   states' = array (0, length list - 1) list
-    where list = filter (not . qixFalse . fst)$ assocs states
+    where list = filter (not . qixLit . fst)$ assocs states
+
+
+-- | If Nothing is returned, the language of the Afa is universal.
+-- | WARNING: this operation should not be applied before concatenation (and
+-- | other operations where the length of the accepted word is relevant).
+removeTrueStates :: Afa -> Maybe Afa
+removeTrueStates = removeLiteralStates LTrue
+
+
+-- | If Nothing is returned, the language of the Afa is empty.
+-- | This operation should not affect anything negatively (contrary to
+-- | removeTrueStates).
+removeFalseStates :: Afa -> Maybe Afa
+removeFalseStates = removeLiteralStates LFalse
