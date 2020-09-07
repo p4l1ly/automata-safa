@@ -32,3 +32,8 @@ makeStatesPositive_alg = (getCompose >>>)$ cata$ \case
   (Compose (Left (ix, Nothing))) -> Nothing
   (Compose (Left (ix, Just (sig, _)))) -> Just (sig, TreeHybrid$ Left ix)
   (Compose (Right t)) -> Afa.StatePositiveness.makeStatesPositive_alg t
+
+complement :: TreeHybrid Term Int -> TreeHybrid Term Int
+complement = cata$ \case
+  (Compose (Left ix)) -> TreeHybrid$ Left ix
+  (Compose (Right t)) -> Afa.StatePositiveness.complement_alg t

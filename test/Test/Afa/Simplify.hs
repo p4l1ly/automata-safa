@@ -12,8 +12,7 @@ tests =
   [ "Afa.Simplify" ~: do
       assertEqual "followRefs"
         afa_afterFollowRefs Afa
-          { varCount = 2
-          , terms = listArray (0, 11)
+          { terms = listArray (0, 11)
               [ {-  t0 -} b
               , {-  t1 -} Not (Not a)
               , {-  t2 -} Or [Ref 1, Ref 0]
@@ -35,8 +34,7 @@ tests =
           }
       assertEqual "removeOrphans"
         afa_afterRemoveOrphans Afa
-          { varCount = 2
-          , terms = listArray (0, 8)
+          { terms = listArray (0, 8)
               [ {- t0 -} b
               , {- t1 -} Not (Not a)
               , {- t2 -} Or [Ref 1, Ref 0]
@@ -55,8 +53,7 @@ tests =
           }
       assertEqual "swallowOnlyChilds"
         afa_afterSwallowOnlyChilds Afa
-          { varCount = 2
-          , terms = listArray (0, 2)
+          { terms = listArray (0, 2)
               [ {- t0 -} Not (Not a)
               , {- t1 -} Or [Ref 0, b]
               , {- t2 -}
@@ -73,8 +70,7 @@ tests =
           }
       assertEqual "simplify"
         afa_afterSimplify Afa
-          { varCount = 2
-          , terms = listArray (0, 2)
+          { terms = listArray (0, 2)
               [ {- t0 -} a
               , {- t1 -} Or [Ref 0, b]
               , {- t2 -}
@@ -87,8 +83,7 @@ tests =
           }
       assertEqual "costFixpoint"
         afa_afterCostFixpoint Afa
-          { varCount = 2
-          , terms = listArray (0, 1)
+          { terms = listArray (0, 1)
               [ {- t0 -} Or [a, b]
               , {- t1 -}
                 And [a, Or [And [Or [b, a], a, a, Ref 0], And [Ref 0, b]], Ref 0]
@@ -100,8 +95,7 @@ tests =
           }
       assertEqual "afterHashConsThenSwallow"
         afa_afterHashConsThenSwallow Afa
-          { varCount = 2
-          , terms = listArray (0, 1)
+          { terms = listArray (0, 1)
               [ {- t0 -} Or [a, b]
               , {- t1 -} And [a, Ref 0, Or [And [a, Ref 0], And [b, Ref 0]]]
               ]
@@ -117,8 +111,7 @@ tests =
 
 afa0 :: Afa
 afa0 = Afa
-  { varCount = 2
-  , terms = listArray (0, 11)
+  { terms = listArray (0, 11)
       [ {-  t0 -} b
       , {-  t1 -} Not (Not a)
       , {-  t2 -} Or [Ref 1, Ref 0]

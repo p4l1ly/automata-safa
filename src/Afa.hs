@@ -34,12 +34,12 @@ import Data.Monoid
 import Afa.Simplify (simplify_alg)
 import Afa.Prism (isRecursive)
 import Afa.TreeDag.Patterns.Builder
+import qualified Afa.TreeDag
 import qualified Afa.Functor as F
 
 
 data Afa = Afa
-  { varCount :: Int
-  , terms :: Array Int Term
+  { terms :: Array Int Term
   , states :: Array Int Int
   }
   deriving (Show, Eq)
@@ -158,3 +158,32 @@ removeTrueStates = removeLiteralStates LTrue
 -- | removeTrueStates).
 removeFalseStates :: Afa -> Maybe Afa
 removeFalseStates = removeLiteralStates LFalse
+
+
+-- | This function does not belong to this module
+complement :: Afa -> Afa
+complement afa@Afa{terms} = afa{terms = fmap Afa.TreeDag.complement terms}
+
+
+data SimplificationResult
+  = EmptyLang
+  | NonEmptyLang
+  | UndecidedEmptiness Afa
+
+
+simplify2 :: Afa -> SimplificationResult
+simplify2 afa0 =
+  case removeFalseStates afa1 of
+    Nothing -> EmptyLang
+    Just afa2 -> case removeTrueStates afa2 of
+      Nothing -> NonEmptyLang
+      Just afa3
+        | stateCount afa3 == stateCount afa1 -> UndecidedEmptiness afa3
+        | otherwise -> simplify2 afa3
+
+  where
+  afa1 = costFixpoint (simplify . hashConsThenSwallow)$ removeOrphans$ followRefs afa0
+
+
+stateCount :: Afa -> Int
+stateCount = rangeSize . bounds . states
