@@ -3,16 +3,19 @@
 module Afa.TreeDag.Patterns where
 
 import Data.Functor.Compose
+import Data.Functor.Foldable.Dag.TreeHybrid (pattern BNRef, pattern BRef, MyBase)
 
 import qualified Afa.Functor as T
 
-type Term = Compose (Either Int) T.Term
+type Term = MyBase T.Term Int
 
-pattern And ts = Compose (Right (T.And ts))
-pattern Or ts = Compose (Right (T.Or ts))
-pattern Not t = Compose (Right (T.Not t))
-pattern LFalse = Compose (Right T.LFalse)
-pattern LTrue = Compose (Right T.LTrue)
-pattern Var x = Compose (Right (T.Var x))
-pattern State x = Compose (Right (T.State x))
-pattern Ref x = Compose (Left x)
+pattern NRef x = BNRef x
+pattern Ref x = BRef x
+
+pattern And ts = NRef (T.And ts)
+pattern Or ts = NRef (T.Or ts)
+pattern Not t = NRef (T.Not t)
+pattern LFalse = NRef T.LFalse
+pattern LTrue = NRef T.LTrue
+pattern Var x = NRef (T.Var x)
+pattern State x = NRef (T.State x)

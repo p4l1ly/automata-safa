@@ -59,7 +59,7 @@ makeStatesPositive t = cata makeStatesPositive_alg t >>= \case
   (_, t) -> Just t
 
 makeStatesPositive_alg
-  :: (P.Term f, Corecursive t, f ~ Base t)
+  :: (P.StateVarTerm f, Corecursive t, f ~ Base t)
   => Term (Maybe (StateSignum, t)) -> Maybe (StateSignum, t)
 makeStatesPositive_alg LTrue = Just (None, embed P.LTrue)
 makeStatesPositive_alg LFalse = Just (None, embed P.LFalse)
@@ -90,7 +90,7 @@ merge (Positive, ts) (Negative, t) = Nothing
 merge (Negative, ts) (Negative, t) = Just (Negative, t : ts)
 
 
-complement_alg :: (P.Term f, Corecursive t, f ~ Base t) => Term t -> t
+complement_alg :: (P.StateVarTerm f, Corecursive t, f ~ Base t) => Term t -> t
 complement_alg LTrue = embed P.LFalse
 complement_alg LFalse = embed P.LTrue
 complement_alg (Var x) = embed$ P.Not$ embed$ P.Var x

@@ -20,6 +20,7 @@ data Term rec
   | Not rec
   | And [rec]
   | Or [rec]
-  deriving (Functor, Foldable, Traversable, Eq, Generic, Generic1, Hashable, Hashable1)
+  deriving
+    (Functor, Foldable, Traversable, Eq, Generic, Generic1, Hashable, Hashable1, Show)
   deriving Eq1 via (Generically1 Term)
   deriving Show1 via (Generically1 Term)

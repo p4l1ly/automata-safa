@@ -3,6 +3,7 @@
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE LambdaCase #-}
+{-# LANGUAGE ViewPatterns #-}
 
 module Afa where
 
@@ -11,12 +12,12 @@ import Control.Monad (join)
 import Control.Monad.State
 import Control.Monad.ST
 import Data.Array
-import Data.Array.ST (freeze)
+import Data.Array.Unsafe (unsafeFreeze)
 import Data.Bitraversable
 import Data.Foldable (toList)
 import Data.Functor.Compose
 import Data.Functor.Foldable
-import Data.Functor.Foldable.Dag.Consing (hashState_empty, hashCons, HashState(..))
+import Data.Functor.Foldable.Dag.Consing (hashCons', runHashConsMonadT)
 import Data.Functor.Foldable.Dag.Monadic (cataScanM)
 import Data.Functor.Foldable.Dag.Pure (cataScan)
 import Data.Functor.Foldable.Dag.TreeHybrid (TreeHybrid(..), treeDagCataScanMAlg, treeDagAlg)
@@ -36,6 +37,8 @@ import Afa.Prism (isRecursive)
 import Afa.TreeDag.Patterns.Builder
 import qualified Afa.TreeDag
 import qualified Afa.Functor as F
+import qualified Afa.StatePositiveness
+import qualified Afa.Prism
 
 
 data Afa = Afa
@@ -49,6 +52,8 @@ followRefs :: Afa -> Afa
 followRefs afa@Afa{terms, states} = afa{states=fmap follow states} where
   follow ix = case terms!ix of Ref ix' -> follow ix'; _ -> ix
 
+getExtPtrMask terms ptrs = array (bounds terms)$
+  fmap (, False) (indices terms) ++ map (, True) ptrs
 
 swallowOnlyChilds :: Afa -> Afa
 swallowOnlyChilds afa@Afa{terms, states} = afa{terms = terms', states = states'}
@@ -56,8 +61,7 @@ swallowOnlyChilds afa@Afa{terms, states} = afa{terms = terms', states = states'}
     (ixMapping, terms') = treehybridizeTreeDag swallow terms
     states' = fmap (ixMapping!) states
 
-    extPtrMask = array (bounds terms)$
-      fmap (, False) (indices terms) ++ map (, True) (elems states)
+    extPtrMask = getExtPtrMask terms (elems states)
 
     swallow ix parentCount t
       | isRecursive (project t) =
@@ -69,13 +73,9 @@ simplify :: Afa -> Afa
 simplify afa@Afa{terms} = afa{terms=fmap (cata simplify_alg) terms}
 
 
-cost :: Afa -> (Int, Int)
-cost = TreeDag.Utils.cost . terms
-
-
 costFixpoint :: (Afa -> Afa) -> Afa -> Afa
 costFixpoint fn afa = fixpoint where
-  iters = map (cost &&& id)$ iterate fn afa
+  iters = map (TreeDag.Utils.cost . terms &&& id)$ iterate fn afa
   Just ((_, fixpoint), _) =
     find (\((c1, _), (c2, _)) -> c1 <= c2)$ zip iters (tail iters)
 
@@ -90,27 +90,23 @@ removeOrphans afa@Afa{terms, states} =
       (map (, True)$ elems states)
 
 
+sortUniq :: (Afa.Prism.PositiveTerm f) => f Int -> f Int
+sortUniq (Afa.Prism.And xs) = Afa.Prism.And$ map head$ group$ sort xs
+sortUniq (Afa.Prism.Or xs) = Afa.Prism.Or$ map head$ group$ sort xs
+sortUniq x = x
+
+toArr :: [a] -> Array Int a
+toArr xs = listArray (0, length xs - 1) xs
+
 hashConsThenSwallow :: Afa -> Afa
 hashConsThenSwallow afa@Afa{terms, states} = afa{terms = terms2, states = states2}
   where
-
   ixMapping1 :: Array Int Int
-  (ixMapping1, HashState len termsList _) = runST$ flip runStateT hashState_empty$
-    cataScanM (treeDagCataScanMAlg$ hashCons id . sortUniq) terms
-    >>= lift . freeze
-
-  sortUniq :: F.Term Int -> F.Term Int
-  sortUniq (F.And ixs) = F.And$ map head$ group$ sort ixs
-  sortUniq (F.Or ixs) = F.Or$ map head$ group$ sort ixs
-  sortUniq x = x
-
-  terms1 :: Array Int (F.Term Int)
-  terms1 = listArray (0, len - 1)$ reverse termsList
+  (ixMapping1, toArr -> terms1) = runST$ runHashConsMonadT$
+    cataScanM (treeDagCataScanMAlg$ hashCons' . sortUniq) terms >>= lift . unsafeFreeze
 
   states1 = fmap (ixMapping1!) states
-
-  extPtrMask = array (bounds terms1)$
-    fmap (, False) (indices terms1) ++ map (, True) (elems states1)
+  extPtrMask = getExtPtrMask terms1 (elems states1)
 
   swallow ix parentCount t
     | isRecursive (project t) =
@@ -133,8 +129,7 @@ removeLiteralStates lit afa@Afa{terms, states}
   | otherwise = Just afa{terms = terms', states = states'}
   where
   qixLit ix = terms!(states!ix) == lit
-  qixMap = listArray (0, length list - 1) list
-    where list = scanl (\ix q -> if qixLit ix then ix else succ ix) 0$ elems states
+  qixMap = toArr$ scanl (\ix q -> if qixLit ix then ix else succ ix) 0$ elems states
 
   terms' = (`fmap` terms)$ cata$ \case
     Compose (Left ix)
@@ -166,24 +161,35 @@ complement afa@Afa{terms} = afa{terms = fmap Afa.TreeDag.complement terms}
 
 
 data SimplificationResult
-  = EmptyLang
+  = NonPositiveStates
+  | EmptyLang
   | NonEmptyLang
   | UndecidedEmptiness Afa
 
 
-simplify2 :: Afa -> SimplificationResult
-simplify2 afa0 =
-  case removeFalseStates afa1 of
-    Nothing -> EmptyLang
-    Just afa2 -> case removeTrueStates afa2 of
-      Nothing -> NonEmptyLang
-      Just afa3
-        | stateCount afa3 == stateCount afa1 -> UndecidedEmptiness afa3
-        | otherwise -> simplify2 afa3
+preprocess :: Afa -> SimplificationResult
+preprocess (removeOrphans . followRefs -> afa0@Afa{terms, states}) =
+  case sequence$ elems$ Afa.TreeDag.makeStatesPositive terms of
+    Nothing -> NonPositiveStates
+    Just (listArray (bounds terms) -> terms')
+      | all (nonNeg. fst . (terms'!))$ elems states ->
+          closure$ afa0{terms = fmap snd terms'}
+      | otherwise -> NonPositiveStates
 
   where
-  afa1 = costFixpoint (simplify . hashConsThenSwallow)$ removeOrphans$ followRefs afa0
+  closure afa0 =
+    case removeFalseStates afa1 of
+      Nothing -> EmptyLang
+      Just afa2 -> case removeTrueStates afa2 of
+        Nothing -> NonEmptyLang
+        Just afa3
+          | stateCount afa3 == stateCount afa1 -> UndecidedEmptiness afa3
+          | otherwise -> closure afa3
 
+    where
+    afa1 = costFixpoint (simplify . hashConsThenSwallow)$ removeOrphans$ followRefs afa0
 
-stateCount :: Afa -> Int
-stateCount = rangeSize . bounds . states
+  stateCount = rangeSize . bounds . Afa.states
+
+  nonNeg Afa.StatePositiveness.Negative = False
+  nonNeg _ = True
