@@ -1,4 +1,4 @@
-# Revision history for afabuild
+# Revision history for automata-safa
 
 ## 0.1.0.0 -- YYYY-mm-dd
 

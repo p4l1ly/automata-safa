@@ -1,0 +1,109 @@
+cabal-version:       3.0
+name:                automata-safa
+version:             0.1.0.0
+synopsis:            symbolic alternating finite automata
+-- description:
+-- bug-reports:
+license:             BSD-3-Clause
+license-file:        LICENSE
+author:              Pavol Vargovcik
+maintainer:          pavol.vargovcik@gmail.com
+-- copyright:
+category:            Math
+extra-source-files:  CHANGELOG.md
+
+library
+  exposed-modules:
+    Afa
+    Afa.Functor
+    Afa.Prism
+    Afa.Functor.Fix
+    Afa.StatePositiveness
+    Afa.Simplify
+    Afa.TreeDag
+    Afa.TreeDag.Patterns
+    Afa.TreeDag.Patterns.Builder
+  build-depends:
+    base ^>=4.13.0.0,
+    recursion-schemes ^>=5.1.0,
+    array ^>=0.5.0,
+    mtl ^>=2.2.2,
+    generic-data ^>=0.8.0,
+    lens ^>=4.19.0,
+    hashable ^>=1.3.0,
+    containers ^>=0.6.2.1,
+    functor-dag,
+  hs-source-dirs:      src/model
+  default-language:    Haskell2010
+
+library ltl
+  visibility: public
+  exposed-modules:
+    Ltl
+    Ltl.Parser
+  build-depends:
+    base ^>=4.13.0.0,
+    recursion-schemes ^>=5.1.3,
+    parsec ^>=3.1.0.0,
+    composition ^>=1.0.2.1,
+  hs-source-dirs:      src/ltl
+  default-language:    Haskell2010
+
+library convert
+  visibility: public
+  exposed-modules:
+    Afa.Convert.Ltle
+    Afa.Convert.Pretty
+    Afa.Convert.Dot
+    Afa.Convert.Separated
+    Afa.Convert.CnfAfa
+    Afa.Convert.Capnp.Afa
+    Afa.Convert.Capnp.Separated
+    Afa.Convert.Capnp.CnfAfa
+  build-depends:
+    base ^>=4.13.0.0,
+    mtl ^>= 2.2.2,
+    array ^>= 0.5.4.0,
+    recursion-schemes ^>=5.1.3,
+    parsec ^>=3.1.0.0,
+    composition ^>=1.0.2.1,
+    containers ^>=0.6.2.1,
+    interpolatedstring-perl6 ^>=1.0.2,
+    automata-safa-capnp ^>=0.1.0.0,
+    capnp ^>=0.6.0.0,
+    hashable ^>=1.3.0.0,
+    unordered-containers ^>=0.2.12.0,
+    generic-data ^>=0.8.3.0,
+    lens ^>=4.19.2,
+    functor-dag,
+    automata-safa,
+    ltl,
+  hs-source-dirs:      src/convert
+  default-language:    Haskell2010
+
+test-suite automata-safa-test
+  default-language:    Haskell2010
+  type:                exitcode-stdio-1.0
+  hs-source-dirs:      test
+  main-is:             Main.hs
+  other-modules:
+    Test.Tree.Simplify
+    Test.Tree.StatePositiveness
+    Test.Afa.Simplify
+  build-depends:
+    base,
+    HUnit ^>= 1.6.0.0,
+    recursion-schemes,
+    array,
+    automata-safa
+
+executable ltle-to-afa
+  main-is:             Main.hs
+  build-depends:
+    base ^>=4.13.0.0,
+    optparse-applicative ^>=0.16.0.0,
+    automata-safa,
+    automata-safa:ltl,
+    automata-safa:convert,
+  hs-source-dirs:      app
+  default-language:    Haskell2010
