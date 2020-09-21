@@ -90,12 +90,16 @@ test-suite automata-safa-test
     Test.Tree.Simplify
     Test.Tree.StatePositiveness
     Test.Afa.Simplify
+    Test.Afa.Convert.Separated
   build-depends:
     base,
     HUnit ^>= 1.6.0.0,
     recursion-schemes,
     array,
-    automata-safa
+    mtl,
+    functor-dag,
+    automata-safa,
+    automata-safa:convert,
 
 executable ltle-to-afa
   main-is:             Main.hs
