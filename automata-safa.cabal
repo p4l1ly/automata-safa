@@ -109,5 +109,18 @@ executable ltle-to-afa
     automata-safa,
     automata-safa:ltl,
     automata-safa:convert,
-  hs-source-dirs:      app
+  hs-source-dirs:      app/ltle-to-afa
+  default-language:    Haskell2010
+
+executable ltle-sat
+  main-is:             Main.hs
+  build-depends:
+    base ^>=4.13.0.0,
+    capnp ^>=0.6.0.0,
+    network-simple ^>=0.4.5,
+    automata-safa-capnp ^>=0.1.0.0,
+    automata-safa:automata-safa,
+    automata-safa:ltl,
+    automata-safa:convert,
+  hs-source-dirs:      app/ltle-sat
   default-language:    Haskell2010
