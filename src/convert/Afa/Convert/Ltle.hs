@@ -9,7 +9,7 @@ import Control.Monad.Writer
 import Data.Array
 import Data.Monoid
 
-import Ltl (Ltl)
+import Ltl (Ltl, deRelease_alg, pushNeg_cocoalg)
 import qualified Ltl
 import Data.Functor.Foldable
 import Afa
@@ -18,6 +18,7 @@ import Afa.TreeDag.Patterns.Builder
   , pattern LTrue , pattern LFalse
   )
 import Data.Functor.Foldable.Dag.Monadic (fromCataScanMAlg)
+import Data.Functor.Foldable.Coco (consu)
 
 
 type MyMonad = StateT Int (Writer (Endo [Term]))
@@ -29,8 +30,9 @@ ltleToAfa ltl = (maximum (cata Ltl.allVars_alg ltl) + 2,)$ Afa
   , states = listArray (0, stateCnt - 1) [0..]
   }
   where
+    ltl' = consu pushNeg_cocoalg deRelease_alg (True, ltl) :: Fix Ltl
     ((initTerm, stateCnt),  (`appEndo` []) -> terms) =
-      runWriter$ runStateT (cata (fromCataScanMAlg ltleToAfa_alg) ltl) 1
+      runWriter$ runStateT (cata (fromCataScanMAlg ltleToAfa_alg) ltl') 1
 
 
 ltleToAfa_alg :: Ltl Term -> MyMonad Term

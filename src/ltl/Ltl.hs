@@ -1,11 +1,17 @@
 {-# LANGUAGE DeriveTraversable #-}
+{-# LANGUAGE DeriveGeneric #-}
+{-# LANGUAGE DerivingVia #-}
 {-# LANGUAGE TypeFamilies #-}
 {-# LANGUAGE TupleSections #-}
 
 module Ltl where
 
+import GHC.Generics
 import Data.Foldable
+import Data.Functor.Classes
 import Data.Functor.Foldable
+import Generic.Data (Generically1(..))
+import Generic.Data.Orphans ()
 
 data Ltl rec
   = Var Int
@@ -20,7 +26,8 @@ data Ltl rec
   | Globally rec
   | Finally rec
   | Release rec rec
-  deriving (Functor, Foldable, Traversable)
+  deriving (Functor, Foldable, Traversable, Show, Generic1)
+  deriving Show1 via (Generically1 Ltl)
 
 
 deRelease_alg :: (Corecursive t, Ltl ~ Base t) => Ltl t -> t
