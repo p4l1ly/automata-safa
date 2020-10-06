@@ -7,6 +7,8 @@
 
 module Afa where
 
+import Debug.Trace
+
 import Control.Arrow
 import Control.Monad (join)
 import Control.Monad.State
@@ -132,13 +134,13 @@ removeLiteralStates lit afa@Afa{terms, states}
   qixMap = toArr$ scanl (\ix q -> if qixLit ix then ix else succ ix) 0$ elems states
 
   terms' = (`fmap` terms)$ cata$ \case
-    Compose (Left ix)
+    Compose (Right (F.State ix))
       | qixLit ix -> lit
-      | otherwise -> Ref$ qixMap!ix
+      | otherwise -> State$ qixMap!ix
     t -> embed t
 
-  states' = array (0, length list - 1) list
-    where list = filter (not . qixLit . fst)$ assocs states
+  states' = listArray (0, length list - 1) list
+    where list = map snd$ filter (not . qixLit . fst)$ assocs states
 
 
 -- | If Nothing is returned, the language of the Afa is universal.
@@ -165,6 +167,7 @@ data SimplificationResult
   | EmptyLang
   | NonEmptyLang
   | UndecidedEmptiness Afa
+  deriving (Show, Eq)
 
 
 preprocess :: Afa -> SimplificationResult
