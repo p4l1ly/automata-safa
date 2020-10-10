@@ -64,8 +64,8 @@ ltleToAfa_alg (Ltl.WeakUntil predicate end) = do
 
 ltleToAfa_alg (Ltl.Globally afa) = do
   q <- get
-  let result = And [afa, Not$ Var 0, State q]
-  addState$ Or [Var 0, result]
+  let result = And [afa, Or [Var 0, State q]]
+  addState result
   return result
 
 ltleToAfa_alg (Ltl.Finally afa) = do
