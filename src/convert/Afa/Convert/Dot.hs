@@ -11,16 +11,17 @@ import Data.Array
 import Data.Array.MArray
 import Control.Monad.Trans
 import Control.Monad.ST
-import qualified Afa.TreeDag.Patterns.Builder as THB
-import Afa
-import Afa.Functor
 import Data.Functor.Foldable.Dag.Monadic (cataScanM)
-import Data.Functor.Foldable.Dag.TreeHybrid (treeDagCataScanMAlg)
+import Data.Functor.Tree (treeFAlgM)
 import Data.Functor.Foldable.Dag.Consing (nocons, runNoConsMonadT)
+
+import qualified Afa.Term.TreeF as THB
+import Afa
+import Afa.Term
 
 dagTerms :: Array Int THB.Term -> (Array Int Int, [Term Int])
 dagTerms terms = runST$ runNoConsMonadT$
-  cataScanM (treeDagCataScanMAlg nocons) terms >>= lift . freeze
+  cataScanM (treeFAlgM nocons) terms >>= lift . freeze
 
 toDot :: Bool -> Afa -> String
 toDot cyclic Afa{terms, states} = intercalate "\n"

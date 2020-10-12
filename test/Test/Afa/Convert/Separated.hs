@@ -1,22 +1,26 @@
 {-# LANGUAGE PatternSynonyms #-}
 module Test.Afa.Convert.Separated where
 
-import Control.Monad.Identity
 import Test.HUnit hiding (State)
-import qualified Afa.Functor.Fix as Fix
-import qualified Afa.Functor
-import qualified Afa.Convert.Separated
-import Afa
+
+import Control.Monad.Identity
 import Data.Array
-import Afa.TreeDag.Patterns.Builder hiding (Ref, NRef)
-import Data.Functor.Foldable.Dag.TreeHybrid (pattern Ref, pattern NRef)
+
+import qualified Afa.Term.Fix as Fix
+import qualified Afa.Term
+import qualified Afa.Convert.Separated
+import Data.Functor.Foldable
+import Data.Functor.Foldable.Utils (algMToAlg)
+import Data.Functor.Tree (pattern Leaf, pattern Node)
+
+import Afa
+import Afa.Term.TreeF
+import Afa.Ops.Preprocess (toArr)
 
 import Afa.Convert.Separated
   ( SeparatedFormula(..), QTerm(..), ATerm(..), DisjunctItem(..), SeparatedAfa(..)
   , separate
   )
-import Data.Functor.Foldable
-import Data.Functor.Foldable.Dag.Monadic (fromCataScanMAlg)
 
 tests =
   [ "separate" ~: do
@@ -32,15 +36,15 @@ tests =
         ]
       assertEqual "afa0" (separate afa0)$ SeparatedAfa
         { qterms = toArr
-            [ NRef$ QState 0
-            , NRef$ QState 1
-            , NRef$ QAnd [NRef$ QState 0, NRef$ QState 1]
+            [ Node$ QState 0
+            , Node$ QState 1
+            , Node$ QAnd [Node$ QState 0, Node$ QState 1]
             ]
         , aterms = toArr
-            [ NRef$ AVar 1
-            , NRef$ AVar 0
-            , NRef$ AAnd [NRef$ AVar 1, NRef$ AVar 0]
-            , NRef$ AAnd [NRef$ AVar 1, Ref 2]
+            [ Node$ AVar 1
+            , Node$ AVar 0
+            , Node$ AAnd [Node$ AVar 1, Node$ AVar 0]
+            , Node$ AAnd [Node$ AVar 1, Leaf 2]
             ]
         , Afa.Convert.Separated.states = toArr
             [ [(-1,0), (0,-1)]
@@ -48,11 +52,11 @@ tests =
             ]
         }
       assertEqual "afa1" (separate afa1)$ SeparatedAfa
-        { qterms = toArr [NRef$ QState 1]
+        { qterms = toArr [Node$ QState 1]
         , aterms = toArr
-            [ NRef$ AVar 0
-            , NRef$ AAnd [NRef$ ANot$ NRef$ AVar 0, NRef$ AVar 1]
-            , NRef$ AAnd [Ref 1, NRef$ ANot$ NRef$ AVar 1]
+            [ Node$ AVar 0
+            , Node$ AAnd [Node$ ANot$ Node$ AVar 0, Node$ AVar 1]
+            , Node$ AAnd [Leaf 1, Node$ ANot$ Node$ AVar 1]
             ]
         , Afa.Convert.Separated.states = toArr
             [ [(0, 2)]
@@ -61,7 +65,7 @@ tests =
         }
   ]
 
-formula1 :: Fix Afa.Functor.Term
+formula1 :: Fix Afa.Term.Term
 formula1 = Fix.Or
   [ Fix.State 0
   , Fix.Var 0
@@ -75,7 +79,7 @@ formula1 = Fix.Or
     ]
   ]
 
-separatedFormula1 = runIdentity$ cata (fromCataScanMAlg alg) formula1
+separatedFormula1 = runIdentity$ cata (algMToAlg alg) formula1
   where alg = Afa.Convert.Separated.alg Disjunct (return . embed) (return . embed)
 
 (a0@a:a1@b:_) = map Var [0..]
@@ -85,7 +89,7 @@ afa0 :: Afa
 afa0 = Afa
   { terms = listArray (0, 1)
       [ {- t0 -} Or [q0, b]
-      , {- t1 -} And [q1, Ref 0, Or [And [a, Ref 0], And [b, Ref 0]]]
+      , {- t1 -} And [q1, Leaf 0, Or [And [a, Leaf 0], And [b, Leaf 0]]]
       ]
   , Afa.states = listArray (0, 1)
       [ {- q0 -} 0
@@ -98,8 +102,8 @@ afa1 :: Afa
 afa1 = Afa
   { terms = listArray (0, 2)
       [ {- t0 -} And [Not a0, q1, a1]
-      , {- t1 -} Or [a0, Ref 0]
-      , {- t2 -} And [Not a1, Ref 0]
+      , {- t1 -} Or [a0, Leaf 0]
+      , {- t2 -} And [Not a1, Leaf 0]
       ]
   , Afa.states = listArray (0, 1) [2, 1]
   }

@@ -5,10 +5,10 @@ module Test.Tree.StatePositiveness (tests) where
 import Test.HUnit hiding (State)
 import Data.Functor.Foldable
 
-import Afa.Functor (Term)
-import qualified Afa.Functor as F
-import Afa.Functor.Fix
-import Afa.StatePositiveness
+import Afa.Term (Term)
+import qualified Afa.Term as F
+import Afa.Term.Fix hiding (Term)
+import Afa.Term.Prism.Ops.StatePositiveness
 
 tests =
   [ "check none" ~: do

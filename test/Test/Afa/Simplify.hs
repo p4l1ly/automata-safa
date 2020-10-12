@@ -6,7 +6,8 @@ import Data.Array
 import Data.Functor.Foldable
 
 import Afa
-import Afa.TreeDag.Patterns.Builder
+import Afa.Ops.Preprocess
+import Afa.Term.TreeF
 
 tests =
   [ "Afa.Simplify" ~: do

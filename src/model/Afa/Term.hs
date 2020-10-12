@@ -3,7 +3,7 @@
 {-# LANGUAGE DerivingVia #-}
 {-# LANGUAGE DeriveAnyClass #-}
 
-module Afa.Functor where
+module Afa.Term where
 
 import GHC.Generics
 import Data.Functor.Classes

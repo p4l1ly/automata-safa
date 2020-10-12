@@ -15,14 +15,16 @@ extra-source-files:  CHANGELOG.md
 library
   exposed-modules:
     Afa
-    Afa.Functor
-    Afa.Prism
-    Afa.Functor.Fix
-    Afa.StatePositiveness
-    Afa.Simplify
-    Afa.TreeDag
-    Afa.TreeDag.Patterns
-    Afa.TreeDag.Patterns.Builder
+    Afa.Term
+    Afa.Term.Fix
+    Afa.Term.TreeFBase
+    Afa.Term.TreeF
+    Afa.Term.Prism
+    Afa.Term.Prism.Ops.StatePositiveness
+    Afa.Term.Prism.Ops.Simplify
+    Afa.Term.TreeF.Ops
+    Afa.Ops.Language
+    Afa.Ops.Preprocess
   build-depends:
     base ^>=4.13.0.0,
     recursion-schemes ^>=5.1.0,
@@ -123,5 +125,6 @@ executable ltle-sat
     automata-safa:automata-safa,
     automata-safa:ltl,
     automata-safa:convert,
+    primitive ^>=0.7.1.0,
   hs-source-dirs:      app/ltle-sat
   default-language:    Haskell2010

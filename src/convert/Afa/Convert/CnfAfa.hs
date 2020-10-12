@@ -9,12 +9,12 @@ import Control.Monad.Writer
 import Data.Array
 import Data.Array.Unsafe
 import Data.Monoid
-import qualified Afa.TreeDag.Patterns.Builder as THB
 import Data.Functor.Foldable.Dag.Consing (nocons, runNoConsMonadT)
 import Data.Functor.Foldable.Dag.Monadic (cataScanM)
-import Data.Functor.Foldable.Dag.TreeHybrid (treeDagCataScanMAlg)
+import Data.Functor.Tree (treeFAlgM)
 
-import Afa.Functor
+import qualified Afa.Term.TreeF as THB
+import Afa.Term
 import Afa
 
 
@@ -73,7 +73,7 @@ tseytin varCount (Afa terms states) = CnfAfa
 
 dagTerms :: Array Int THB.Term -> (Array Int Int, [Term Int])
 dagTerms terms = runST$ runNoConsMonadT$
-  cataScanM (treeDagCataScanMAlg nocons) terms >>= lift . unsafeFreeze
+  cataScanM (treeFAlgM nocons) terms >>= lift . unsafeFreeze
 
 
 newtype CountLog x m a = CountLog (StateT Int (WriterT (Endo [x]) m) a)

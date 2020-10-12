@@ -1,16 +1,16 @@
 {-# LANGUAGE PatternSynonyms #-}
 
-module Afa.TreeDag.Patterns where
+module Afa.Term.TreeFBase where
 
 import Data.Functor.Compose
-import Data.Functor.Foldable.Dag.TreeHybrid (pattern BNRef, pattern BRef, MyBase)
+import Data.Functor.Tree (pattern BNode, pattern BLeaf, TreeBase)
 
-import qualified Afa.Functor as T
+import qualified Afa.Term as T
 
-type Term = MyBase T.Term Int
+type Term = TreeBase T.Term Int
 
-pattern NRef x = BNRef x
-pattern Ref x = BRef x
+pattern NRef x = BNode x
+pattern Ref x = BLeaf x
 
 pattern And ts = NRef (T.And ts)
 pattern Or ts = NRef (T.Or ts)

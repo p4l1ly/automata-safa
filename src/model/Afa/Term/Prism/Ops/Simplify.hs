@@ -2,12 +2,12 @@
 {-# LANGUAGE TypeFamilies #-}
 {-# LANGUAGE ViewPatterns #-}
 
-module Afa.Simplify where
+module Afa.Term.Prism.Ops.Simplify where
 
 import Data.List (sort, group)
 import Data.Functor.Foldable (embed, project, Corecursive, Recursive, Base)
 
-import Afa.Prism
+import Afa.Term.Prism
   ( Term, PositiveTerm, LitTerm
   , pattern LTrue
   , pattern LFalse

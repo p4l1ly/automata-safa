@@ -6,7 +6,7 @@ import Data.Semigroup ((<>))
 
 import System.IO
 import Ltl.Parser
-import Afa (SimplificationResult(..), preprocess)
+import Afa.Ops.Preprocess (SimplificationResult(..), preprocess)
 import Afa.Convert.Ltle
 import Afa.Convert.Capnp.Afa
 import Afa.Convert.Pretty

@@ -3,7 +3,7 @@
 {-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE FlexibleInstances #-}
 
-module Afa.Prism where
+module Afa.Term.Prism where
 
 import Prelude hiding (not, or, and)
 
@@ -12,9 +12,8 @@ import Control.Lens.Fold (preview)
 import Control.Lens.Review (review)
 import Data.Functor.Compose
 
-import qualified Afa.Functor as T
-import qualified Afa.TreeDag.Patterns as TD
-import Data.Functor.Foldable.Dag.TreeHybrid (MyBase, pattern BNRef)
+import qualified Afa.Term as T
+import Data.Functor.Tree (TreeBase, pattern BNode)
 
 class PositiveTerm f where
   or :: Prism' (f a) [a]
@@ -71,22 +70,22 @@ instance StateVarTerm T.Term where
   var = prism T.Var$ \case T.Var a -> Right a; x -> Left x
   state = prism T.State$ \case T.State a -> Right a; x -> Left x
 
-instance PositiveTerm f => PositiveTerm (MyBase f ix) where
-  or = prism (BNRef . Or)$ \case BNRef (Or a) -> Right a; x -> Left x
-  and = prism (BNRef . And)$ \case BNRef (And a) -> Right a; x -> Left x
+instance PositiveTerm f => PositiveTerm (TreeBase f ix) where
+  or = prism (BNode . Or)$ \case BNode (Or a) -> Right a; x -> Left x
+  and = prism (BNode . And)$ \case BNode (And a) -> Right a; x -> Left x
 
-instance LitPositiveTerm f => LitPositiveTerm (MyBase f ix) where
-  ltrue = prism (BNRef . const LTrue)$ \case BNRef LTrue -> Right (); x -> Left x
+instance LitPositiveTerm f => LitPositiveTerm (TreeBase f ix) where
+  ltrue = prism (BNode . const LTrue)$ \case BNode LTrue -> Right (); x -> Left x
 
-instance Term f => Term (MyBase f ix) where
-  not = prism (BNRef . Not)$ \case BNRef (Not a) -> Right a; x -> Left x
+instance Term f => Term (TreeBase f ix) where
+  not = prism (BNode . Not)$ \case BNode (Not a) -> Right a; x -> Left x
 
-instance LitTerm f => LitTerm (MyBase f ix) where
-  lfalse = prism (BNRef . const LFalse)$ \case BNRef LFalse -> Right (); x -> Left x
+instance LitTerm f => LitTerm (TreeBase f ix) where
+  lfalse = prism (BNode . const LFalse)$ \case BNode LFalse -> Right (); x -> Left x
 
-instance StateVarTerm f => StateVarTerm (MyBase f ix) where
-  var = prism (BNRef . Var)$ \case BNRef (Var a) -> Right a; x -> Left x
-  state = prism (BNRef . State)$ \case BNRef (State a) -> Right a; x -> Left x
+instance StateVarTerm f => StateVarTerm (TreeBase f ix) where
+  var = prism (BNode . Var)$ \case BNode (Var a) -> Right a; x -> Left x
+  state = prism (BNode . State)$ \case BNode (State a) -> Right a; x -> Left x
 
 positiveIsRecursive :: PositiveTerm f => f a -> Bool
 positiveIsRecursive (And _) = True

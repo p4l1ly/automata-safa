@@ -3,9 +3,9 @@ module Test.Tree.Simplify (tests) where
 import Test.HUnit
 import Data.Functor.Foldable
 
-import Afa.Functor (Term)
-import Afa.Functor.Fix
-import Afa.Simplify
+import Afa.Term (Term)
+import Afa.Term.Fix hiding (Term)
+import Afa.Term.Prism.Ops.Simplify
 
 tests =
   [ "removeEmptyClauses" ~:

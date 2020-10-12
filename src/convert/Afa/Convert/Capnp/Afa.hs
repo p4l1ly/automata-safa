@@ -9,8 +9,8 @@ import qualified Capnp.GenHelpers.ReExports.Data.Vector as V
 import Capnp.Gen.Schema.Afa.Pure
 import System.IO
 import qualified Afa
-import qualified Afa.TreeDag.Patterns.Builder as T
-import qualified Afa.TreeDag.Patterns as TB
+import qualified Afa.Term.TreeF as T
+import qualified Afa.Term.TreeFBase as TB
 import Data.Functor.Foldable (cata)
 
 hReadAfa :: Handle -> IO Afa.Afa

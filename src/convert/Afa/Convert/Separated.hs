@@ -33,25 +33,26 @@ import Data.Hashable
 import Data.Hashable.Lifted
 import Data.HashMap.Strict (HashMap)
 import qualified Data.HashMap.Strict as M
+import Control.Lens.Prism
 
 import Control.Monad
 import GHC.Generics
 import Data.Functor.Classes
 import qualified Data.List
-import Afa.Functor
 import Data.Functor.Foldable
 import Generic.Data (Generically1(..))
 import Generic.Data.Orphans ()
-import Afa (sortUniq, toArr, Afa(..), getExtPtrMask)
 import Data.Functor.Foldable.Dag.Monadic (cataScanM)
-import Data.Functor.Foldable.Dag.TreeHybrid
-import Data.Functor.Foldable.Dag.TreeHybrid.Utils (treehybridizeDag, Swallow(..))
+import Data.Functor.Tree
+import Data.Functor.Foldable.Dag.TreeNested (condenseTreesInDag, Swallow(..))
 import Data.Functor.Foldable.Dag.Consing (hashCons', runHashConsMonadT, HashConsMonadT)
-import qualified Data.Functor.Foldable.Dag.TreeHybrid.Utils as TreeDag
+import qualified Data.Functor.Foldable.Dag.TreeNested as TreeDag
 
-import Control.Lens.Prism
-import qualified Afa.Prism
-import Afa.Simplify (positiveSimplify_alg, nolitSimplify_alg)
+import Afa
+import Afa.Term
+import Afa.Ops.Preprocess (sortUniq, toArr, getExtPtrMask)
+import qualified Afa.Term.Prism as Afa.Prism
+import Afa.Term.Prism.Ops.Simplify (positiveSimplify_alg, nolitSimplify_alg)
 
 data QTerm rec
   = QState Int
@@ -222,8 +223,8 @@ alg disjunct newQ newA = \case
     (qs, as, map (uncurry Conjunct) -> qas) = partitionDisjuncts parts
 
 data SeparatedAfa = SeparatedAfa
-  { qterms :: Array Int (TreeHybrid QTerm Int)
-  , aterms :: Array Int (TreeHybrid ATerm Int)
+  { qterms :: Array Int (TreeF QTerm Int)
+  , aterms :: Array Int (TreeF ATerm Int)
   , states :: Array Int [(Int, Int)]  -- ^ -1 means True
   }
   deriving (Show, Eq)
@@ -237,7 +238,7 @@ separate afa@Afa{Afa.states, terms} = SeparatedAfa
   where
   termMap :: Array Int (SeparatedFormula Int Int)
   ((termMap, toArr -> qterms), toArr -> aterms) = runST$ runSeparateT$
-    cataScanM (treeDagCataScanMAlg$ alg uniqDisjunct newQ newA) terms
+    cataScanM (treeFAlgM$ alg uniqDisjunct newQ newA) terms
     >>= lift . unsafeFreeze
 
   states' = fmap point states
@@ -246,20 +247,20 @@ separate afa@Afa{Afa.states, terms} = SeparatedAfa
   qextPtrMask = getExtPtrMask qterms qptrs
   aextPtrMask = getExtPtrMask aterms aptrs
 
-  qswallow :: Int -> Int -> TreeHybrid QTerm Int -> Swallow
+  qswallow :: Int -> Int -> TreeF QTerm Int -> Swallow
   qswallow ix parentCount t
     | Afa.Prism.positiveIsRecursive (project t) =
         if parentCount > 1 || qextPtrMask!ix then Keep else Swallow
     | otherwise = if qextPtrMask!ix then Copy else Swallow
 
-  aswallow :: Int -> Int -> TreeHybrid ATerm Int -> Swallow
+  aswallow :: Int -> Int -> TreeF ATerm Int -> Swallow
   aswallow ix parentCount t
     | Afa.Prism.isRecursive (project t) =
         if parentCount > 1 || aextPtrMask!ix then Keep else Swallow
     | otherwise = if aextPtrMask!ix then Copy else Swallow
 
-  (qMap, qterms2) = treehybridizeDag qswallow qterms
-  (aMap, aterms2) = treehybridizeDag aswallow aterms
+  (qMap, qterms2) = condenseTreesInDag qswallow qterms
+  (aMap, aterms2) = condenseTreesInDag aswallow aterms
 
   qterms3 = cata positiveSimplify_alg <$> qterms2
   aterms3 = cata nolitSimplify_alg <$> aterms2
@@ -268,11 +269,11 @@ separate afa@Afa{Afa.states, terms} = SeparatedAfa
   aptrs3 = map (aMap!) aptrs
 
   simplify
-    :: ( (Array Int (TreeHybrid QTerm Int), [Int], Array Int Int)
-       , (Array Int (TreeHybrid ATerm Int), [Int], Array Int Int)
+    :: ( (Array Int (TreeF QTerm Int), [Int], Array Int Int)
+       , (Array Int (TreeF ATerm Int), [Int], Array Int Int)
        )
-    -> ( (Array Int (TreeHybrid QTerm Int), [Int], Array Int Int)
-       , (Array Int (TreeHybrid ATerm Int), [Int], Array Int Int)
+    -> ( (Array Int (TreeF QTerm Int), [Int], Array Int Int)
+       , (Array Int (TreeF ATerm Int), [Int], Array Int Int)
        )
   simplify ((qterms, qptrs, qMap), (aterms, aptrs, aMap)) =
     ((qterms'', qptrs', qMap'), (aterms'', aptrs', aMap'))
@@ -309,15 +310,15 @@ separate afa@Afa{Afa.states, terms} = SeparatedAfa
 
 hashConsThenSwallow
   :: (Traversable f, Eq (f Int), Hashable (f Int), Afa.Prism.PositiveTerm f)
-  => (TreeHybrid f Int -> Bool)
-  -> Array Int (TreeHybrid f Int)
+  => (TreeF f Int -> Bool)
+  -> Array Int (TreeF f Int)
   -> [Int]
   -> Array Int Int
-  -> (Array Int (TreeHybrid f Int), [Int], Array Int Int)
+  -> (Array Int (TreeF f Int), [Int], Array Int Int)
 hashConsThenSwallow isRecursive terms extPtrs ixMap0 = (terms2, extPtrs'', ixMap0')
   where
   (ixMap1, toArr -> terms1) = runST$ runHashConsMonadT$
-    cataScanM (treeDagCataScanMAlg$ hashCons' . sortUniq) terms >>= lift . unsafeFreeze
+    cataScanM (treeFAlgM$ hashCons' . sortUniq) terms >>= lift . unsafeFreeze
 
   extPtrs' = map (ixMap1!) extPtrs
   extPtrMask = getExtPtrMask terms1 extPtrs'
@@ -326,7 +327,7 @@ hashConsThenSwallow isRecursive terms extPtrs ixMap0 = (terms2, extPtrs'', ixMap
     | isRecursive t = if parentCount > 1 || extPtrMask!ix then Keep else Swallow
     | otherwise = if extPtrMask!ix then Copy else Swallow
 
-  (ixMap2, terms2) = treehybridizeDag swallow terms1
+  (ixMap2, terms2) = condenseTreesInDag swallow terms1
   extPtrs'' = map (ixMap2!) extPtrs'
   ixMap0' = fmap ((ixMap2!) . (ixMap1!)) ixMap0
 

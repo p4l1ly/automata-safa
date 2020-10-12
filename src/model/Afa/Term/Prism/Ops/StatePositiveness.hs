@@ -2,15 +2,15 @@
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TypeFamilies #-}
 
-module Afa.StatePositiveness where
+module Afa.Term.Prism.Ops.StatePositiveness where
 
 import Control.Monad (foldM)
 import Data.Maybe (isJust)
 
 import Data.Functor.Foldable (cata, embed, Corecursive, Recursive, Base)
 
-import Afa.Functor (Term(..))
-import qualified Afa.Prism as P
+import Afa.Term (Term(..))
+import qualified Afa.Term.Prism as P
 
 statesArePositive :: (Recursive t, Term ~ Base t) => t -> Bool
 statesArePositive = isJust . cata statesArePositive_alg
@@ -88,13 +88,3 @@ merge (Negative, ts) (Positive, t) = Nothing
 merge (None, ts) (Negative, t) = Just (Negative, t : map (embed . P.Not) ts)
 merge (Positive, ts) (Negative, t) = Nothing
 merge (Negative, ts) (Negative, t) = Just (Negative, t : ts)
-
-
-complement_alg :: (P.StateVarTerm f, Corecursive t, f ~ Base t) => Term t -> t
-complement_alg LTrue = embed P.LFalse
-complement_alg LFalse = embed P.LTrue
-complement_alg (Var x) = embed$ P.Not$ embed$ P.Var x
-complement_alg (State x) = embed$ P.State x
-complement_alg (Not x) = embed$ P.Not x
-complement_alg (And xs) = embed$ P.Or xs
-complement_alg (Or xs) = embed$ P.And xs

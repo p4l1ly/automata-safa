@@ -4,15 +4,16 @@
 module Main (main) where
 
 import System.Environment
+import Control.Monad.Primitive (touch)
 
 import Control.Arrow
 import Control.Monad
 import Network.Simple.TCP (connect)
-import Capnp     (def, defaultLimit)
+import Capnp     (def, defaultLimit, hGetValue)
 import Capnp.Rpc (ConnConfig(..), handleConn, socketTransport, wait, (?))
 
 import Ltl.Parser
-import Afa (SimplificationResult(..), preprocess)
+import Afa.Ops.Preprocess (SimplificationResult(..), preprocess)
 import Afa.Convert.Ltle
 
 import qualified Capnp.Gen.Schema.LoadedModelRpc.Pure as Rpc
@@ -43,6 +44,7 @@ justPrint afas = forM_ (zip [0..] afas)$ \(i, (varCount, afa)) -> do
   print varCount
   print afa
 
+
 checkAfaminisat :: [(Int, SimplificationResult)] -> IO ()
 checkAfaminisat afas = connect "localhost" "4002" $ \(sock, _addr) ->
   handleConn (socketTransport sock defaultLimit) def
@@ -58,6 +60,7 @@ checkAfaminisat afas = connect "localhost" "4002" $ \(sock, _addr) ->
                 CnfRpc.loader'load (CnfRpc.Loader client) ? def{CnfRpc.model=cnfafa}
               Rpc.ModelChecking'solve'results time result <- wait =<<
                 Rpc.modelChecking'solve loadedModel ? def
+              touch loadedModel
               return$ show time ++ " " ++
                 case result of
                   Rpc.ModelChecking'Result'empty -> "EmptyLang"
@@ -82,6 +85,7 @@ checkDAntoni afas = connect "localhost" "4001" $ \(sock, _addr) ->
                 SepRpc.loader'load (SepRpc.Loader client) ? def{SepRpc.model=sepafa}
               Rpc.ModelChecking'solve'results time result <- wait =<<
                 Rpc.modelChecking'solve loadedModel ? def
+              touch loadedModel
               return$ show time ++ " " ++
                 case result of
                   Rpc.ModelChecking'Result'empty -> "EmptyLang"
@@ -112,6 +116,8 @@ checkBoth afas = connect "localhost" "4000" $ \(sock, _addr) ->
 
               MRpc.ModelChecking'solve'results times results <- wait =<<
                 MRpc.modelChecking'solve loadedModel ? def
+
+              touch loadedModel
 
               return$ show times ++ " " ++
                 ( show$ (`fmap` results)$ \case

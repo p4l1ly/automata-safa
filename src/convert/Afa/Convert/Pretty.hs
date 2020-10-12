@@ -19,13 +19,14 @@ import Control.Monad
 import Data.Either
 import Text.Parsec hiding (token)
 import Data.Composition ((.:))
-import Afa
-import qualified Afa.TreeDag.Patterns.Builder as TDB
-import qualified Afa.TreeDag.Patterns as TDI
 import Data.Functor.Foldable hiding (fold)
-import qualified Data.Map.Strict as M
 import Data.Functor.Foldable.Dag.Pure (cataScan)
-import Data.Functor.Foldable.Dag.Monadic (fromCataScanMAlg)
+import Data.Functor.Foldable.Utils (algMToAlg)
+import qualified Data.Map.Strict as M
+
+import Afa
+import qualified Afa.Term.TreeF as TDB
+import qualified Afa.Term.TreeFBase as TDI
 
 parsePrettyAfa :: String -> (Int, Afa)
 parsePrettyAfa str = case runWParser (many statement) str of
@@ -110,9 +111,9 @@ semanticAnalysis :: [Statement] -> Either String (Int, Afa)
 semanticAnalysis statements = case nameClashes of
   [] -> do
     terms_unsorted <- listArray (0, termCount - 1)<$>
-      mapM (cata (fromCataScanMAlg mapTerm_alg) . snd) terms
+      mapM (cata (algMToAlg mapTerm_alg) . snd) terms
 
-    states <- mapM (cata (fromCataScanMAlg mapTerm_alg) . snd) states
+    states <- mapM (cata (algMToAlg mapTerm_alg) . snd) states
 
     let topos = cataScan (succ . fold) terms_unsorted :: Array Int (Max Word)
         termIxMap = listArray (0, termCount - 1)$ sortWith (topos!) [0..termCount - 1]

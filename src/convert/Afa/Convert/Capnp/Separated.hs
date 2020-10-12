@@ -5,13 +5,14 @@ module Afa.Convert.Capnp.Separated where
 
 import Control.Arrow
 import Data.Array
-import Afa.Convert.Separated (SeparatedAfa(..), QTerm(..), ATerm(..))
 import qualified Capnp.Gen.Schema.SeparatedAfa.Pure as Schema
 import qualified Capnp.GenHelpers.ReExports.Data.Vector as V
-import Data.Functor.Foldable.Dag.TreeHybrid (pattern BRef, pattern BNRef, MyBase)
+import Data.Functor.Tree (pattern BLeaf, pattern BNode, TreeBase)
 import Data.Functor.Foldable (cata)
 import qualified Capnp
 import System.IO
+
+import Afa.Convert.Separated (SeparatedAfa(..), QTerm(..), ATerm(..))
 
 hWrite :: Int -> SeparatedAfa -> Handle -> IO ()
 hWrite varCount afa h = Capnp.hPutValue h$ serialize varCount afa
@@ -25,15 +26,15 @@ serialize varCount SeparatedAfa{qterms, aterms, states} = Schema.SeparatedAfa
   , Schema.variableCount = fromIntegral varCount
   }
 
-serializeQTerm :: MyBase QTerm Int Schema.QTerm -> Schema.QTerm
-serializeQTerm (BRef i) = Schema.QTerm'ref$ fromIntegral i
-serializeQTerm (BNRef (QState i)) = Schema.QTerm'state$ fromIntegral i
-serializeQTerm (BNRef (QAnd xs)) = Schema.QTerm'and$ V.fromList xs
-serializeQTerm (BNRef (QOr xs)) = Schema.QTerm'or$ V.fromList xs
+serializeQTerm :: TreeBase QTerm Int Schema.QTerm -> Schema.QTerm
+serializeQTerm (BLeaf i) = Schema.QTerm'ref$ fromIntegral i
+serializeQTerm (BNode (QState i)) = Schema.QTerm'state$ fromIntegral i
+serializeQTerm (BNode (QAnd xs)) = Schema.QTerm'and$ V.fromList xs
+serializeQTerm (BNode (QOr xs)) = Schema.QTerm'or$ V.fromList xs
 
-serializeATerm :: MyBase ATerm Int Schema.ATerm -> Schema.ATerm
-serializeATerm (BRef i) = Schema.ATerm'ref$ fromIntegral i
-serializeATerm (BNRef (AVar i)) = Schema.ATerm'var$ fromIntegral i
-serializeATerm (BNRef (AAnd xs)) = Schema.ATerm'and$ V.fromList xs
-serializeATerm (BNRef (AOr xs)) = Schema.ATerm'or$ V.fromList xs
-serializeATerm (BNRef (ANot x)) = Schema.ATerm'not x
+serializeATerm :: TreeBase ATerm Int Schema.ATerm -> Schema.ATerm
+serializeATerm (BLeaf i) = Schema.ATerm'ref$ fromIntegral i
+serializeATerm (BNode (AVar i)) = Schema.ATerm'var$ fromIntegral i
+serializeATerm (BNode (AAnd xs)) = Schema.ATerm'and$ V.fromList xs
+serializeATerm (BNode (AOr xs)) = Schema.ATerm'or$ V.fromList xs
+serializeATerm (BNode (ANot x)) = Schema.ATerm'not x
