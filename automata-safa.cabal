@@ -73,7 +73,7 @@ library convert
     containers ^>=0.6.2.1,
     interpolatedstring-perl6 ^>=1.0.2,
     automata-safa-capnp ^>=0.1.0.0,
-    capnp ^>=0.6.0.1,
+    capnp ^>=0.6.0.3,
     hashable ^>=1.3.0.0,
     unordered-containers ^>=0.2.12.0,
     generic-data ^>=0.8.3.0,
@@ -119,7 +119,7 @@ executable ltle-sat
   main-is:             Main.hs
   build-depends:
     base ^>=4.13.0.0,
-    capnp ^>=0.6.0.1,
+    capnp ^>=0.6.0.3,
     network-simple ^>=0.4.5,
     automata-safa-capnp ^>=0.1.0.0,
     automata-safa:automata-safa,
@@ -133,7 +133,7 @@ executable dir-sat
   main-is:             Main.hs
   build-depends:
     base ^>=4.13.0.0,
-    capnp ^>=0.6.0.1,
+    capnp ^>=0.6.0.3,
     network-simple ^>=0.4.5,
     automata-safa-capnp ^>=0.1.0.0,
     primitive ^>=0.7.1.0,
