@@ -148,16 +148,15 @@ alg disjunct newQ newA = \case
       qpure = case qpures of [x] -> return x; _ -> newQ$ QOr qpures
       apure = case apures of [x] -> return x; _ -> newA$ AOr apures
     in
-    case () of
-      _ | hasTrue -> return STrue
-        | otherwise -> case (null qpures, null apures, null disjuncts) of
-            (True, True, True) -> return SFalse
-            (False, True, True) -> QPure <$> qpure
-            (True, False, True) -> APure <$> apure
-            _ -> disjunct <$> do
-              addQ <- if null qpures then return id else (:) . QItem <$> qpure
-              addA <- if null apures then return id else (:) . AItem <$> apure
-              return$ addQ$ addA$ concat disjuncts
+    if hasTrue then return STrue
+    else case (null qpures, null apures, null disjuncts) of
+      (True, True, True) -> return SFalse
+      (False, True, True) -> QPure <$> qpure
+      (True, False, True) -> APure <$> apure
+      _ -> disjunct <$> do
+        addQ <- if null qpures then return id else (:) . QItem <$> qpure
+        addA <- if null apures then return id else (:) . AItem <$> apure
+        return$ addQ$ addA$ concat disjuncts
 
   And ts ->
     let
@@ -176,17 +175,16 @@ alg disjunct newQ newA = \case
 
       cartesian_product = sequence disjuncts'
     in
-    case () of
-      _ | hasFalse -> return SFalse
-        | otherwise -> case (null qpures, null apures, null disjuncts) of
-            (True, True, True) -> return STrue
-            (False, True, True) -> QPure <$> qpure
-            (True, False, True) -> APure <$> apure
-            _ -> do
-              addQ <- if null qpures' then return id else (:) . QItem <$> qpure'
-              addA <- if null apures' then return id else (:) . AItem <$> apure'
-              conjuncts <- forM cartesian_product$ simpleAnd . addQ . addA
-              simpleOr conjuncts
+    if hasFalse then return SFalse
+    else case (null qpures, null apures, null disjuncts) of
+      (True, True, True) -> return STrue
+      (False, True, True) -> QPure <$> qpure
+      (True, False, True) -> APure <$> apure
+      _ -> do
+        addQ <- if null qpures' then return id else (:) . QItem <$> qpure'
+        addA <- if null apures' then return id else (:) . AItem <$> apure'
+        conjuncts <- forM cartesian_product$ simpleAnd . addQ . addA
+        simpleOr conjuncts
 
   where
   simpleAnd
