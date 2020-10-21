@@ -1,5 +1,6 @@
 {-# LANGUAGE NamedFieldPuns #-}
 
+import Data.List
 import System.Environment
 import System.Directory
 import System.IO
@@ -17,7 +18,8 @@ main :: IO ()
 main = do
   [path] <- getArgs
   files <- listDirectory path
-  checkDAntoni$ map ((path ++ "/") ++) files
+  let files' = sort $ map read files :: [Int]
+  checkDAntoni$ map ((path ++ "/") ++)$ map show files'
 
 
 checkDAntoni :: [String] -> IO ()
@@ -26,7 +28,7 @@ checkDAntoni files = connect "localhost" "4001" $ \(sock, _addr) ->
     { maxExports = 100000
     , debugMode = True
     , withBootstrap = Just $ \sup client ->
-        forM_ (zip [0..] files)$ \(i, file) ->
+        forM_ files$ \file ->
           withFile file ReadMode$ \h -> do
             afa <- hGetValue h defaultLimit
 
@@ -42,5 +44,5 @@ checkDAntoni files = connect "localhost" "4001" $ \(sock, _addr) ->
                     Rpc.ModelChecking'Result'nonempty -> "NonEmptyLang"
                     Rpc.ModelChecking'Result'cancelled -> "ModelCheckingCancelled"
 
-            putStrLn$ show i ++ " " ++ msg
+            putStrLn$ file ++ " " ++ msg
     }
