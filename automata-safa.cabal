@@ -16,14 +16,12 @@ library
   exposed-modules:
     Afa
     Afa.Term
-    Afa.Term.Fix
-    Afa.Term.TreeFBase
-    Afa.Term.TreeF
-    Afa.Term.Prism
-    Afa.Term.Prism.Ops.StatePositiveness
-    Afa.Term.Prism.Ops.Simplify
-    Afa.Term.TreeF.Ops
-    Afa.Ops.Language
+    -- Afa.Term.Fix
+    -- Afa.Term.TreeFBase
+    -- Afa.Term.TreeF
+    -- Afa.Term.Prism
+    -- Afa.Term.Prism.Ops.Simplify
+    -- Afa.Ops.Language
     Afa.Ops.Preprocess
   build-depends:
     base ^>=4.13.0.0,
