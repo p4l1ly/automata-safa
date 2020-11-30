@@ -15,24 +15,32 @@ extra-source-files:  CHANGELOG.md
 library
   exposed-modules:
     Afa
-    Afa.Term
+    Afa.Term.Mix
+    Afa.Term.Bool
+    Afa.Term.Bool.Simplify
+    Afa.Bool
+    Afa.Lib
+    Afa.Lib.LiftArray
+    Afa.Lib.Tree
     -- Afa.Term.Fix
     -- Afa.Term.TreeFBase
     -- Afa.Term.TreeF
     -- Afa.Term.Prism
     -- Afa.Term.Prism.Ops.Simplify
     -- Afa.Ops.Language
-    Afa.Ops.Preprocess
+    -- Afa.Ops.Preprocess
   build-depends:
     base ^>=4.13.0.0,
-    recursion-schemes ^>=5.1.0,
-    array ^>=0.5.0,
+    recursion-schemes ^>=5.2.1,
+    array ^>=0.5.4.0,
     mtl ^>=2.2.2,
     generic-data ^>=0.8.0,
     lens ^>=4.19.0,
     hashable ^>=1.3.0,
     containers ^>=0.6.2.1,
-    functor-dag,
+    unordered-containers ^>=0.2.12.0,
+    data-fix ^>=0.3.0,
+    lens-recursion-schemes,
   hs-source-dirs:      src/model
   default-language:    Haskell2010
 
@@ -43,7 +51,7 @@ library ltl
     Ltl.Parser
   build-depends:
     base ^>=4.13.0.0,
-    recursion-schemes ^>=5.1.3,
+    recursion-schemes ^>=5.2.1,
     parsec ^>=3.1.0.0,
     composition ^>=1.0.2.1,
     generic-data ^>=0.8.3.0,
@@ -66,7 +74,7 @@ library convert
     base ^>=4.13.0.0,
     mtl ^>= 2.2.2,
     array ^>= 0.5.4.0,
-    recursion-schemes ^>=5.1.3,
+    recursion-schemes ^>=5.2.1,
     parsec ^>=3.1.0.0,
     composition ^>=1.0.2.1,
     containers ^>=0.6.2.1,
@@ -77,7 +85,6 @@ library convert
     unordered-containers ^>=0.2.12.0,
     generic-data ^>=0.8.3.0,
     lens ^>=4.19.2,
-    functor-dag,
     automata-safa,
     ltl,
   hs-source-dirs:      src/convert
@@ -99,7 +106,6 @@ test-suite automata-safa-test
     recursion-schemes,
     array,
     mtl,
-    functor-dag,
     automata-safa,
     automata-safa:convert,
 

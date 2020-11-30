@@ -48,7 +48,7 @@ import qualified Data.Functor.Foldable.MultiDag as MultiDag
 -- import Afa.Term.Prism (isRecursive)
 import Afa (Afa(Afa, terms, states), TermLens, StateLens, Afa')
 -- import Afa.Term.TreeF (pattern Ref, Term, pattern LTrue, pattern State, pattern Predicate)
-import qualified Afa.Term as T
+-- import qualified Afa.Term as T
 -- import qualified Afa.Term.TreeFBase as TFB
 -- import qualified Afa.Term.Prism as Prism
 
@@ -56,7 +56,10 @@ followRefs :: Afa' p -> Afa' p
 followRefs = MultiDag.followRefs @TermLens @StateLens
 
 swallowOnlyChilds :: Afa' p -> Afa' p
-swallowOnlyChilds = MultiDag.swallowOnlyChilds @StateLens @TermLens
+swallowOnlyChilds = MultiDag.swallowOnlyChildsInTreeDag @StateLens @TermLens
+
+remo :: Afa' p -> Afa' p
+remo = MultiDag.removeOrphans @StateLens @TermLens
 
 -- 
 -- 
