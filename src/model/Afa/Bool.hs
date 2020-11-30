@@ -101,8 +101,7 @@ swallowBoolTs gs ixMap arr = runST action where
 
 unswallow :: forall p. BoolAfaSwallowed p -> BoolAfaUnswallowed p
 unswallow BoolAfa{boolTerms=bterms, afa=afa@Afa{terms=mterms, states=transitions}} =
-  runST action
-  where
+  runST action where
   action :: forall s. ST s (BoolAfaUnswallowed p)
   action = do
     mgs <- LiftArray . LiftArray <$> newArray @(STArray s) (bounds mterms) mempty
@@ -142,3 +141,39 @@ unswallow BoolAfa{boolTerms=bterms, afa=afa@Afa{terms=mterms, states=transitions
     ( runIdentity$ treeModChilds (modPT$ return . ((g,) <$>)) (return . (g,)) t
     , ifG g$ cataT (treeTraversal$ modPT$ lift . untree) (either return nocons)
     )
+
+swallow :: forall p. BoolAfaUnswallowed p -> BoolAfaSwallowed p
+swallow BoolAfa{boolTerms=bterms, afa=afa@Afa{terms=mterms, states=transitions}} =
+  runST action where
+  action :: forall s. ST s (BoolAfaSwallowed p)
+  action = do
+    mgs <- LiftArray . LiftArray <$> newArray @(STArray s) (bounds mterms) mempty
+    bgs <- LiftArray <$> newArray @(STArray s) (bounds bterms) mempty
+
+    ((transitions', mterms'), bterms') <- runNoConsT$ runNoConsT$ do
+      let Enclosing before after = for transitions$ arrayEncloser' mgs id . (Sum 1,)
+      before
+      ixMaps <- unsafeFreeze . snd =<< hyloScanT00'
+        (lift$ hyloScanTTerminal' traversed bhylogebra bgs >>= unsafeFreeze)
+        (,)
+        (modPT (arrayEncloser' (LiftArray bgs) snd) (arrayEncloser mgs fst))
+        (\(g, i) -> mhylogebra g (mterms!i))
+        mgs
+      runReaderT after ixMaps
+
+    return BoolAfa
+      { boolTerms = listArray' bterms'
+      , afa = afa
+          { terms = listArray' mterms'
+          , states = transitions'
+          }
+      }
+
+  alg 0 _ = return$ error "accessing element without parents"
+  alg 1 t = return$ Node t
+  alg _ tb = Leaf<$> nocons (Node tb)
+
+  modPT lP lT = MixT.modChilds MixT.pureChildMod{ MixT.lT = lT, MixT.lP = lP }
+
+  bhylogebra (g, i) = return ((g,) <$> bterms!i, alg g)
+  mhylogebra g t = return (runIdentity$ modPT (return . (g,)) (return . (g,)) t, alg g)
