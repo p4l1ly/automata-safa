@@ -16,6 +16,7 @@ library
   exposed-modules:
     Afa
     Afa.Term.Mix
+    Afa.Term.Mix.Simplify
     Afa.Term.Bool
     Afa.Term.Bool.Simplify
     Afa.Bool

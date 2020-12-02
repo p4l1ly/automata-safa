@@ -25,6 +25,7 @@ import Data.Hashable
 
 import Afa
 import qualified Afa.Term.Mix as MixT
+import qualified Afa.Term.Mix.Simplify as MixTSimplify
 import qualified Afa.Term.Bool as BoolT
 import qualified Afa.Term.Bool.Simplify as BoolTSimplify
 import Afa.Lib.Tree
@@ -45,6 +46,47 @@ type BoolAfaSwallowed p = BoolAfa
 type BoolAfaUnswallowed p = BoolAfa
   (Array Int (BoolT.Term p Int))
   (AfaUnswallowed Int)
+
+
+simplifyMixAndBoolTs :: forall p q. (Eq p, Hashable p, Eq q, Hashable q)
+  => Array Int Any
+  -> Array Int (BoolT.Term p Int)
+  -> Array Int (MixT.Term Int q Int)
+  -> ( Array Int (Either Bool Int)
+     , Array Int (BoolT.Term p Int)
+     , Array Int (MixT.Term Int q Int)
+     )
+simplifyMixAndBoolTs mgs bterms mterms = runST action where
+  action :: forall s. ST s
+    ( Array Int (Either Bool Int)
+    , Array Int (BoolT.Term p Int)
+    , Array Int (MixT.Term Int q Int)
+    )
+  action = do
+    mgs'M <- newListArray @(STArray s) (bounds mgs) (elems mgs)
+    bgs'M <- newArray @(STArray s) (bounds bterms) mempty
+    let mgs'M' = LiftArray mgs'M
+    (((_, bterms'), LiftArray ixMapM), tList) <- runHashConsT$ hyloScanT00'
+      (fmap (`simplifyBoolTsUntilFixpoint` bterms)$ lift$ unsafeFreeze bgs'M)
+      (\t (bIxMap, _) -> (t, bIxMap))
+      (modPT (arrayEncloser' (LiftArray bgs'M) snd) (arrayEncloser mgs'M' fst))
+      mhylogebra
+      mgs'M'
+    ixMap <- unsafeFreeze ixMapM
+    return (fmap (fmap fst) ixMap, bterms', listArray' tList)
+
+  modPT lP lT = MixT.modChilds MixT.pureChildMod{ MixT.lT = lT, MixT.lP = lP }
+
+  mhylogebra (g, i) = return
+    (runIdentity$ modPT (return . (g,)) (return . (g,)) (mterms!i), alg g)
+
+  alg (Any False) _ = return$ error "accessing element without parents"
+  alg _ t = case MixT.modChilds MixT.pureChildMod{ MixT.lP = id } t of
+    Left b -> return$ Left b
+    Right t -> case MixTSimplify.simplify (getCompose . unFix . snd) fst t of
+      Left b -> return$ Left b
+      Right (Left it) -> return$ Right it
+      Right (Right t) -> Right . (, Fix$ Compose t) <$> hashCons' (fmap fst t)
 
 
 simplifyBoolTs :: forall p. (Eq p, Hashable p)
@@ -220,7 +262,7 @@ swallow BoolAfa{boolTerms=bterms, afa=afa@Afa{terms=mterms, states=transitions}}
         (lift$ hyloScanTTerminal' traversed bhylogebra bgs >>= unsafeFreeze)
         (,)
         (modPT (arrayEncloser' (LiftArray bgs) snd) (arrayEncloser mgs fst))
-        (\(g, i) -> mhylogebra g (mterms!i))
+        mhylogebra
         mgs
       runReaderT after ixMaps
 
@@ -234,4 +276,5 @@ swallow BoolAfa{boolTerms=bterms, afa=afa@Afa{terms=mterms, states=transitions}}
   modPT lP lT = MixT.modChilds MixT.pureChildMod{ MixT.lT = lT, MixT.lP = lP }
 
   bhylogebra (g, i) = return ((g,) <$> bterms!i, alg g)
-  mhylogebra g t = return (runIdentity$ modPT (return . (g,)) (return . (g,)) t, alg g)
+  mhylogebra (g, i) = return
+    (runIdentity$ modPT (return . (g,)) (return . (g,)) (mterms!i), alg g)
