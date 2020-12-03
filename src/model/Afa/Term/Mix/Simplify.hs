@@ -2,6 +2,7 @@
 
 module Afa.Term.Mix.Simplify where
 
+import Control.Monad
 import Control.Category ((>>>))
 import Data.Monoid (Endo(..))
 import Data.List.NonEmpty (NonEmpty(..))
@@ -70,14 +71,25 @@ absorb project getR = \case
     in maybe (Left True) (Right . Or)$ NE.nonEmpty ts3
   bt -> Right bt
 
+-- PERF: use hashset
+nubWith :: Eq r => (t -> r) -> Term p q t -> Term p q t
+nubWith getR (And ts) = And$ NE.nubBy (\a b -> getR a == getR b) ts
+nubWith getR (Or ts) = Or$ NE.nubBy (\a b -> getR a == getR b) ts
+nubWith _ x = x
+
 simplify :: (Eq r, Hashable r)
   => (t -> Term p q t)
   -> (t -> r)
   -> Term p q (Either Bool t) -> Either Bool (Either t (Term p q t))
 simplify project getR =
-  (deLit >&> deUnary >&> flatten project >>> absorb project getR) >>> join2
+  ( ( deLit
+      >&> deUnary
+          >&> flatten project >>> nubWith getR >>> absorb project getR
+    ) >>> skipJoin
+  )
+  >&> join . fmap deUnary
   where
-  join2 (Right (Right (Left b))) = Left b
-  join2 (Right (Right (Right t))) = Right (Right t)
-  join2 (Left b) = Left b
-  join2 (Right (Left t)) = Right (Left t)
+  skipJoin (Right (Right (Left b))) = Left b
+  skipJoin (Right (Right (Right t))) = Right (Right t)
+  skipJoin (Left b) = Left b
+  skipJoin (Right (Left t)) = Right (Left t)

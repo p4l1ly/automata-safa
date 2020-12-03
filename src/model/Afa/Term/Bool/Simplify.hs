@@ -1,7 +1,9 @@
 {-# LANGUAGE LambdaCase #-}
+{-# LANGUAGE ViewPatterns #-}
 
 module Afa.Term.Bool.Simplify where
 
+import Data.Maybe
 import Control.Monad
 import Control.Category ((>>>))
 import Data.Monoid (Endo(..))
@@ -64,6 +66,7 @@ flatten project = \case
       _ -> t :| []
   bt -> bt
 
+-- PERF: use list? use radix grouping?
 absorb :: (Eq r, Hashable r) => (t -> Term p t) -> (t -> r) -> Term p t -> Term p t
 absorb project getR = \case
   And ts ->
@@ -80,9 +83,42 @@ absorb project getR = \case
     in maybe LFalse Or$ NE.nonEmpty ts3
   bt -> bt
 
+-- PERF: use list? use radix grouping?
+complementLaws :: (Eq r, Hashable r)
+  => (t -> Term p t) -> (t -> r) -> Term p t -> Either Bool (Term p t)
+complementLaws project getR x = case x of
+  (And ts) -> if hasCompl ts then Left False else Right x
+  (Or ts) -> if hasCompl ts then Left True else Right x
+  _ -> Right x
+  where
+  hasCompl (NE.toList -> ts) = any ((`S.member` nots) . getR) ts where
+    nots = S.fromList$
+      mapMaybe (project >>> \case Not t -> Just$ getR t; _ -> Nothing) ts
+
+-- PERF: use hashset? use radix grouping?
+nubWith :: Eq r => (t -> r) -> Term p t -> Term p t
+nubWith getR (And ts) = And$ NE.nubBy (\a b -> getR a == getR b) ts
+nubWith getR (Or ts) = Or$ NE.nubBy (\a b -> getR a == getR b) ts
+nubWith _ x = x
+
 simplify :: (Eq r, Hashable r)
   => (t -> Term p t)
   -> (t -> r)
   -> Term p (Either Bool t) -> Either Bool (Either t (Term p t))
 simplify project getR =
-  deLit >&> deUnary >=> deNotNot project >&> flatten project >>> absorb project getR
+  ( ( deLit
+      >&> deUnary
+      >=> ( deNotNot project
+            >&> flatten project
+                >>> nubWith getR
+                >>> absorb project getR
+                >>> complementLaws project getR
+          )
+    ) >>> skipJoin
+  )
+  >&> join . fmap deUnary
+  where
+  skipJoin (Right (Right (Left b))) = Left b
+  skipJoin (Right (Right (Right t))) = Right (Right t)
+  skipJoin (Left b) = Left b
+  skipJoin (Right (Left t)) = Right (Left t)

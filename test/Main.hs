@@ -5,17 +5,11 @@ import Control.Monad
 import Test.HUnit
 
 import qualified Test.Afa.Simplify
-import qualified Test.Tree.Simplify
-import qualified Test.Tree.StatePositiveness
-import qualified Test.Afa.Convert.Separated
 
 check result = do
   guard$ failures result == 0
   guard$ errors result == 0
 
 main = (check =<<)$ runTestTT$ TestList$ concat
-  [ Test.Tree.Simplify.tests
-  , Test.Tree.StatePositiveness.tests
-  , Test.Afa.Simplify.tests
-  , Test.Afa.Convert.Separated.tests
+  [ Test.Afa.Simplify.tests
   ]
