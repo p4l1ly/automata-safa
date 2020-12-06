@@ -7,14 +7,18 @@
 
 module Ltl where
 
+import Control.Monad.Free (Free(..))
+import Data.Bifunctor
 import GHC.Generics
-import Data.Foldable
 import Data.Functor.Classes
 import Data.Functor.Foldable
 import Generic.Data (Generically1(..))
 import Generic.Data.Orphans ()
 import Data.Hashable
 import Data.Hashable.Lifted
+
+import Ltl.Lib (bloom, skippingAlg)
+
 
 data Ltl rec
   = Var Int
@@ -34,22 +38,24 @@ data Ltl rec
   deriving Show1 via (Generically1 Ltl)
 
 
-deRelease_alg :: (Corecursive t, Ltl ~ Base t) => Ltl t -> t
-deRelease_alg (Release x y) = embed$ WeakUntil y (embed$ And [x, y])
-deRelease_alg x = embed x
+deRelease :: Ltl t -> Ltl (Free Ltl t)
+deRelease (Release x y) = WeakUntil (Pure y) (Free$ And [Pure x, Pure y])
+deRelease x = fmap Pure x
 
 
-pushNeg_cocoalg :: (Corecursive t, Recursive t, Ltl ~ Base t)
-  => (Bool, Ltl t) -> Ltl (Bool, t)
-pushNeg_cocoalg (b, Not t) = pushNeg_cocoalg (not b, project t)
-pushNeg_cocoalg (False, And ts) = Or$ map (False,) ts
-pushNeg_cocoalg (False, Or ts) = And$ map (False,) ts
-pushNeg_cocoalg (False, Var i) = Not (True, embed$ Var i)
-pushNeg_cocoalg (False, LTrue) = LFalse
-pushNeg_cocoalg (False, LFalse) = LTrue
-pushNeg_cocoalg (b, f) = fmap (b,) f
+pushNeg :: (Bool, Ltl t) -> Free Ltl (Bool, t)
+pushNeg (b, Not t) = Pure (not b, t)
+pushNeg (False, And ts) = Free$ Or$ map (Pure . (False,)) ts
+pushNeg (False, Or ts) = Free$ And$ map (Pure . (False,)) ts
+pushNeg (False, Var i) = Free$ Not$ Free$ Var i
+pushNeg (False, LTrue) = Free LFalse
+pushNeg (False, LFalse) = Free LTrue
+pushNeg (b, f) = Free$ fmap (Pure . (b,)) f
 
 
-allVars_alg :: Ltl [Int] -> [Int]
-allVars_alg (Var i) = [i]
-allVars_alg f = Data.Foldable.fold f
+preprocess :: (Bool, Ltl t) -> Free Ltl (Bool, t)
+preprocess = bloom (Free . deRelease) . pushNeg
+
+
+preprocessCoRecursive :: (Recursive t, Corecursive t, Ltl ~ Base t) => t -> t
+preprocessCoRecursive = futu (skippingAlg$ preprocess . second project) . (True,)

@@ -5,7 +5,7 @@ import Control.Monad
 import Data.Either
 import Text.Parsec
 import Data.Composition ((.:))
-import Data.Functor.Foldable
+import Data.Fix
 
 import Ltl
 
