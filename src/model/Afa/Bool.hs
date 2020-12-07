@@ -34,7 +34,7 @@ import qualified Afa.Term.Bool as BoolT
 import qualified Afa.Term.Bool.Simplify as BoolTSimplify
 import Afa.Lib.Tree
 import Afa.Lib.LiftArray
-import Afa.Lib (listArray', (>&>))
+import Afa.Lib (listArray', (>&>), nonemptyCanonicalizeWith)
 
 
 data BoolAfa boolTerms afa = BoolAfa
@@ -44,6 +44,7 @@ data BoolAfa boolTerms afa = BoolAfa
   deriving (Show, Eq)
 
 
+-- TODO Tree is actually Free
 type BoolTermITree p = Tree (BoolT.Term p) Int
 type BoolAfaSwallowed p = BoolAfa
   (Array Int (BoolTermITree p))
@@ -81,7 +82,7 @@ simplifyAll bafa = do
   (ixMap1, bterms1, mterms1) = simplifyMixAndBoolTs mgs bterms mterms
 
 
--- FIXME: This is not implemented in an idyllistic lens way
+-- TODO: This is not implemented in an idyllistic lens way
 simplifyStatesAndMixTs :: forall p. (Eq p, Hashable p)
   => Array Int (Either Bool Int)
   -> Array Int (MixT.Term p Int Int)
@@ -104,7 +105,7 @@ simplifyStatesAndMixTs ixMap mterms states init = case sequence states1 of
   lefts' = lefts <&> \case (i, Left x) -> (i, x)
   rights' = rights <&> \case (i, Right x) -> (i, x)
 
-  groups = groupWith snd$ sortWith snd rights'  -- PERF: use hashmap or radix grouping?
+  groups = groupWith snd$ sortWith snd rights'  -- PERF: use hashmap? radix grouping?
   states2 = listArray'$ snd . head <$> groups
   oldToNew = concat$ zipWith (\i' xs -> map ((, i') . fst) xs) [0..] groups
 
@@ -345,10 +346,10 @@ separatePositiveTops bterms mterms =
           BoolT.LTrue -> Left <$> hashCons' MixT.LTrue
           BoolT.And ixs -> fmap Left$ do
             ixs' <- forM ixs$ either (hashCons' . MixT.Predicate) return
-            hashCons'$ MixT.And ixs'
+            hashCons'$ MixT.And$ nonemptyCanonicalizeWith id ixs'
           BoolT.Or ixs -> fmap Left$ do
             ixs' <- forM ixs$ either (hashCons' . MixT.Predicate) return
-            hashCons'$ MixT.Or ixs'
+            hashCons'$ MixT.Or$ nonemptyCanonicalizeWith id ixs'
           _ -> error "cannot be positive"
     )
     where
@@ -360,6 +361,7 @@ separatePositiveTops bterms mterms =
       _ -> g
 
 
+-- TODO the trees are traversed thrice, we need a setter generator for trees
 unswallow :: forall p. BoolAfaSwallowed p -> BoolAfaUnswallowed p
 unswallow BoolAfa{boolTerms=bterms, afa=afa@Afa{terms=mterms, states=transitions}} =
   runST action where

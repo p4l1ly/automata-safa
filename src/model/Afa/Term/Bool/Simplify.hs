@@ -9,7 +9,7 @@ import Control.Category ((>>>))
 import Data.Monoid (Endo(..))
 import Data.List.NonEmpty (NonEmpty(..))
 import qualified Data.List.NonEmpty as NE
-import Afa.Lib (nonEmptyConcatMap, (>&>))
+import Afa.Lib (nonEmptyConcatMap, (>&>), nonemptyCanonicalizeWith)
 import Data.Hashable
 import qualified Data.HashSet as S
 
@@ -66,7 +66,7 @@ flatten project = \case
       _ -> t :| []
   bt -> bt
 
--- PERF: use list? use radix grouping?
+-- PERF: use list? radix grouping?
 absorb :: (Eq r, Hashable r) => (t -> Term p t) -> (t -> r) -> Term p t -> Term p t
 absorb project getR = \case
   And ts ->
@@ -83,7 +83,7 @@ absorb project getR = \case
     in maybe LFalse Or$ NE.nonEmpty ts3
   bt -> bt
 
--- PERF: use list? use radix grouping?
+-- PERF: use list? radix grouping?
 complementLaws :: (Eq r, Hashable r)
   => (t -> Term p t) -> (t -> r) -> Term p t -> Either Bool (Term p t)
 complementLaws project getR x = case x of
@@ -95,13 +95,12 @@ complementLaws project getR x = case x of
     nots = S.fromList$
       mapMaybe (project >>> \case Not t -> Just$ getR t; _ -> Nothing) ts
 
--- PERF: use hashset? use radix grouping?
-nubWith :: Eq r => (t -> r) -> Term p t -> Term p t
-nubWith getR (And ts) = And$ NE.nubBy (\a b -> getR a == getR b) ts
-nubWith getR (Or ts) = Or$ NE.nubBy (\a b -> getR a == getR b) ts
-nubWith _ x = x
+canonicalize :: (Eq r, Ord r) => (t -> r) -> Term p t -> Term p t
+canonicalize getR (And ts) = And$ nonemptyCanonicalizeWith getR ts
+canonicalize getR (Or ts) = Or$ nonemptyCanonicalizeWith getR ts
+canonicalize _ x = x
 
-simplify :: (Eq r, Hashable r)
+simplify :: (Eq r, Hashable r, Ord r)
   => (t -> Term p t)
   -> (t -> r)
   -> Term p (Either Bool t) -> Either Bool (Either t (Term p t))
@@ -110,7 +109,7 @@ simplify project getR =
       >&> deUnary
       >=> ( deNotNot project
             >&> flatten project
-                >>> nubWith getR
+                >>> canonicalize getR
                 >>> absorb project getR
                 >>> complementLaws project getR
           )

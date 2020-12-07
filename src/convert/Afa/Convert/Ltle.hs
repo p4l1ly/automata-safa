@@ -1,113 +1,170 @@
-{-# LANGUAGE GeneralizedNewtypeDeriving #-}
+{-# LANGUAGE DeriveTraversable #-}
 {-# LANGUAGE PatternSynonyms #-}
 {-# LANGUAGE ViewPatterns #-}
-{-# LANGUAGE TupleSections #-}
+{-# LANGUAGE MultiParamTypeClasses #-}
+{-# LANGUAGE GeneralizedNewtypeDeriving #-}
+{-# LANGUAGE RankNTypes #-}
+{-# LANGUAGE TypeApplications #-}
+{-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE LambdaCase #-}
-{-# LANGUAGE NamedFieldPuns #-}
+{-# LANGUAGE TupleSections #-}
+{-# LANGUAGE FlexibleInstances #-}
 
 module Afa.Convert.Ltle where
 
-import Control.Monad.ST
-import Control.Monad.State
-import Control.Monad.Identity
-import Control.Monad.Writer
 import Data.Array
-import Data.Array.MArray (readArray)
-import Data.Bifunctor (second)
-import Data.List (sort, group)
-import Data.Monoid
-import Data.Functor.Foldable
-import Data.Functor.Foldable.Utils (algMToAlg)
-import Data.Functor.Foldable.Coco (consu)
-import Data.Functor.Foldable.Dag.Consing (hashCons', runHashConsMonadT)
-import Data.Functor.Foldable.Dag.Monadic (cataScanM)
-
-import Ltl (Ltl, deRelease_alg, pushNeg_cocoalg)
-import qualified Ltl
+import Data.Array.ST
+import Data.Array.Unsafe
+import Control.Monad.Trans
+import Control.Monad.State
+import Control.Monad.Writer.Lazy
+import Control.Monad.ST
+import Control.Lens
+import Data.Fix
+import Control.Monad.Free
 import Afa
-import Afa.Term.TreeF
-  ( Term, pattern And, pattern Or, pattern Not, pattern State, pattern Var
-  , pattern LTrue , pattern LFalse
-  )
+import qualified Afa.Term.Mix as MTerm
+import qualified Afa.Term.Bool as BTerm
+import Afa.Lib (listArray')
+import Afa.Lib.LiftArray
+import Afa.Bool
+import Control.RecursionSchemes.Lens
+import Data.List.NonEmpty (NonEmpty(..))
+
+import Ltl (Ltl, preprocessCoRecursive, canonicalize)
+import qualified Ltl
 
 
-newtype StateAdderT m a = StateAdderT (StateT Int (WriterT (Endo [Term]) m) a)
+newtype UnswallowedAfaBuilderT m a = UnswallowedAfaBuilderT
+  { fromUnswallowedAfaBuilderT ::
+      NoConsT Int
+        ( HashConsT' (MTerm.Term Int Int Int)
+            (HashConsT' (BTerm.Term Int Int) m)
+        )
+        a
+  }
   deriving (Functor, Applicative, Monad)
-instance MonadTrans StateAdderT where
-  lift = StateAdderT . lift . lift
-runStateAdderT (StateAdderT action) =
-  fmap (second (`appEndo` []))$ runWriterT$ runStateT action 1
 
-peekNextState :: Monad m => StateAdderT m Int
-peekNextState = StateAdderT get
+runUnswallowedAfaBuilderT (UnswallowedAfaBuilderT action) =
+  runHashConsT$ runHashConsT$ runNoConsT action
 
-addState :: Monad m => Term -> StateAdderT m Int
-addState q = StateAdderT$ do
-  stateCnt <- get
-  put$ succ stateCnt
-  lift$ tell$ Endo (q:)
-  return stateCnt
+instance MonadTrans UnswallowedAfaBuilderT where
+  lift = UnswallowedAfaBuilderT . lift . lift . lift
 
-prehash :: Ltl Int -> Ltl Int
-prehash (Ltl.And xs) = Ltl.And$ map head$ group$ sort xs
-prehash (Ltl.Or xs) = Ltl.And$ map head$ group$ sort xs
+addBTerm :: Monad m => BTerm.Term Int Int -> UnswallowedAfaBuilderT m (Int, Bool)
+addBTerm t = UnswallowedAfaBuilderT$ fmap (, False)$ lift$ lift$ hashCons' t
 
-toArr :: [a] -> Array Int a
-toArr list = listArray (0, length list - 1) list
+addMTerm :: Monad m => MTerm.Term Int Int Int -> UnswallowedAfaBuilderT m (Int, Bool)
+addMTerm t = UnswallowedAfaBuilderT$ fmap (, True)$ lift$ hashCons' t
 
-ltleToAfa :: Fix Ltl -> (Int, Afa)
-ltleToAfa ltl = (maximum (cata Ltl.allVars_alg ltl) + 2,)$ Afa
-  { terms = listArray (0, stateCnt - 1)$ initTerm:terms
-  , states = listArray (0, stateCnt - 1) [0..]
+instance Monad m => AfaBuilder (UnswallowedAfaBuilderT m) (Int, Bool) where
+  addTerm = iterM$ sequence >=> \case
+    LTrue -> addBTerm BTerm.LTrue
+    LFalse -> addBTerm BTerm.LFalse
+    Var i -> addBTerm$ BTerm.Predicate i
+    Not (i, False) -> addBTerm$ BTerm.Not i
+    Not _ -> error "stateful not"
+    And [] -> addBTerm BTerm.LTrue
+    Or [] -> addBTerm BTerm.LFalse
+    And (unzip -> (t:ts, statefuls))
+      | or statefuls -> addMTerm$ MTerm.And$ t :| ts
+      | otherwise -> addBTerm$ BTerm.And$ t :| ts
+
+  withNewState fn = UnswallowedAfaBuilderT$ do
+    nextIx <- NoConsT get
+    mref <- lift$ hashCons'$ MTerm.State nextIx
+    let UnswallowedAfaBuilderT (NoConsT (StateT action)) = fn (mref, True)
+        WriterT getATSW = action (nextIx + 1)
+    (((a, t), nextIx'), w) <- lift getATSW
+    (ref, b) <- fromUnswallowedAfaBuilderT$ addTerm t
+    ref' <- if b then return ref else lift$ hashCons'$ MTerm.Predicate ref
+    nocons ref'
+    NoConsT$ put nextIx'
+    NoConsT$ lift$ tell w
+    return a
+
+
+ltleToUnswallowedAfa :: Fix Ltl -> BoolAfaUnswallowed Int
+ltleToUnswallowedAfa ltl = BoolAfa
+  { boolTerms = listArray' bterms
+  , afa = Afa
+    { terms = listArray' mterms'
+    , states = listArray' states'
+    , initState = init'
+    }
   }
   where
-    ltl' = consu pushNeg_cocoalg deRelease_alg (True, ltl) :: Fix Ltl
+  (mterms', states', init') = case ixMap!rootIx of
+    (ref, True) -> case mterms!!ref of
+      MTerm.State q -> (mterms, states, q)
+      _ -> (mterms, states ++ [ref], length states)
+    (ref, _) ->
+      ( mterms ++ [MTerm.Predicate ref]
+      , states ++ [length mterms]
+      , length states
+      )
 
-    (ltlNodeCount, toArr -> ltlDag) = runIdentity$ runHashConsMonadT$
-      cata (algMToAlg$ hashCons' . prehash) ltl'
+  (((ixMap, states), mterms), bterms) = runST$ runUnswallowedAfaBuilderT action
 
-    ((initTerm, stateCnt), terms) = runST$ runStateAdderT$ do
-      arr <- cataScanM mixedAlg ltlDag
-      lift$ readArray arr (ltlNodeCount - 1)
+  action :: forall s. UnswallowedAfaBuilderT (ST s) (Array Int (Int, Bool))
+  action = unsafeFreeze =<<
+    cataScanT @(LiftArray (STArray s)) traversed (toAfa >=> addTerm) consedLtl
+
+  ltl' = preprocessCoRecursive ltl
+  (rootIx, listArray' -> consedLtl) = runIdentity$ runHashConsT$
+    cataT recursiveTraversal (hashCons' . canonicalize) ltl'
 
 
-mixedAlg :: Monad m => Ltl Term -> StateAdderT m Term
-mixedAlg Ltl.LTrue = return LTrue
-mixedAlg Ltl.LFalse = return LFalse
-mixedAlg (Ltl.Var i) = return$ Var$ i + 1
-mixedAlg (Ltl.Not afa) = return$ Not afa
-mixedAlg (Ltl.And afas) = return$ And afas
-mixedAlg (Ltl.Or afas) = return$ Or afas
+data Term t
+  = LTrue
+  | LFalse
+  | Var Int
+  | Not t
+  | And [t]
+  | Or [t]
+  deriving (Functor, Foldable, Traversable)
 
-mixedAlg (Ltl.Next afa) = do
-  q <- addState afa
-  return$ And [State q, Not$ Var 0]
+pattern LTrueF = Free LTrue
+pattern LFalseF = Free LFalse
+pattern VarF i = Free (Var i)
+pattern NotF t = Free (Not t)
+pattern AndF ts = Free (And ts)
+pattern OrF ts = Free (Or ts)
 
-mixedAlg (Ltl.Until predicate end) = do
-  q <- peekNextState
-  let result = Or [end, And [predicate, Not$ Var 0, State q]]
-  addState result
-  return result
+class Monad m => AfaBuilder m t where
+  addTerm :: Free Term t -> m t
+  withNewState :: (t -> m (a, Free Term t)) -> m a
 
-mixedAlg (Ltl.WeakUntil predicate end) = do
-  q1 <- peekNextState
-  let q2 = succ q1
-  let globx = And [predicate, Not$ Var 0, State q2]
-  let result = Or [globx, And [predicate, Not$ Var 0, State q1]]
-  addState result -- q1
-  addState$ Or [Var 0, globx] -- q2
-  return result
+  addState :: Free Term t -> m t
+  addState t = withNewState$ \q -> return (q, t)
 
-mixedAlg (Ltl.Globally afa) = do
-  q <- peekNextState
-  let result = And [afa, Or [Var 0, State q]]
-  addState result
-  return result
-
-mixedAlg (Ltl.Finally afa) = do
-  q <- peekNextState
-  let result = Or [afa, And [Not$ Var 0, State q]]
-  addState result
-  return result
-
-mixedAlg _release = error "Release not supported here! Use deRelease_alg before."
+toAfa :: AfaBuilder m t => Ltl t -> m (Free Term t)
+toAfa Ltl.LTrue = return LTrueF
+toAfa Ltl.LFalse = return LTrueF
+toAfa (Ltl.Var i) = return$ VarF$ i + 1
+toAfa (Ltl.Not afa) = return$ NotF$ Pure afa
+toAfa (Ltl.And afas) = return$ AndF$ fmap Pure afas
+toAfa (Ltl.Or afas) = return$ OrF$ fmap Pure afas
+toAfa (Ltl.Next afa) = do
+  q <- addState$ Pure afa
+  return$ AndF [Pure q, NotF$ VarF 0]
+toAfa (Ltl.Until predicate end) = do
+  withNewState$ \q -> do
+    return (Pure q, OrF [Pure end, AndF [Pure predicate, NotF$ VarF 0, Pure q]])
+toAfa (Ltl.WeakUntil predicate end) =
+  withNewState$ \q1 -> do
+    result <- withNewState$ \q2 -> do
+      predicate' <- addTerm$ AndF [Pure predicate, NotF$ VarF 0]
+      globx <- addTerm$ AndF [Pure predicate', Pure q2]
+      result <- addTerm$ OrF [Pure globx, Pure end, AndF [Pure predicate', Pure q1]]
+      return (Pure result, OrF [VarF 0, Pure globx])
+    return (result, result)
+toAfa (Ltl.Globally afa) =
+  withNewState$ \q -> do
+    (Pure -> result) <- addTerm$ AndF [Pure afa, OrF [VarF 0, Pure q]]
+    return (result, result)
+toAfa (Ltl.Finally afa) =
+  withNewState$ \q -> do
+    (Pure -> result) <- addTerm$ OrF [Pure afa, AndF [NotF$ VarF 0, Pure q]]
+    return (result, result)
+toAfa _release = error "Release not supported here! Use deRelease before."

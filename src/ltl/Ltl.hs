@@ -7,6 +7,7 @@
 
 module Ltl where
 
+import Data.List (sort, group)
 import Control.Monad.Free (Free(..))
 import Data.Bifunctor
 import GHC.Generics
@@ -59,3 +60,9 @@ preprocess = bloom (Free . deRelease) . pushNeg
 
 preprocessCoRecursive :: (Recursive t, Corecursive t, Ltl ~ Base t) => t -> t
 preprocessCoRecursive = futu (skippingAlg$ preprocess . second project) . (True,)
+
+
+canonicalize :: (Ord rec, Eq rec) => Ltl rec -> Ltl rec
+canonicalize (And ts) = And$ map head$ group$ sort ts
+canonicalize (Or ts) = Or$ map head$ group$ sort ts
+canonicalize x = x

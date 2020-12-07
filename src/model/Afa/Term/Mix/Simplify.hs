@@ -7,7 +7,7 @@ import Control.Category ((>>>))
 import Data.Monoid (Endo(..))
 import Data.List.NonEmpty (NonEmpty(..))
 import qualified Data.List.NonEmpty as NE
-import Afa.Lib (nonEmptyConcatMap, (>&>))
+import Afa.Lib (nonEmptyConcatMap, (>&>), nonemptyCanonicalizeWith)
 import Data.Hashable
 import qualified Data.HashSet as S
 
@@ -72,19 +72,19 @@ absorb project getR = \case
   bt -> Right bt
 
 -- PERF: use hashset
-nubWith :: Eq r => (t -> r) -> Term p q t -> Term p q t
-nubWith getR (And ts) = And$ NE.nubBy (\a b -> getR a == getR b) ts
-nubWith getR (Or ts) = Or$ NE.nubBy (\a b -> getR a == getR b) ts
-nubWith _ x = x
+canonicalizeWith :: (Eq r, Ord r) => (t -> r) -> Term p q t -> Term p q t
+canonicalizeWith getR (And ts) = And$ nonemptyCanonicalizeWith getR ts
+canonicalizeWith getR (Or ts) = Or$ nonemptyCanonicalizeWith getR ts
+canonicalizeWith _ x = x
 
-simplify :: (Eq r, Hashable r)
+simplify :: (Eq r, Hashable r, Ord r)
   => (t -> Term p q t)
   -> (t -> r)
   -> Term p q (Either Bool t) -> Either Bool (Either t (Term p q t))
 simplify project getR =
   ( ( deLit
       >&> deUnary
-          >&> flatten project >>> nubWith getR >>> absorb project getR
+          >&> flatten project >>> canonicalizeWith getR >>> absorb project getR
     ) >>> skipJoin
   )
   >&> join . fmap deUnary
