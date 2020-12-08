@@ -70,7 +70,7 @@ library convert
     Afa.Convert.Ltle
     -- Afa.Convert.Pretty
     -- Afa.Convert.Dot
-    -- Afa.Convert.Separated
+    Afa.Convert.Separated
     -- Afa.Convert.CnfAfa
     -- Afa.Convert.Capnp.Afa
     -- Afa.Convert.Capnp.Separated
