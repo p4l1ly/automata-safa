@@ -36,8 +36,8 @@ delayPredicates afa@Afa{terms, states} = afa
   where
   stateCount = rangeSize (bounds states)
   termCount = rangeSize (bounds terms)
-  ((terms1, terms2), states2) =
-    runIdentity$ runNoConsTFrom stateCount$ runNoConsTFrom termCount$
+  Identity ((terms1, terms2), states2) =
+    runNoConsTFrom stateCount$ runNoConsTFrom termCount$
       for terms$ \case
         p@(Predicate _) -> (nocons p >>= lift . nocons) <&> State
         x -> return x

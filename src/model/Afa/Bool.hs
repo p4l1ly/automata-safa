@@ -57,7 +57,7 @@ reorderStates afa@Afa{initState = 0} = afa
 reorderStates Afa{terms, states, initState} = Afa
   { initState = 0
   , states = states // [(0, initState), (initState, 0)]
-  , terms = (<$> terms)$ runIdentity . MTerm.modChilds MTerm.pureChildMod
+  , terms = terms <&> runIdentity . MTerm.modChilds MTerm.pureChildMod
       { MTerm.lQ = Identity . \case
           0 -> initState
           q | q == initState -> 0
@@ -71,7 +71,7 @@ simplifyAll :: forall p. (Eq p, Hashable p)
 simplifyAll bafa = do
   (mterms2, states2, init2) <- simplifyStatesAndMixTs ixMap1 mterms1 states init
   let bafa' = BoolAfa bterms1 (Afa mterms2 states2 init2)
-  if length states2 == length states
+  if rangeSize (bounds states2) == rangeSize (bounds states)
   then Right bafa'
   else simplifyAll bafa'
   where
@@ -80,7 +80,7 @@ simplifyAll bafa = do
   (ixMap1, bterms1, mterms1) = simplifyMixAndBoolTs mgs bterms mterms
 
 
--- TODO: This is not implemented in an idyllistic lens way
+-- TODO: This is not implemented in an idyllistic traversal way
 simplifyStatesAndMixTs :: forall p. (Eq p, Hashable p)
   => Array Int (Either Bool Int)
   -> Array Int (MTerm.Term p Int Int)

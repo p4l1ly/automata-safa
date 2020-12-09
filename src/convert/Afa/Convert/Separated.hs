@@ -194,7 +194,7 @@ separatedToMixed (SepAfa.Afa aterms qterms states initState) = BoolAfa
   }
   where
   qtermSize = rangeSize$ bounds qterms
-  (states', mtermsFromStates) = runIdentity$ runNoConsTFrom qtermSize$ do
+  Identity (states', mtermsFromStates) = runNoConsTFrom qtermSize$ do
     for states$ \qs -> do
       ands <- for qs$ \(p, t) -> do
         p' <- nocons$ maybe LTrue Predicate p
