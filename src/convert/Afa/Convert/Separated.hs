@@ -36,25 +36,26 @@ import Afa.Lib.Tree
 
 import qualified Afa.Convert.Separated.Model as SepAfa
 
-separateAfa :: AfaUnswallowed p -> AfaUnswallowed p
-separateAfa afa@Afa{terms, states} =
+separabilizeAfa :: AfaUnswallowed p -> AfaUnswallowed p
+separabilizeAfa afa@Afa{terms, states} =
   afa{ terms = terms', states = (ixMap!) <$> states }
-  where (ixMap, terms') = separateTerms terms
+  where (ixMap, terms') = separabilizeTerms terms
 
-separateTerms :: forall p q.
+separabilizeTerms :: forall p q.
   Array Int (Term p q Int) -> (Array Int Int, Array Int (Term p q Int))
-separateTerms arr = second listArray'$ runST action where
+separabilizeTerms arr = second listArray'$ runST action where
   action :: forall s. ST s (Array Int Int, [Term p q Int])
   action = runNoConsT$ fmap (fmap fst)$
-    cataScanT @(LiftArray (STArray s)) traversed separate arr >>= unsafeFreeze
+    cataScanT @(LiftArray (STArray s)) traversed separabilize arr >>= unsafeFreeze
 
-separate
+-- Note: The function looks recursive but it recurs only one level down.
+separabilize
   :: Monad m
   => Term p q (Int, SepData Int)
   -> NoConsT (Term p q Int) m (Int, SepData Int)
-separate (Predicate p) = (, PureP) <$> nocons (Predicate p)
-separate (State q) = (, PureQ) <$> nocons (State q)
-separate (Or tseps) = do
+separabilize (Predicate p) = (, PureP) <$> nocons (Predicate p)
+separabilize (State q) = (, PureQ) <$> nocons (State q)
+separabilize (Or tseps) = do
   result <- nocons$ Or$ NE.map fst tseps
   case partitionBySepData$ NE.toList tseps of
     (_, [], [], []) -> return (result, PureP)
@@ -63,7 +64,7 @@ separate (Or tseps) = do
       pureP <- nothingSingleMulti Or$ purePs ++ mapMaybe (^._2) mOrs
       pureQ <- nothingSingleMulti Or$ pureQs ++ mapMaybe (^._3) mOrs
       return (result, MixedOr pureP pureQ mAnds)
-separate (And tseps) = case partitionBySepData$ NE.toList tseps of
+separabilize (And tseps) = case partitionBySepData$ NE.toList tseps of
   (purePs, [], [], []) -> (, PureP) <$> nocons (And$ NE.fromList purePs)
   ([], pureQs, [], []) -> (, PureQ) <$> nocons (And$ NE.fromList pureQs)
   (purePs, pureQs, mAnds, []) -> do
@@ -84,17 +85,17 @@ separate (And tseps) = case partitionBySepData$ NE.toList tseps of
       step xs1 xs2 = sequence$ do
         x1 <- xs1
         x2 <- xs2
-        return$ separate$ And (x1 :| [x2])
+        return$ separabilize$ And (x1 :| [x2])
 
     starter <- case purePs' ++ pureQs' ++ mAnds' of
       [] -> return []
       [x] -> return [[x]]
-      x:xs -> separate (And$ x:|xs) <&> \x -> [[x]]
+      x:xs -> separabilize (And$ x:|xs) <&> \x -> [[x]]
 
     let action0:actions = starter ++ mOrs'
     x <- foldM step action0 actions
-    separate$ Or$ NE.fromList x
-separate LTrue = (, PureQ) <$> nocons LTrue
+    separabilize$ Or$ NE.fromList x
+separabilize LTrue = (, PureQ) <$> nocons LTrue
 
 data SepData t
   = PureP
@@ -120,17 +121,17 @@ nothingSingleMulti f = \case
 
 -- States in ATerms are used for bypassing
 -- Predicates in QTerms are used for bypassing
-split :: Term p q [(Maybe p, Maybe t)] -> Maybe [(Term p p p, Term t q t)]
-split LTrue = Just [(LTrue, LTrue)]
-split (State q) = Just [(LTrue, State q)]
-split (Predicate p) = Just [(Predicate p, LTrue)]
-split (And cs)
+separate :: Term p q [(Maybe p, Maybe t)] -> Maybe [(Term p p p, Term t q t)]
+separate LTrue = Just [(LTrue, LTrue)]
+separate (State q) = Just [(LTrue, State q)]
+separate (Predicate p) = Just [(Predicate p, LTrue)]
+separate (And cs)
   | any (\case _:_:_ -> True; _ -> False) cs = Nothing
   | otherwise = Just [(conj ps, conj ts)]
   where
   (ps, ts) = unzip$ map head$ NE.toList cs
   conj = maybe LTrue And . NE.nonEmpty . catMaybes
-split (Or cs)
+separate (Or cs)
   | all isNothing ps = Just [(LTrue, disj ts)]
   | all isNothing ts = Just [(disj ps, LTrue)]
   | any (\(x, y) -> isNothing x && isNothing y) cs' = Just [(LTrue, LTrue)]
@@ -163,7 +164,7 @@ mixedToSeparated
         }
       _ -> return Nothing
 
-  alg bixMap = split >>> \case
+  alg bixMap = separate >>> \case
     Nothing -> MaybeT$ return Nothing
     Just conjs -> for conjs$ bitraverse addP addQ
     where
