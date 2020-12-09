@@ -24,7 +24,6 @@ import Control.Monad.ST
 import Data.Fix
 import Data.Functor.Compose
 import Data.Hashable
-import qualified Data.HashSet as S
 
 import Afa
 import qualified Afa.Term.Mix as MTerm
@@ -96,10 +95,11 @@ simplifyStatesAndMixTs ixMap mterms states init = case sequence states1 of
 
   getQs = (`appEndo` []) . getConst .
     MTerm.modChilds MTerm.pureChildMod{ MTerm.lQ = Const . Endo . (:) }
-  parented = foldl (flip S.insert) (S.singleton init)$ concatMap getQs$ elems mterms
+  parented = accumArray (\_ _ -> True) False (bounds states)$
+    (init, ()) : map (, ()) (concatMap getQs$ elems mterms)
   (lefts, rights) = partition (isLeft . snd)$
     zipWith noparentLeft [0..] (elems states1)
-    where noparentLeft i x = if i `S.member` parented then (i, x) else (i, Left False)
+    where noparentLeft i x = if parented!i then (i, x) else (i, Left False)
 
   lefts' = lefts <&> \case (i, Left x) -> (i, x)
   rights' = rights <&> \case (i, Right x) -> (i, x)
