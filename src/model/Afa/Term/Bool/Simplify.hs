@@ -161,11 +161,11 @@ simplifyDag gs (ixMap, arr) = runST action where
 
 simplifyDagUntilFixpoint :: forall p. (Eq p, Hashable p)
   => Array Int Any
-  -> Array Int (Term p Int)
   -> (Array Int (Either Bool Int), Array Int (Term p Int))
-simplifyDagUntilFixpoint gs arr = fromJust$ msum$ zipWith better iters (tail iters)
+  -> (Array Int (Either Bool Int), Array Int (Term p Int))
+simplifyDagUntilFixpoint gs (ixMap, arr) =
+  fromJust$ msum$ zipWith better iters (tail iters)
   where
-  ixMap = listArray (bounds gs)$ map Right [0..]
   cost ts = (length ts, sum$ fmap length ts)
   iters = iterate
     ((cost . snd &&& id) . simplifyDag gs . snd)
