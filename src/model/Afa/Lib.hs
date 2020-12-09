@@ -29,9 +29,10 @@ nonemptyCanonicalizeWith f = NE.map NE.head . NE.groupWith1 f . NE.sortWith f
 -- We don't use view patterns for the first element of the tuple because we
 -- need to check Any True pattern first, otherwise there might be an error in
 -- ixMap!i0.
-eixMappedGs :: Array Int (Either Bool Int) -> Array Int Any -> [(Int, Any)]
-eixMappedGs ixMap gs = 
-  [ (i, Any True)
+eixMappedGs
+  :: Array Int a -> Array Int (Either Bool Int) -> Array Int Any -> Array Int Any
+eixMappedGs arr ixMap gs = accumArray (\_ _ -> Any True) mempty (bounds arr)
+  [ (i, ())
   | (i0, Any True) <- assocs gs
   , let ei = ixMap!i0
   , isRight ei

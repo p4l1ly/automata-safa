@@ -164,15 +164,12 @@ simplifyInitMixAndBoolTs mgs ixMap bterms mterms = runST action where
     , Array Int (MTerm.Term Int q Int)
     )
   action = do
-    (mgs'M :: STArray s Int Any) <- unsafeThaw mgs'
+    (mgs'M :: STArray s Int Any) <- unsafeThaw$ eixMappedGs mterms ixMap mgs
     bgs'M <- newArray @(STArray s) (bounds bterms) mempty
     let mgs'M' = LiftArray mgs'M
 
-    let atBottom = (`BTerm.simplifyDagUntilFixpoint` (bInitIxMap, bterms)) <$>
-          lift (unsafeFreeze bgs'M)
-
     (((_, bterms'), LiftArray ixMapM), tList) <- runHashConsT$ hyloScanT00'
-      atBottom
+      (atBottom <$> lift (unsafeFreeze bgs'M))
       (\t (bIxMap, _) -> (t, bIxMap))
       (modPT (arrayEncloser' (LiftArray bgs'M) snd) (arrayEncloser mgs'M' fst))
       mhylogebra
@@ -181,8 +178,8 @@ simplifyInitMixAndBoolTs mgs ixMap bterms mterms = runST action where
     ixMap' <- unsafeFreeze ixMapM
     return (fmap (>>= (ixMap'!) >&> fst) ixMap, bterms', listArray' tList)
 
-  bInitIxMap = listArray (bounds bterms)$ map Right [0..]
-  mgs' = accumArray (\_ x -> x) mempty (bounds mterms) (eixMappedGs ixMap mgs)
+  atBottom = flip BTerm.simplifyDagUntilFixpoint (bInitIxMap, bterms)
+    where bInitIxMap = listArray (bounds bterms)$ map Right [0..]
 
   modPT lP lT = MTerm.modChilds MTerm.pureChildMod{ MTerm.lT = lT, MTerm.lP = lP }
 

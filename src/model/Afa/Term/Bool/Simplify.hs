@@ -142,13 +142,11 @@ simplifyDag :: forall p. (Eq p, Hashable p)
 simplifyDag gs (ixMap, arr) = runST action where
   action :: forall s. ST s (Array Int (Either Bool Int), Array Int (Term p Int))
   action = do
-    (gs'M :: STArray s Int Any) <- unsafeThaw gs'
+    (gs'M :: STArray s Int Any) <- unsafeThaw$ eixMappedGs arr ixMap gs
     (LiftArray ixMap'M, tList) <- runHashConsT$
       hyloScanTTerminal' traversed hylogebra (LiftArray gs'M)
     ixMap' <- unsafeFreeze ixMap'M
     return (fmap (>>= (ixMap'!) >&> fst) ixMap, listArray' tList)
-
-  gs' = accumArray (\_ x -> x) mempty (bounds arr) (eixMappedGs ixMap gs)
 
   alg (Any False) _ = return$ error "accessing element without parents"
   alg _ t = case simplify (getCompose . unFix . snd) fst t of
