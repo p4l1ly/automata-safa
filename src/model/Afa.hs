@@ -7,6 +7,8 @@
 
 module Afa where
 
+import Debug.Trace
+
 import Data.Functor
 import Data.Array
 import Afa.Term.Mix (Term(..))
@@ -28,7 +30,7 @@ type MixTermITree p = Tree (Term p Int) Int
 type AfaSwallowed p = Afa (Array Int (MixTermITree p)) (Array Int (MixTermITree p)) Int
 type AfaUnswallowed p = Afa (Array Int (Term p Int Int)) (Array Int Int) Int
 
-delayPredicates :: AfaUnswallowed p -> AfaUnswallowed p
+delayPredicates :: (Show p) => AfaUnswallowed p -> AfaUnswallowed p
 delayPredicates afa@Afa{terms, states} = afa
   { terms = listArray'$ elems terms1 ++ terms2
   , states = listArray'$ elems states ++ states2
@@ -39,5 +41,5 @@ delayPredicates afa@Afa{terms, states} = afa
   Identity ((terms1, terms2), states2) =
     runNoConsTFrom stateCount$ runNoConsTFrom termCount$
       for terms$ \case
-        p@(Predicate _) -> (nocons p >>= lift . nocons) <&> State
+        p@(Predicate _) -> (nocons p >>= lift . nocons) <&> (\x -> traceShow (p, x)$ State x)
         x -> return x

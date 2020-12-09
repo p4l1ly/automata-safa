@@ -1,13 +1,8 @@
-{-# LANGUAGE TupleSections #-}
-
 module Test.Afa.Simplify where
 
 import Test.HUnit hiding (State)
 
-import Data.Array
-import Data.Monoid
 import Data.Functor
-
 import Data.List.NonEmpty (NonEmpty(..))
 
 import Afa

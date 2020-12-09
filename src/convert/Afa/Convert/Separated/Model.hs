@@ -41,15 +41,17 @@ data Afa p = Afa
   , states :: Array Int [(Maybe Int, Maybe Int)]
   , initState :: Int
   }
+  deriving (Eq, Show)
 
 simplify :: forall p. (Eq p, Hashable p) => Afa p -> Either Bool (Afa p)
 simplify Afa{aterms, qterms, states, initState} = do
   (qterms2, states2, init2) <- simplifyStatesAndQTerms qIxMap qterms' states' initState
+  let states2' = fmap absorb states2
 
   let Identity ((states3, qtermsFromStates), atermsFromStates) =
         runNoConsTFrom (rangeSize$ bounds aterms')$
         runNoConsTFrom (rangeSize$ bounds qterms2)$ do
-          for states2$ \ts -> let (pts, qts) = unzip ts in case ts of
+          for states2'$ \ts -> let (pts, qts) = unzip ts in case ts of
             [_] -> return ts
             _ | all isNothing pts -> do
                   qt <- nocons$ MTerm.Or$ NE.fromList$ map fromJust qts
@@ -59,9 +61,8 @@ simplify Afa{aterms, qterms, states, initState} = do
                   return [(Just pt, Nothing)]
               | otherwise -> return ts
 
-  if rangeSize (bounds states3) == rangeSize (bounds states)
-     && null atermsFromStates && null qtermsFromStates
-  then Right$ Afa aterms' qterms2 states2 init2
+  if sum (fmap length states3) == sum (fmap length states)
+  then Right$ Afa aterms' qterms2 states2' init2
   else simplify Afa
     { aterms = listArray'$ elems aterms' ++ atermsFromStates
     , qterms = listArray'$ elems qterms2 ++ qtermsFromStates
@@ -85,6 +86,14 @@ simplify Afa{aterms, qterms, states, initState} = do
   (qIxMap, qterms') = MTerm.simplifyDagUntilFixpoint qgs (qInitIxMap, qterms)
 
   states' = states <&> mapped . _1 %~ nothingToTrue . fmap (aIxMap!)
+
+absorb :: [(Maybe Int, Maybe Int)] -> [(Maybe Int, Maybe Int)]
+absorb ts = flip filter ts$ \case
+  (Just a, Just q) | HS.member a singlesA || HS.member q singlesQ -> False
+  _ -> True
+  where
+  singlesA = HS.fromList [a | (Just a, Nothing) <- ts]
+  singlesQ = HS.fromList [q | (Nothing, Just q) <- ts]
 
 nothingToTrue :: Maybe (Either Bool a) -> Either Bool a
 nothingToTrue Nothing = Left True
