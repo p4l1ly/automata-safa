@@ -71,6 +71,7 @@ library convert
     -- Afa.Convert.Pretty
     -- Afa.Convert.Dot
     Afa.Convert.Separated
+    Afa.Convert.Separated.Model
     -- Afa.Convert.CnfAfa
     -- Afa.Convert.Capnp.Afa
     -- Afa.Convert.Capnp.Separated
@@ -92,6 +93,7 @@ library convert
     generic-data ^>=0.8.3.0,
     lens ^>=4.19.2,
     data-fix ^>=0.3.0,
+    transformers ^>=0.5.6.2,
     automata-safa,
     ltl,
     lens-recursion-schemes,

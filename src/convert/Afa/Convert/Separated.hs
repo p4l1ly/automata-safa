@@ -8,6 +8,12 @@
 
 module Afa.Convert.Separated where
 
+import Data.Void
+import Control.Category ((>>>))
+import Control.Monad.Trans.Maybe
+import Control.Monad.Trans
+import Data.Bitraversable
+import Data.Traversable
 import Data.Bifunctor
 import Control.Monad.ST
 import Data.Array
@@ -23,6 +29,12 @@ import Control.Lens
 import Afa.Term.Mix
 import Data.List.NonEmpty (NonEmpty(..))
 import qualified Data.List.NonEmpty as NE
+import Afa.Bool
+import qualified Afa.Term.Bool as BTerm
+import Data.Hashable
+import Afa.Lib.Tree
+
+import qualified Afa.Convert.Separated.Model as SepAfa
 
 separateAfa :: AfaUnswallowed p -> AfaUnswallowed p
 separateAfa afa@Afa{terms, states} =
@@ -105,3 +117,100 @@ nothingSingleMulti
 nothingSingleMulti f = \case
   [x] -> return$ Just x
   xs -> traverse (nocons . f)$ NE.nonEmpty xs
+
+-- States in ATerms are used for bypassing
+-- Predicates in QTerms are used for bypassing
+split :: Term p q [(Maybe p, Maybe t)] -> Maybe [(Term p p p, Term t q t)]
+split LTrue = Just [(LTrue, LTrue)]
+split (State q) = Just [(LTrue, State q)]
+split (Predicate p) = Just [(Predicate p, LTrue)]
+split (And cs)
+  | any (\case _:_:_ -> True; _ -> False) cs = Nothing
+  | otherwise = Just [(conj ps, conj ts)]
+  where
+  (ps, ts) = unzip$ map head$ NE.toList cs
+  conj = maybe LTrue And . NE.nonEmpty . catMaybes
+split (Or cs)
+  | all isNothing ps = Just [(LTrue, disj ts)]
+  | all isNothing ts = Just [(disj ps, LTrue)]
+  | any (\(x, y) -> isNothing x && isNothing y) cs' = Just [(LTrue, LTrue)]
+  | otherwise = Just$ map (maybe LTrue State `bimap` maybe LTrue Predicate) cs'
+  where
+  cs' = concat$ NE.toList cs
+  (ps, ts) = unzip cs'
+  disj = maybe LTrue (Or . NE.fromList) . sequence
+
+mixedToSeparated :: forall p. (Eq p, Hashable p)
+  => BoolAfaUnswallowed p -> Maybe (SepAfa.Afa p)
+mixedToSeparated
+  BoolAfa{boolTerms = bterms, afa = Afa{terms = mterms, states, initState}}
+  = runST action
+  where
+  action :: forall s. ST s (Maybe (SepAfa.Afa p))
+  action = do
+    result <- runHashConsT$ runHashConsT$ runMaybeT$ do
+      bixMap <- for bterms$ lift . lift .  hashCons'
+      cataScanT @(LiftArray (LiftArray (LiftArray (STArray s))))
+        traversed (alg bixMap) mterms
+        >>= unsafeFreeze
+
+    case result of
+      ((Just ixMap, mterms), bterms) -> return$ Just SepAfa.Afa
+        { SepAfa.aterms = listArray' bterms
+        , SepAfa.qterms = listArray' mterms
+        , SepAfa.states = fmap (ixMap!) states
+        , SepAfa.initState = initState
+        }
+      _ -> return Nothing
+
+  alg bixMap = split >>> \case
+    Nothing -> MaybeT$ return Nothing
+    Just conjs -> for conjs$ bitraverse addP addQ
+    where
+    addP LTrue = return Nothing
+    addP (State p) = return$ Just p
+    addP (Predicate p) = return$ Just$ bixMap!p
+    addP (And ps) = fmap Just$ lift$ lift$ hashCons'$ BTerm.And ps
+    addP (Or ps) = fmap Just$ lift$ lift$ hashCons'$ BTerm.Or ps
+
+  addQ LTrue = return Nothing
+  addQ (Predicate t) = return$ Just t
+  addQ (State q) = fmap Just$ lift$ hashCons'$ State q
+  addQ (And ts) = fmap Just$ lift$ hashCons'$ And ts
+  addQ (Or ts) = fmap Just$ lift$ hashCons'$ Or ts
+
+absurdPredicates :: Term Void q t -> Term p q t
+absurdPredicates = runIdentity . modChilds pureChildMod{lP = absurd}
+
+-- Much more cleanly implemented via swallowed afa, see below
+separatedToMixed :: forall p. SepAfa.Afa p -> BoolAfaUnswallowed p
+separatedToMixed (SepAfa.Afa aterms qterms states initState) = BoolAfa
+  { boolTerms = aterms
+  , afa = Afa
+    { terms = listArray'$ map absurdPredicates (elems qterms) ++ mtermsFromStates
+    , states = states'
+    , initState = initState
+    }
+  }
+  where
+  qtermSize = rangeSize$ bounds qterms
+  (states', mtermsFromStates) = runIdentity$ runNoConsTFrom qtermSize$ do
+    for states$ \qs -> do
+      ands <- for qs$ \(p, t) -> do
+        p' <- nocons$ maybe LTrue Predicate p
+        t' <- maybe (nocons LTrue) return t
+        nocons$ And$ p' :| [t']
+      nocons$ Or$ NE.fromList ands
+
+separatedToMixedSwallowed :: forall p. SepAfa.Afa p -> BoolAfaSwallowed p
+separatedToMixedSwallowed (SepAfa.Afa aterms qterms states initState) = BoolAfa
+  { boolTerms = fmap (Node . fmap Leaf) aterms
+  , afa = Afa
+    { terms = fmap (Node . fmap Leaf . absurdPredicates) qterms
+    , states = fmap toFormula states
+    , initState = initState
+    }
+  }
+  where
+  toFormula = ((Node . Or . NE.fromList) .)$ map$ \(a, b) -> Node$ And$
+    maybe (Node LTrue) (Node . Predicate . Leaf) a :| [maybe (Node LTrue) Leaf b]
