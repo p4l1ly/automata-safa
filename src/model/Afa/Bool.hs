@@ -11,7 +11,6 @@ module Afa.Bool where
 import GHC.Exts (sortWith, groupWith)
 import Data.List (partition)
 import Data.Either
-import Data.Maybe
 import Control.Arrow
 import Data.Traversable
 import Control.Monad.Reader
@@ -28,10 +27,10 @@ import Data.Hashable
 import qualified Data.HashSet as S
 
 import Afa
-import qualified Afa.Term.Mix as MixT
-import qualified Afa.Term.Mix.Simplify as MixTSimp
-import qualified Afa.Term.Bool as BoolT
-import qualified Afa.Term.Bool.Simplify as BoolTSimp
+import qualified Afa.Term.Mix as MTerm
+import qualified Afa.Term.Mix.Simplify as MTerm
+import qualified Afa.Term.Bool as BTerm
+import qualified Afa.Term.Bool.Simplify as BTerm
 import Afa.Lib.Tree
 import Afa.Lib.LiftArray
 import Afa.Lib (listArray', (>&>), nonemptyCanonicalizeWith, eixMappedGs)
@@ -45,12 +44,12 @@ data BoolAfa boolTerms afa = BoolAfa
 
 
 -- TODO Tree is actually Free
-type BoolTermITree p = Tree (BoolT.Term p) Int
+type BoolTermITree p = Tree (BTerm.Term p) Int
 type BoolAfaSwallowed p = BoolAfa
   (Array Int (BoolTermITree p))
   (AfaSwallowed (BoolTermITree p))
 type BoolAfaUnswallowed p = BoolAfa
-  (Array Int (BoolT.Term p Int))
+  (Array Int (BTerm.Term p Int))
   (AfaUnswallowed Int)
 
 
@@ -59,8 +58,8 @@ reorderStates afa@Afa{initState = 0} = afa
 reorderStates Afa{terms, states, initState} = Afa
   { initState = 0
   , states = states // [(0, initState), (initState, 0)]
-  , terms = (<$> terms)$ runIdentity . MixT.modChilds MixT.pureChildMod
-      { MixT.lQ = Identity . \case
+  , terms = (<$> terms)$ runIdentity . MTerm.modChilds MTerm.pureChildMod
+      { MTerm.lQ = Identity . \case
           0 -> initState
           q | q == initState -> 0
             | otherwise -> q
@@ -85,10 +84,10 @@ simplifyAll bafa = do
 -- TODO: This is not implemented in an idyllistic lens way
 simplifyStatesAndMixTs :: forall p. (Eq p, Hashable p)
   => Array Int (Either Bool Int)
-  -> Array Int (MixT.Term p Int Int)
+  -> Array Int (MTerm.Term p Int Int)
   -> Array Int Int
   -> Int
-  -> Either Bool (Array Int (MixT.Term p Int Int), Array Int Int, Int)
+  -> Either Bool (Array Int (MTerm.Term p Int Int), Array Int Int, Int)
 simplifyStatesAndMixTs ixMap mterms states init = case sequence states1 of
   Right states' -> Right (mterms, states', init)
   Left _ -> states1!init >> simplifyStatesAndMixTs ixMap2 mterms2 states2 init2
@@ -96,7 +95,7 @@ simplifyStatesAndMixTs ixMap mterms states init = case sequence states1 of
   states1 = fmap (ixMap!) states
 
   getQs = (`appEndo` []) . getConst .
-    MixT.modChilds MixT.pureChildMod{ MixT.lQ = Const . Endo . (:) }
+    MTerm.modChilds MTerm.pureChildMod{ MTerm.lQ = Const . Endo . (:) }
   parented = foldl (flip S.insert) (S.singleton init)$ concatMap getQs$ elems mterms
   (lefts, rights) = partition (isLeft . snd)$
     zipWith noparentLeft [0..] (elems states1)
@@ -115,14 +114,14 @@ simplifyStatesAndMixTs ixMap mterms states init = case sequence states1 of
   init2 = qMap!init & \case Right x -> x
 
   (ixMap2, listArray' -> mterms2) = runST action where
-    action :: forall s. ST s (Array Int (Either Bool Int), [MixT.Term p Int Int])
+    action :: forall s. ST s (Array Int (Either Bool Int), [MTerm.Term p Int Int])
     action = runHashConsT$ do
       mterms2M <- cataScanT @(LiftArray (STArray s)) traversed alg mterms
       fmap (fmap fst) <$> unsafeFreeze mterms2M
 
-  alg t = case MixT.modChilds MixT.pureChildMod{ MixT.lQ = (qMap!) } t of
+  alg t = case MTerm.modChilds MTerm.pureChildMod{ MTerm.lQ = (qMap!) } t of
     Left b -> return$ Left b
-    Right t -> case MixTSimp.simplify (getCompose . unFix . snd) fst t of
+    Right t -> case MTerm.simplify (getCompose . unFix . snd) fst t of
       Left b -> return$ Left b
       Right (Left it) -> return$ Right it
       Right (Right t) -> Right . (, Fix$ Compose t) <$> hashCons' (fmap fst t)
@@ -130,11 +129,11 @@ simplifyStatesAndMixTs ixMap mterms states init = case sequence states1 of
 
 simplifyMixAndBoolTs :: forall p q. (Eq p, Hashable p, Eq q, Hashable q)
   => Array Int Any
-  -> Array Int (BoolT.Term p Int)
-  -> Array Int (MixT.Term Int q Int)
+  -> Array Int (BTerm.Term p Int)
+  -> Array Int (MTerm.Term Int q Int)
   -> ( Array Int (Either Bool Int)
-     , Array Int (BoolT.Term p Int)
-     , Array Int (MixT.Term Int q Int)
+     , Array Int (BTerm.Term p Int)
+     , Array Int (MTerm.Term Int q Int)
      )
 simplifyMixAndBoolTs mgs bterms mterms = closure ixMap bterms mterms
   where
@@ -147,29 +146,29 @@ simplifyMixAndBoolTs mgs bterms mterms = closure ixMap bterms mterms
     (ixMap1, bterms1, mterms1) = simplifyInitMixAndBoolTs mgs ixMap bterms mterms
     (ixMap2, bterms2, mterms2) = separatePositiveTops bterms1 mterms1
     ixMap2' = fmap (fmap (ixMap2!)) ixMap1
-    (ixMap3, mterms3) = MixTSimp.simplifyDagUntilFixpoint mgs (ixMap2', mterms2)
+    (ixMap3, mterms3) = MTerm.simplifyDagUntilFixpoint mgs (ixMap2', mterms2)
 
 simplifyInitMixAndBoolTs :: forall p q. (Eq p, Hashable p, Eq q, Hashable q)
   => Array Int Any
   -> Array Int (Either Bool Int)
-  -> Array Int (BoolT.Term p Int)
-  -> Array Int (MixT.Term Int q Int)
+  -> Array Int (BTerm.Term p Int)
+  -> Array Int (MTerm.Term Int q Int)
   -> ( Array Int (Either Bool Int)
-     , Array Int (BoolT.Term p Int)
-     , Array Int (MixT.Term Int q Int)
+     , Array Int (BTerm.Term p Int)
+     , Array Int (MTerm.Term Int q Int)
      )
 simplifyInitMixAndBoolTs mgs ixMap bterms mterms = runST action where
   action :: forall s. ST s
     ( Array Int (Either Bool Int)
-    , Array Int (BoolT.Term p Int)
-    , Array Int (MixT.Term Int q Int)
+    , Array Int (BTerm.Term p Int)
+    , Array Int (MTerm.Term Int q Int)
     )
   action = do
     (mgs'M :: STArray s Int Any) <- unsafeThaw mgs'
     bgs'M <- newArray @(STArray s) (bounds bterms) mempty
     let mgs'M' = LiftArray mgs'M
 
-    let atBottom = (`BoolTSimp.simplifyDagUntilFixpoint` (bInitIxMap, bterms)) <$>
+    let atBottom = (`BTerm.simplifyDagUntilFixpoint` (bInitIxMap, bterms)) <$>
           lift (unsafeFreeze bgs'M)
 
     (((_, bterms'), LiftArray ixMapM), tList) <- runHashConsT$ hyloScanT00'
@@ -185,7 +184,7 @@ simplifyInitMixAndBoolTs mgs ixMap bterms mterms = runST action where
   bInitIxMap = listArray (bounds bterms)$ map Right [0..]
   mgs' = accumArray (\_ x -> x) mempty (bounds mterms) (eixMappedGs ixMap mgs)
 
-  modPT lP lT = MixT.modChilds MixT.pureChildMod{ MixT.lT = lT, MixT.lP = lP }
+  modPT lP lT = MTerm.modChilds MTerm.pureChildMod{ MTerm.lT = lT, MTerm.lP = lP }
 
   mhylogebra (g, i) = return
     (runIdentity$ modPT (return . (g,)) (return . (g,)) (mterms!i), alg g)
@@ -193,7 +192,7 @@ simplifyInitMixAndBoolTs mgs ixMap bterms mterms = runST action where
   alg (Any False) _ = return$ error "accessing element without parents"
   alg _ t = case modPT id pure t of
     Left b -> return$ Left b
-    Right t -> case MixTSimp.simplify (getCompose . unFix . snd) fst t of
+    Right t -> case MTerm.simplify (getCompose . unFix . snd) fst t of
       Left b -> return$ Left b
       Right (Left it) -> return$ Right it
       Right (Right t) -> Right . (, Fix$ Compose t) <$> hashCons' (fmap fst t)
@@ -212,15 +211,15 @@ separateStatelessBottoms (BoolAfa bterms afa@Afa{terms=mterms, states=states}) =
         bixMap <- lift$ unsafeFreeze (bixMapM :: STArray s Int Int)
         runNoConsT$
           ($mterms)$ traverseOf (cataScanT traversed)$ \case
-            MixT.State q -> (Nothing,) <$> nocons (MixT.State q)
-            MixT.Predicate ((bixMap!) -> b) -> (Just b,) <$> nocons (MixT.Predicate b)
-            MixT.LTrue -> handleStateless BoolT.LTrue
-            MixT.And bts -> case mapM fst bts of
-              Nothing -> (Nothing,) <$> nocons (MixT.And$ snd <$> bts)
-              Just bs -> handleStateless$ BoolT.And bs
-            MixT.Or bts -> case mapM fst bts of
-              Nothing -> (Nothing,) <$> nocons (MixT.Or$ snd <$> bts)
-              Just bs -> handleStateless$ BoolT.Or bs
+            MTerm.State q -> (Nothing,) <$> nocons (MTerm.State q)
+            MTerm.Predicate ((bixMap!) -> b) -> (Just b,) <$> nocons (MTerm.Predicate b)
+            MTerm.LTrue -> handleStateless BTerm.LTrue
+            MTerm.And bts -> case mapM fst bts of
+              Nothing -> (Nothing,) <$> nocons (MTerm.And$ snd <$> bts)
+              Just bs -> handleStateless$ BTerm.And bs
+            MTerm.Or bts -> case mapM fst bts of
+              Nothing -> (Nothing,) <$> nocons (MTerm.Or$ snd <$> bts)
+              Just bs -> handleStateless$ BTerm.Or bs
 
     ixMap <- unsafeFreeze (ixMapM :: STArray s Int (Maybe Int, Int))
     return$ BoolAfa
@@ -229,26 +228,26 @@ separateStatelessBottoms (BoolAfa bterms afa@Afa{terms=mterms, states=states}) =
 
   handleStateless bt = do
     ref <- lift$ hashCons' bt
-    fmap (Just ref,)$ nocons$ MixT.Predicate ref
+    fmap (Just ref,)$ nocons$ MTerm.Predicate ref
 
 
 -- to be able to flatten them with mixterms
 separatePositiveTops :: forall p q. (Eq q, Hashable q)
-  => Array Int (BoolT.Term p Int)
-  -> Array Int (MixT.Term Int q Int)
-  -> (Array Int Int, Array Int (BoolT.Term p Int), Array Int (MixT.Term Int q Int))
+  => Array Int (BTerm.Term p Int)
+  -> Array Int (MTerm.Term Int q Int)
+  -> (Array Int Int, Array Int (BTerm.Term p Int), Array Int (MTerm.Term Int q Int))
 separatePositiveTops bterms mterms =
   runST action where
   action :: forall s. ST s
-    (Array Int Int, Array Int (BoolT.Term p Int), Array Int (MixT.Term Int q Int))
+    (Array Int Int, Array Int (BTerm.Term p Int), Array Int (MTerm.Term Int q Int))
   action = do
     bgs <- LiftArray . LiftArray <$> newArray @(STArray s) (bounds bterms) mempty
 
     ((LiftArray (LiftArray ixMapM), mList), bList) <- runNoConsT$ runHashConsT$ do
       bixMap <- unsafeFreeze =<< hyloScanTTerminal' traversed bhylogebra bgs
       ($mterms)$ traverseOf (cataScanT traversed)$ \case
-        MixT.Predicate p -> case bixMap!p of
-          Right p' -> hashCons'$ MixT.Predicate p'
+        MTerm.Predicate p -> case bixMap!p of
+          Right p' -> hashCons'$ MTerm.Predicate p'
           Left t -> return t
         x -> hashCons' x
 
@@ -261,21 +260,21 @@ separatePositiveTops bterms mterms =
         Any True -> fmap Right . lift . nocons .
           fmap (fromLeft$ error "positive under negative")
         Any False -> \case
-          BoolT.LTrue -> Left <$> hashCons' MixT.LTrue
-          BoolT.And ixs -> fmap Left$ do
-            ixs' <- forM ixs$ either (hashCons' . MixT.Predicate) return
-            hashCons'$ MixT.And$ nonemptyCanonicalizeWith id ixs'
-          BoolT.Or ixs -> fmap Left$ do
-            ixs' <- forM ixs$ either (hashCons' . MixT.Predicate) return
-            hashCons'$ MixT.Or$ nonemptyCanonicalizeWith id ixs'
+          BTerm.LTrue -> Left <$> hashCons' MTerm.LTrue
+          BTerm.And ixs -> fmap Left$ do
+            ixs' <- forM ixs$ either (hashCons' . MTerm.Predicate) return
+            hashCons'$ MTerm.And$ nonemptyCanonicalizeWith id ixs'
+          BTerm.Or ixs -> fmap Left$ do
+            ixs' <- forM ixs$ either (hashCons' . MTerm.Predicate) return
+            hashCons'$ MTerm.Or$ nonemptyCanonicalizeWith id ixs'
           _ -> error "cannot be positive"
     )
     where
     bterm = bterms!i
     g' = case bterm of
-      BoolT.Not _ -> Any True
-      BoolT.LFalse -> Any True
-      BoolT.Predicate _ -> Any True
+      BTerm.Not _ -> Any True
+      BTerm.LFalse -> Any True
+      BTerm.Predicate _ -> Any True
       _ -> g
 
 
@@ -310,7 +309,7 @@ unswallow BoolAfa{boolTerms=bterms, afa=afa@Afa{terms=mterms, states=transitions
   untree t = cataT (treeTraversal traversed) (either return nocons) t
   bhylogebra (g, i) = return ((g,) <$> bterms!i, ifG g untree)
 
-  modPT lP lT = MixT.modChilds MixT.pureChildMod{ MixT.lT = lT, MixT.lP = lP }
+  modPT lP lT = MTerm.modChilds MTerm.pureChildMod{ MTerm.lT = lT, MTerm.lP = lP }
   msetter mgs bgs mEncloser = flip treeModChilds (mEncloser mgs fst)$
     modPT$ traverseOf traversed (arrayEncloser' (LiftArray bgs) snd)
   mhylogebra g t = return
@@ -345,7 +344,7 @@ swallow BoolAfa{boolTerms=bterms, afa=afa@Afa{terms=mterms, states=transitions}}
   alg 1 t = return$ Node t
   alg _ tb = Leaf<$> nocons (Node tb)
 
-  modPT lP lT = MixT.modChilds MixT.pureChildMod{ MixT.lT = lT, MixT.lP = lP }
+  modPT lP lT = MTerm.modChilds MTerm.pureChildMod{ MTerm.lT = lT, MTerm.lP = lP }
 
   bhylogebra (g, i) = return ((g,) <$> bterms!i, alg g)
   mhylogebra (g, i) = return
