@@ -29,12 +29,12 @@ import qualified Data.HashSet as S
 
 import Afa
 import qualified Afa.Term.Mix as MixT
-import qualified Afa.Term.Mix.Simplify as MixTSimplify
+import qualified Afa.Term.Mix.Simplify as MixTSimp
 import qualified Afa.Term.Bool as BoolT
-import qualified Afa.Term.Bool.Simplify as BoolTSimplify
+import qualified Afa.Term.Bool.Simplify as BoolTSimp
 import Afa.Lib.Tree
 import Afa.Lib.LiftArray
-import Afa.Lib (listArray', (>&>), nonemptyCanonicalizeWith)
+import Afa.Lib (listArray', (>&>), nonemptyCanonicalizeWith, eixMappedGs)
 
 
 data BoolAfa boolTerms afa = BoolAfa
@@ -122,7 +122,7 @@ simplifyStatesAndMixTs ixMap mterms states init = case sequence states1 of
 
   alg t = case MixT.modChilds MixT.pureChildMod{ MixT.lQ = (qMap!) } t of
     Left b -> return$ Left b
-    Right t -> case MixTSimplify.simplify (getCompose . unFix . snd) fst t of
+    Right t -> case MixTSimp.simplify (getCompose . unFix . snd) fst t of
       Left b -> return$ Left b
       Right (Left it) -> return$ Right it
       Right (Right t) -> Right . (, Fix$ Compose t) <$> hashCons' (fmap fst t)
@@ -147,19 +147,7 @@ simplifyMixAndBoolTs mgs bterms mterms = closure ixMap bterms mterms
     (ixMap1, bterms1, mterms1) = simplifyInitMixAndBoolTs mgs ixMap bterms mterms
     (ixMap2, bterms2, mterms2) = separatePositiveTops bterms1 mterms1
     ixMap2' = fmap (fmap (ixMap2!)) ixMap1
-    (ixMap3, mterms3) = simplifyMixTsUntilFixpoint mgs (ixMap2', mterms2)
-
--- We don't use view patterns for the first element of the tuple because we
--- need to check Any True pattern first, otherwise there might be an error in
--- ixMap!i0.
-eixMappedGs :: Array Int (Either Bool Int) -> Array Int Any -> [(Int, Any)]
-eixMappedGs ixMap gs = 
-  [ (i, Any True)
-  | (i0, Any True) <- assocs gs
-  , let ei = ixMap!i0
-  , isRight ei
-  , let Right i = ei
-  ]
+    (ixMap3, mterms3) = MixTSimp.simplifyDagUntilFixpoint mgs (ixMap2', mterms2)
 
 simplifyInitMixAndBoolTs :: forall p q. (Eq p, Hashable p, Eq q, Hashable q)
   => Array Int Any
@@ -181,7 +169,7 @@ simplifyInitMixAndBoolTs mgs ixMap bterms mterms = runST action where
     bgs'M <- newArray @(STArray s) (bounds bterms) mempty
     let mgs'M' = LiftArray mgs'M
     (((_, bterms'), LiftArray ixMapM), tList) <- runHashConsT$ hyloScanT00'
-      (fmap (`simplifyBoolTsUntilFixpoint` bterms)$ lift$ unsafeFreeze bgs'M)
+      (fmap (`BoolTSimp.simplifyDagUntilFixpoint` bterms)$ lift$ unsafeFreeze bgs'M)
       (\t (bIxMap, _) -> (t, bIxMap))
       (modPT (arrayEncloser' (LiftArray bgs'M) snd) (arrayEncloser mgs'M' fst))
       mhylogebra
@@ -199,86 +187,10 @@ simplifyInitMixAndBoolTs mgs ixMap bterms mterms = runST action where
   alg (Any False) _ = return$ error "accessing element without parents"
   alg _ t = case modPT id pure t of
     Left b -> return$ Left b
-    Right t -> case MixTSimplify.simplify (getCompose . unFix . snd) fst t of
+    Right t -> case MixTSimp.simplify (getCompose . unFix . snd) fst t of
       Left b -> return$ Left b
       Right (Left it) -> return$ Right it
       Right (Right t) -> Right . (, Fix$ Compose t) <$> hashCons' (fmap fst t)
-
-
-simplifyMixTs :: forall p q. (Eq p, Hashable p, Eq q, Hashable q)
-  => Array Int Any
-  -> (Array Int (Either Bool Int), Array Int (MixT.Term p q Int))
-  -> (Array Int (Either Bool Int), Array Int (MixT.Term p q Int))
-simplifyMixTs gs (ixMap, arr) = runST action where
-  action :: forall s. ST s (Array Int (Either Bool Int), Array Int (MixT.Term p q Int))
-  action = do
-    (gs'M :: STArray s Int Any) <- unsafeThaw gs'
-    (LiftArray ixMap'M, tList) <- runHashConsT$
-      hyloScanTTerminal' traversed hylogebra (LiftArray gs'M)
-    ixMap' <- unsafeFreeze ixMap'M
-    return (fmap (>>= (ixMap'!) >&> fst) ixMap, listArray' tList)
-
-  gs' = accumArray (\_ x -> x) mempty (bounds arr) (eixMappedGs ixMap gs)
-
-  alg (Any False) _ = return$ error "accessing element without parents"
-  alg _ t = case MixTSimplify.simplify (getCompose . unFix . snd) fst t of
-    Left b -> return$ Left b
-    Right (Left it) -> return$ Right it
-    Right (Right t) -> Right . (, Fix$ Compose t) <$> hashCons' (fmap fst t)
-
-  hylogebra (g, i) = return ((g,) <$> arr!i, alg g)
-
-
-simplifyMixTsUntilFixpoint :: forall p q. (Eq p, Hashable p, Eq q, Hashable q)
-  => Array Int Any
-  -> (Array Int (Either Bool Int), Array Int (MixT.Term p q Int))
-  -> (Array Int (Either Bool Int), Array Int (MixT.Term p q Int))
-simplifyMixTsUntilFixpoint gs (ixMap, arr) =
-  fromJust$ msum$ zipWith better iters (tail iters)
-  where
-  cost ts = (length ts, sum$ fmap length ts)
-  iters = iterate
-    ((cost . snd &&& id) . simplifyMixTs gs . snd)
-    (cost arr, (ixMap, arr))
-  better (c1, r) (c2, _) = r <$ guard (c1 <= c2)
-
-
-simplifyBoolTs :: forall p. (Eq p, Hashable p)
-  => Array Int Any
-  -> (Array Int (Either Bool Int), Array Int (BoolT.Term p Int))
-  -> (Array Int (Either Bool Int), Array Int (BoolT.Term p Int))
-simplifyBoolTs gs (ixMap, arr) = runST action where
-  action :: forall s. ST s (Array Int (Either Bool Int), Array Int (BoolT.Term p Int))
-  action = do
-    (gs'M :: STArray s Int Any) <- unsafeThaw gs'
-    (LiftArray ixMap'M, tList) <- runHashConsT$
-      hyloScanTTerminal' traversed hylogebra (LiftArray gs'M)
-    ixMap' <- unsafeFreeze ixMap'M
-    return (fmap (>>= (ixMap'!) >&> fst) ixMap, listArray' tList)
-
-  gs' = accumArray (\_ x -> x) mempty (bounds arr) (eixMappedGs ixMap gs)
-
-  alg (Any False) _ = return$ error "accessing element without parents"
-  alg _ t = case BoolTSimplify.simplify (getCompose . unFix . snd) fst t of
-    Left b -> return$ Left b
-    Right (Left it) -> return$ Right it
-    Right (Right t) -> Right . (, Fix$ Compose t) <$> hashCons' (fmap fst t)
-
-  hylogebra (g, i) = return ((g,) <$> arr!i, alg g)
-
-
-simplifyBoolTsUntilFixpoint :: forall p. (Eq p, Hashable p)
-  => Array Int Any
-  -> Array Int (BoolT.Term p Int)
-  -> (Array Int (Either Bool Int), Array Int (BoolT.Term p Int))
-simplifyBoolTsUntilFixpoint gs arr = fromJust$ msum$ zipWith better iters (tail iters)
-  where
-  ixMap = listArray (bounds gs)$ map Right [0..]
-  cost ts = (length ts, sum$ fmap length ts)
-  iters = iterate
-    ((cost . snd &&& id) . simplifyBoolTs gs . snd)
-    (cost arr, (ixMap, arr))
-  better (c1, r) (c2, _) = r <$ guard (c1 <= c2)
 
 
 -- to be able to cons them with boolterms

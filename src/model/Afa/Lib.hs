@@ -2,6 +2,8 @@
 
 module Afa.Lib where
 
+import Data.Either
+import Data.Monoid (Any(..))
 import Data.Hashable.Lifted
 import Data.List.NonEmpty (NonEmpty(..), toList)
 import qualified Data.List.NonEmpty as NE
@@ -23,3 +25,15 @@ infixr 1 >&>
 -- PERF: use hashmap? radix grouping?
 nonemptyCanonicalizeWith :: (Eq r, Ord r) => (t -> r) -> NonEmpty t -> NonEmpty t
 nonemptyCanonicalizeWith f = NE.map NE.head . NE.groupWith1 f . NE.sortWith f
+
+-- We don't use view patterns for the first element of the tuple because we
+-- need to check Any True pattern first, otherwise there might be an error in
+-- ixMap!i0.
+eixMappedGs :: Array Int (Either Bool Int) -> Array Int Any -> [(Int, Any)]
+eixMappedGs ixMap gs = 
+  [ (i, Any True)
+  | (i0, Any True) <- assocs gs
+  , let ei = ixMap!i0
+  , isRight ei
+  , let Right i = ei
+  ]
