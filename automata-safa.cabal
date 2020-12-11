@@ -74,8 +74,8 @@ library convert
     Afa.Convert.Separated
     Afa.Convert.Separated.Model
     Afa.Convert.Capnp.Afa
+    Afa.Convert.Capnp.CnfAfa
     -- Afa.Convert.Capnp.Separated
-    -- Afa.Convert.Capnp.CnfAfa
   build-depends:
     free ^>=5.1.4,
     base ^>=4.13.0.0,
