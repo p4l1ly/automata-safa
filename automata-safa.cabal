@@ -77,8 +77,8 @@ library convert
     Afa.Convert.Capnp.CnfAfa
     Afa.Convert.Capnp.Separated
   build-depends:
-    free ^>=5.1.4,
     base ^>=4.13.0.0,
+    free ^>=5.1.4,
     mtl ^>= 2.2.2,
     array ^>= 0.5.4.0,
     recursion-schemes ^>=5.2.1,
@@ -109,9 +109,9 @@ test-suite automata-safa-test
     Test.Afa.Simplify
     Test.Afa.Convert.Separated
   build-depends:
-    base,
+    base ^>=4.13.0.0,
     HUnit ^>= 1.6.0.0,
-    array,
+    array ^>= 0.5.4.0,
     automata-safa,
     automata-safa:convert,
 
@@ -120,6 +120,11 @@ executable ltle-to-afa
   build-depends:
     base ^>=4.13.0.0,
     optparse-applicative ^>=0.16.0.0,
+    recursion-schemes ^>=5.2.1,
+    data-fix ^>=0.3.0,
+    mtl ^>= 2.2.2,
+    time ^>= 1.9.3,
+    array ^>= 0.5.4.0,
     automata-safa,
     automata-safa:ltl,
     automata-safa:convert,

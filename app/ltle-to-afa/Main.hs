@@ -1,69 +1,82 @@
+{-# LANGUAGE LambdaCase #-}
+{-# LANGUAGE ViewPatterns #-}
+{-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TupleSections #-}
+
 module Main where
 
 import Options.Applicative
-import Data.Semigroup ((<>))
 
+import Data.List
+import Data.Array
+import Control.Exception
+import Data.Fix (Fix(..))
+import Data.Functor.Base
+import Data.Functor.Foldable
+import Data.Functor.Compose
+import Data.Functor
 import System.IO
 import Ltl.Parser
-import Afa.Ops.Preprocess (SimplificationResult(..), preprocess)
 import Afa.Convert.Ltle
 import Afa.Convert.Capnp.Afa
-import Afa.Convert.Pretty
-import Afa.Convert.Dot
-import Afa.Convert.CnfAfa
-import Afa.Convert.Capnp.CnfAfa
-import Afa.Convert.Separated
-import qualified Afa.Convert.Capnp.Separated as Separated
-import System.Environment 
+import Afa.Bool
+import Afa
+import Data.Time.Clock.POSIX (getPOSIXTime)
 
-data OutputType
-  = Dot
-  | Pretty
-  | Afa
-  | CnfAfa
-  | Separated
-  deriving Read
+data Opts = Opts
+  { readers :: Fix (Compose IO (ListF (BoolAfaUnswallowed Int)))
+  , writers :: [BoolAfaUnswallowed Int -> IO ()]
+  }
 
-data PreprocessType
-  = Full
-  | None
-  deriving Read
-
-optParser :: Parser (OutputType, PreprocessType)
-optParser = (,)
-  <$> option auto
-     ( long "output"
-    <> short 'o'
-    <> value Afa
-    <> help "Output format, one of: Dot, Pretty, Afa, CnfAfa, Separated"
-     )
-  <*> option auto
-     ( long "preprocess"
-    <> value Full
-    <> help "Preprocessing method, one of: Full, None"
-     )
+optParser :: Parser Opts
+optParser = Opts
+  <$> option
+    (eitherReader$ \case
+      "ltl" -> Right$ flip ana ()$ \_ -> Compose$
+        (getLine <&> parseLtl <&> ltleToUnswallowedAfa <&> flip Cons ())
+        `catch` \(SomeException _) -> return Nil
+      "afa" -> undefined
+      x -> Left$ "expected one of: ltl; got " ++ x
+    )
+    ( long "input"
+      <> short 'i'
+      <> help "Input format, one of: ltl"
+    )
+  <*> option
+    (eitherReader$ \case
+      (break (== ':') -> ("afa", ':':outdir)) -> Right$ flip map [0..]$ \i afa ->
+        withFile (outdir ++ "/" ++ show i) WriteMode$ hWriteAfa afa
+      x -> Left$ "expected afa:<path>; got " ++ x
+    )
+    ( long "output"
+      <> short 'o'
+      <> help "Output format, afa:<path>"
+    )
 
 main :: IO ()
 main = do
-  (outputType, preprocessType) <- execParser$ info (optParser <**> helper)
-     ( fullDesc
+  (Opts readers writers) <- execParser$ info (optParser <**> helper)$
+    fullDesc
     <> progDesc
-      "convert LTLe to a symbolic alternating finite automaton, possibly preprocess \
-      \the automaton and output it somewhere further"
+      "Convert LTLe to a symbolic alternating finite automaton, possibly \
+      \preprocess the automaton and output it somewhere further."
     <> header "ltle-to-afa: symbolic alternating finite automata preprocessing"
-     )
-  let preprocess' = case preprocessType of Full -> preprocess; _ -> UndecidedEmptiness
 
-  (varCount, afa) <- ltleToAfa . parseLtl <$> getContents
-
-  case preprocess' afa of
-    NonPositiveStates -> putStrLn "NonPositiveStates"
-    EmptyLang -> putStrLn "EmptyLang"
-    NonEmptyLang -> putStrLn "NonEmptyLang"
-    UndecidedEmptiness afa' -> case outputType of
-      Dot -> putStrLn$ toDot True afa'
-      Pretty -> putStrLn$ exportPrettyAfa varCount afa'
-      Afa -> hWriteAfa afa' stdout
-      Main.CnfAfa -> hWriteCnfAfa (tseytin varCount afa') stdout
-      Separated -> Separated.hWrite varCount (separate afa') stdout
+  ($ (writers, readers))$ hylo
+    ( \(Compose (writer, Compose action)) ->
+      action >>= \case
+        Nil -> return ()
+        Cons bafa0 rec -> do
+          tic <- getPOSIXTime
+          let bafa = bafa0{afa = reorderStates$ afa bafa0}
+          writer bafa
+          toc <- getPOSIXTime
+          putStrLn$ intercalate "\t"
+            [ show (floor$ 1000*(toc - tic))
+            , show$ rangeSize$ bounds$ states$ afa bafa
+            , show$ rangeSize (bounds$ terms$ afa bafa) + rangeSize (bounds$ boolTerms bafa)
+            , show$ sum (fmap length$ terms$ afa bafa) + sum (fmap length$ boolTerms bafa)
+            ]
+          rec
+    )
+    ( \(writer:writers, Fix readers) -> Compose (writer, fmap (writers,) readers) )

@@ -68,6 +68,9 @@ instance Monad m => AfaBuilder (UnswallowedAfaBuilderT m) (Int, Bool) where
     And (unzip -> (t:ts, statefuls))
       | or statefuls -> addMTerm$ MTerm.And$ t :| ts
       | otherwise -> addBTerm$ BTerm.And$ t :| ts
+    Or (unzip -> (t:ts, statefuls))
+      | or statefuls -> addMTerm$ MTerm.Or$ t :| ts
+      | otherwise -> addBTerm$ BTerm.Or$ t :| ts
 
   withNewState fn = UnswallowedAfaBuilderT$ do
     nextIx <- NoConsT get
