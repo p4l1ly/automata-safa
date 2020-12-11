@@ -4,7 +4,7 @@
 {-# LANGUAGE PartialTypeSignatures #-}
 {-# LANGUAGE LambdaCase #-}
 
-module Afa.Convert.CnfAfa (CnfAfa(..), Lit(..), tseytin) where
+module Afa.Convert.CnfAfa (CnfAfa(..), Lit(..), tseytin, tseytin') where
 
 import Control.Lens
 import Data.Bifunctor
@@ -20,6 +20,7 @@ import qualified Afa.Term.Bool as BTerm
 import Afa.Bool
 import qualified Afa
 import Afa.Lib.LiftArray
+import qualified Afa.Convert.Capnp.Afa as CapAfa (varCount)
 
 
 data Lit = Lit
@@ -33,6 +34,8 @@ data CnfAfa = CnfAfa
   , varCount :: Int
   , clauses :: [[Lit]]
   }
+
+tseytin' bafa = tseytin (CapAfa.varCount$ boolTerms bafa) bafa
 
 tseytin :: Int -> BoolAfaUnswallowed Int -> CnfAfa
 tseytin varCount (BoolAfa bterms (Afa.Afa mterms states 0)) = CnfAfa

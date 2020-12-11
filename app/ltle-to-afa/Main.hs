@@ -19,6 +19,8 @@ import System.IO
 import Ltl.Parser
 import Afa.Convert.Ltle
 import Afa.Convert.Capnp.Afa
+import Afa.Convert.Capnp.CnfAfa (hWriteCnfAfa)
+import Afa.Convert.CnfAfa (tseytin')
 import Afa.Bool
 import Afa
 import Data.Time.Clock.POSIX (getPOSIXTime)
@@ -60,6 +62,8 @@ optParser = Opts
     ( eitherReader$ \case
       (break (== ':') -> ("afa", ':':outdir)) -> Right$ flip map [0..]$ \i afa ->
         withFile (outdir ++ "/" ++ show i) WriteMode$ hWriteAfa afa
+      (break (== ':') -> ("cnfafa", ':':outdir)) -> Right$ flip map [0..]$ \i afa ->
+        withFile (outdir ++ "/" ++ show i) WriteMode$ hWriteCnfAfa$ tseytin' afa
       x -> Left$ "expected afa:<path>; got " ++ x
     )
     ( long "output"

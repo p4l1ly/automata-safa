@@ -15,8 +15,6 @@ import System.IO
 
 import Afa.Convert.Separated.Model (Afa(..))
 import Afa.Convert.Capnp.Afa (serializeBTerm, varCount, iNeToVec)
-import Afa.Lib (listArray')
-import qualified Afa.Term.Bool as BTerm
 import qualified Afa.Term.Mix as MTerm
 
 hWrite :: Afa Int -> Handle -> IO ()
