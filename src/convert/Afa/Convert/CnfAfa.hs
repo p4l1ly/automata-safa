@@ -1,21 +1,25 @@
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
+{-# LANGUAGE TypeApplications #-}
+{-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE PartialTypeSignatures #-}
+{-# LANGUAGE LambdaCase #-}
 
 module Afa.Convert.CnfAfa (CnfAfa(..), Lit(..), tseytin) where
 
+import Control.Lens
 import Data.Bifunctor
 import Control.Monad.ST
 import Control.Monad.State
 import Control.Monad.Writer
 import Data.Array
-import Data.Array.Unsafe
-import Data.Monoid
-import Data.Functor.Foldable.Dag.Consing (nocons, runNoConsMonadT)
-import Data.Functor.Foldable.Dag.Monadic (cataScanM)
-import Data.Functor.Tree (treeFAlgM)
-
-import qualified Afa.Term.TreeF as THB
-import Afa.Term
-import Afa
+import Data.Array.ST
+import qualified Data.List.NonEmpty as NE
+import Control.RecursionSchemes.Lens
+import qualified Afa.Term.Mix as MTerm
+import qualified Afa.Term.Bool as BTerm
+import Afa.Bool
+import qualified Afa
+import Afa.Lib.LiftArray
 
 
 data Lit = Lit
@@ -27,53 +31,56 @@ data Lit = Lit
 data CnfAfa = CnfAfa
   { states :: Array Int Lit
   , varCount :: Int
-  , clauses :: Array Int [Lit]
+  , clauses :: [[Lit]]
   }
 
-
-tseytin :: Int -> Afa -> CnfAfa
-tseytin varCount (Afa terms states) = CnfAfa
-  { Afa.Convert.CnfAfa.states = fmap ((litMap!) . (ixMap!)) states
-  , Afa.Convert.CnfAfa.varCount = varCount
-  , clauses = listArray (0, length clauses - 1) clauses
+tseytin :: Int -> BoolAfaUnswallowed Int -> CnfAfa
+tseytin varCount (BoolAfa bterms (Afa.Afa mterms states 0)) = CnfAfa
+  { states = fmap (mIxMap!) states
+  , varCount = varCount
+  , clauses = clauses
   }
   where
   stateCount = rangeSize$ bounds states
 
-  (ixMap, terms') = dagTerms terms
-  litMap :: Array Int Lit
-  (litMap, clauses) = runST$ runCountLogT (stateCount + varCount)$
-    cataScanM tseytin_alg (listArray (0, length terms' - 1) terms')
-    >>= lift . unsafeFreeze
+  (mIxMap, clauses) = runST action where
+    action :: forall s. ST s (Array Int Lit, [[Lit]])
+    action = runCountLogT (stateCount + varCount)$ do
+      bIxMap <- cataScanT' @(LiftArray (STArray s))
+        traversed (btermTseytin stateCount) bterms
+      cataScanT' @(LiftArray (STArray s)) traversed (mtermTseytin bIxMap) mterms
 
-  tseytin_alg :: Monad m => Term Lit -> CountLog [Lit] m Lit
-  tseytin_alg (State q) = CountLog$ return (Lit q True)
-  tseytin_alg (Var v) = return (Lit (stateCount + v) True)
-  tseytin_alg (Not (Lit ix isPositive)) = return$ Lit ix$ not isPositive
-  tseytin_alg (And lits) = CountLog$ do
-    ix <- get
-    put$ ix + 1
-    let neg_out = Lit ix False
-        clauses = map (: [neg_out]) lits
-    lift$ tell (Endo (clauses ++))
+btermTseytin :: Monad m => Int -> BTerm.Term Int Lit -> CountLog [Lit] m Lit
+btermTseytin stateCount = \case
+  BTerm.Predicate v -> return (Lit (stateCount + v) True)
+  BTerm.Not (Lit ix isPositive) -> return$ Lit ix$ not isPositive
+  BTerm.And lits -> do
+    ix <- newSignal
+    newClauses$ map (: [Lit ix False])$ NE.toList lits
     return$ Lit ix True
-  tseytin_alg (Or lits) = CountLog$ do
-    ix <- get
-    put$ ix + 1
-    let clause = Lit ix False : lits
-    lift$ tell (Endo (clause :))
+  BTerm.Or lits -> do
+    ix <- newSignal
+    newClause$ Lit ix False : NE.toList lits
     return$ Lit ix True
-  tseytin_alg LFalse = error
-    "Tseytin does not support LFalse, please use removeFalseStates and simplify \
-    \until a fixpoint is reached"
-  tseytin_alg LTrue = error
-    "Tseytin does not support LTrue, please use removeTrueStates and simplify \
-    \until a fixpoint is reached"
+  BTerm.LFalse -> error
+    "Tseytin does not support LFalse, please simplify the AFA"
+  BTerm.LTrue -> error
+    "Tseytin does not support LFalse, please simplify the AFA"
 
-
-dagTerms :: Array Int THB.Term -> (Array Int Int, [Term Int])
-dagTerms terms = runST$ runNoConsMonadT$
-  cataScanM (treeFAlgM nocons) terms >>= lift . unsafeFreeze
+mtermTseytin :: Monad m => Array Int Lit -> MTerm.Term Int Int Lit -> CountLog [Lit] m Lit
+mtermTseytin bIxMap = \case
+  MTerm.Predicate v -> return$ bIxMap!v
+  MTerm.State q -> return$ Lit q True
+  MTerm.And lits -> do
+    ix <- newSignal
+    newClauses$ map (: [Lit ix False])$ NE.toList lits
+    return$ Lit ix True
+  MTerm.Or lits -> do
+    ix <- newSignal
+    newClause$ Lit ix False : NE.toList lits
+    return$ Lit ix True
+  MTerm.LTrue -> error
+    "Tseytin does not support LFalse, please simplify the AFA"
 
 
 newtype CountLog x m a = CountLog (StateT Int (WriterT (Endo [x]) m) a)
@@ -81,7 +88,17 @@ newtype CountLog x m a = CountLog (StateT Int (WriterT (Endo [x]) m) a)
 instance MonadTrans (CountLog x) where
   lift = CountLog . lift . lift
 
-
 runCountLogT :: Monad m => Int -> CountLog x m a -> m (a, [x])
 runCountLogT offset (CountLog action) =
   fmap (second (`appEndo` []))$ runWriterT$ evalStateT action offset
+
+newSignal :: Monad m => CountLog x m Int
+newSignal = CountLog$ do
+  ix <- get
+  ix <$ put (ix + 1)
+
+newClauses :: Monad m => [x] -> CountLog x m ()
+newClauses clauses = CountLog$ lift$ tell (Endo (clauses ++))
+
+newClause :: Monad m => x -> CountLog x m ()
+newClause clauses = CountLog$ lift$ tell (Endo (clauses :))
