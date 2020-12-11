@@ -125,6 +125,7 @@ executable ltle-to-afa
     mtl ^>= 2.2.2,
     time ^>= 1.9.3,
     array ^>= 0.5.4.0,
+    directory ^>= 1.3.6.0,
     automata-safa,
     automata-safa:ltl,
     automata-safa:convert,

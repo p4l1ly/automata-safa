@@ -33,30 +33,40 @@ import Data.List.NonEmpty (NonEmpty(..))
 import Ltl (Ltl, preprocessCoRecursive, canonicalize)
 import qualified Ltl
 
+import Debug.Trace
 
-newtype UnswallowedAfaBuilderT m a = UnswallowedAfaBuilderT
-  { fromUnswallowedAfaBuilderT ::
+
+newtype BuilderT m a = BuilderT
+  { fromBuilderT ::
       NoConsT Int
-        ( HashConsT' (MTerm.Term Int Int Int)
-            (HashConsT' (BTerm.Term Int Int) m)
+        ( NoConsT (MTerm.Term Int Int Int)
+            (NoConsT (BTerm.Term Int Int) m)
         )
         a
   }
   deriving (Functor, Applicative, Monad)
 
-runUnswallowedAfaBuilderT (UnswallowedAfaBuilderT action) =
-  runHashConsT$ runHashConsT$ runNoConsT action
+runBuilderT (BuilderT action) =
+  runNoConsT$ runNoConsT$ runNoConsT action
 
-instance MonadTrans UnswallowedAfaBuilderT where
-  lift = UnswallowedAfaBuilderT . lift . lift . lift
+instance MonadTrans BuilderT where
+  lift = BuilderT . lift . lift . lift
 
-addBTerm :: Monad m => BTerm.Term Int Int -> UnswallowedAfaBuilderT m (Int, Bool)
-addBTerm t = UnswallowedAfaBuilderT$ fmap (, False)$ lift$ lift$ hashCons' t
+traceShow' a x = traceShow (a, x) x
 
-addMTerm :: Monad m => MTerm.Term Int Int Int -> UnswallowedAfaBuilderT m (Int, Bool)
-addMTerm t = UnswallowedAfaBuilderT$ fmap (, True)$ lift$ hashCons' t
+addBTerm0 :: Monad m => BTerm.Term Int Int -> BuilderT m Int
+addBTerm0 = BuilderT . lift . lift . nocons
 
-instance Monad m => AfaBuilder (UnswallowedAfaBuilderT m) (Int, Bool) where
+addBTerm :: Monad m => BTerm.Term Int Int -> BuilderT m (Int, Bool)
+addBTerm = fmap (, False) . addBTerm0
+
+addMTerm0 :: Monad m => MTerm.Term Int Int Int -> BuilderT m Int
+addMTerm0 = BuilderT . lift . nocons
+
+addMTerm :: Monad m => MTerm.Term Int Int Int -> BuilderT m (Int, Bool)
+addMTerm = fmap (, True) . addMTerm0
+
+instance Monad m => AfaBuilder (BuilderT m) (Int, Bool) where
   addTerm = iterM$ sequence >=> \case
     LTrue -> addBTerm BTerm.LTrue
     LFalse -> addBTerm BTerm.LFalse
@@ -65,21 +75,31 @@ instance Monad m => AfaBuilder (UnswallowedAfaBuilderT m) (Int, Bool) where
     Not _ -> error "stateful not"
     And [] -> addBTerm BTerm.LTrue
     Or [] -> addBTerm BTerm.LFalse
-    And (unzip -> (t:ts, statefuls))
-      | or statefuls -> addMTerm$ MTerm.And$ t :| ts
-      | otherwise -> addBTerm$ BTerm.And$ t :| ts
-    Or (unzip -> (t:ts, statefuls))
-      | or statefuls -> addMTerm$ MTerm.Or$ t :| ts
-      | otherwise -> addBTerm$ BTerm.Or$ t :| ts
+    And xs@(unzip -> (t:ts, statefuls))
+      | not$ or statefuls -> addBTerm$ BTerm.And$ t :| ts
+      | otherwise -> do
+          ts' <- forM xs$ \case
+            (t, True) -> return t
+            (t, _) -> addMTerm0$ MTerm.Predicate t
+          let t2:ts2 = ts'
+          addMTerm$ MTerm.And$ t2 :| ts2
+    Or xs@(unzip -> (t:ts, statefuls))
+      | not$ or statefuls -> addBTerm$ BTerm.Or$ t :| ts
+      | otherwise -> do
+          ts' <- forM xs$ \case
+            (t, True) -> return t
+            (t, _) -> addMTerm0$ MTerm.Predicate t
+          let t2:ts2 = ts'
+          addMTerm$ MTerm.Or$ t2 :| ts2
 
-  withNewState fn = UnswallowedAfaBuilderT$ do
+  withNewState fn = BuilderT$ do
     nextIx <- NoConsT get
-    mref <- lift$ hashCons'$ MTerm.State nextIx
-    let UnswallowedAfaBuilderT (NoConsT (StateT action)) = fn (mref, True)
+    mref <- fromBuilderT$ addMTerm0$ MTerm.State nextIx
+    let BuilderT (NoConsT (StateT action)) = fn (mref, True)
         WriterT getATSW = action (nextIx + 1)
     (((a, t), nextIx'), w) <- lift getATSW
-    (ref, b) <- fromUnswallowedAfaBuilderT$ addTerm t
-    ref' <- if b then return ref else lift$ hashCons'$ MTerm.Predicate ref
+    (ref, b) <- fromBuilderT$ addTerm t
+    ref' <- if b then return ref else fromBuilderT$ addMTerm0$ MTerm.Predicate ref
     nocons ref'
     NoConsT$ put nextIx'
     NoConsT$ lift$ tell w
@@ -106,9 +126,9 @@ ltleToUnswallowedAfa ltl = BoolAfa
       , length states
       )
 
-  (((ixMap, states), mterms), bterms) = runST$ runUnswallowedAfaBuilderT action
+  (((ixMap, states), mterms), bterms) = runST$ runBuilderT action
 
-  action :: forall s. UnswallowedAfaBuilderT (ST s) (Array Int (Int, Bool))
+  action :: forall s. BuilderT (ST s) (Array Int (Int, Bool))
   action = cataScanT' @(LiftArray (STArray s)) traversed (toAfa >=> addTerm) consedLtl
 
   ltl' = preprocessCoRecursive ltl
@@ -141,7 +161,7 @@ class Monad m => AfaBuilder m t where
 
 toAfa :: AfaBuilder m t => Ltl t -> m (Free Term t)
 toAfa Ltl.LTrue = return LTrueF
-toAfa Ltl.LFalse = return LTrueF
+toAfa Ltl.LFalse = return LFalseF
 toAfa (Ltl.Var i) = return$ VarF$ i + 1
 toAfa (Ltl.Not afa) = return$ NotF$ Pure afa
 toAfa (Ltl.And afas) = return$ AndF$ fmap Pure afas

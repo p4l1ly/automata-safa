@@ -8,6 +8,8 @@
 
 module Afa.Bool where
 
+import Debug.Trace
+
 import GHC.Exts (sortWith, groupWith)
 import Data.List (partition)
 import Data.Either
@@ -235,9 +237,7 @@ separatePositiveTops bterms mterms =
       bgs <- newArray @(LLSTArray s) (bounds bterms) mempty
       bixMap <- unsafeFreeze =<< hyloScanTTerminal' traversed bhylogebra bgs
       ($mterms)$ traverseOf (cataScanT' @(LLSTArray s) traversed)$ \case
-        MTerm.Predicate p -> case bixMap!p of
-          Right p' -> hashCons'$ MTerm.Predicate p'
-          Left t -> return t
+        MTerm.Predicate p -> either return (hashCons' . MTerm.Predicate)$ bixMap!p
         x -> hashCons' x
 
     return (ixMap, listArray' bList, listArray' mList)
@@ -246,14 +246,14 @@ separatePositiveTops bterms mterms =
     ( (g',) <$> bterm
     , case g' of
         Any True -> fmap Right . lift . nocons .
-          fmap (fromLeft$ error "positive under negative")
+          fmap (either (error "positive under negative") id)
         Any False -> \case
           BTerm.LTrue -> Left <$> hashCons' MTerm.LTrue
           BTerm.And ixs -> fmap Left$ do
-            ixs' <- forM ixs$ either (hashCons' . MTerm.Predicate) return
+            ixs' <- forM ixs$ either return (hashCons' . MTerm.Predicate)
             hashCons'$ MTerm.And$ nonemptyCanonicalizeWith id ixs'
           BTerm.Or ixs -> fmap Left$ do
-            ixs' <- forM ixs$ either (hashCons' . MTerm.Predicate) return
+            ixs' <- forM ixs$ either return (hashCons' . MTerm.Predicate)
             hashCons'$ MTerm.Or$ nonemptyCanonicalizeWith id ixs'
           _ -> error "cannot be positive"
     )
