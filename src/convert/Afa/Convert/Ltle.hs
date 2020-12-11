@@ -33,8 +33,6 @@ import Data.List.NonEmpty (NonEmpty(..))
 import Ltl (Ltl, preprocessCoRecursive, canonicalize)
 import qualified Ltl
 
-import Debug.Trace
-
 
 newtype BuilderT m a = BuilderT
   { fromBuilderT ::
@@ -51,8 +49,6 @@ runBuilderT (BuilderT action) =
 
 instance MonadTrans BuilderT where
   lift = BuilderT . lift . lift . lift
-
-traceShow' a x = traceShow (a, x) x
 
 addBTerm0 :: Monad m => BTerm.Term Int Int -> BuilderT m Int
 addBTerm0 = BuilderT . lift . lift . nocons

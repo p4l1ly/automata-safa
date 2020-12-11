@@ -8,8 +8,6 @@
 
 module Afa.Bool where
 
-import Debug.Trace
-
 import GHC.Exts (sortWith, groupWith)
 import Data.List (partition)
 import Data.Either
@@ -54,18 +52,8 @@ type BoolAfaUnswallowed p = BoolAfa
   (AfaUnswallowed Int)
 
 
-reorderStates :: AfaUnswallowed p -> AfaUnswallowed p
-reorderStates afa@Afa{initState = 0} = afa
-reorderStates Afa{terms, states, initState} = Afa
-  { initState = 0
-  , states = states // [(0, initState), (initState, 0)]
-  , terms = terms <&> runIdentity . MTerm.modChilds MTerm.pureChildMod
-      { MTerm.lQ = Identity . \case
-          0 -> initState
-          q | q == initState -> 0
-            | otherwise -> q
-      }
-  }
+reorderStates' :: BoolAfaUnswallowed p -> BoolAfaUnswallowed p
+reorderStates' bafa = bafa{afa = reorderStates$ afa bafa}
 
 
 simplifyAll :: forall p. (Eq p, Hashable p)

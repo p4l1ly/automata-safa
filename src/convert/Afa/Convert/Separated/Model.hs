@@ -30,6 +30,7 @@ import qualified Afa.Term.Bool.Simplify as BTerm
 import qualified Afa.Term.Mix.Simplify as MTerm
 import Data.Array
 import Data.Hashable
+import qualified Afa as A
 
 import Afa.Lib (listArray')
 import Afa.Lib.LiftArray
@@ -41,6 +42,12 @@ data Afa p = Afa
   , initState :: Int
   }
   deriving (Eq, Show)
+
+reorderStates' :: Afa p -> Afa p
+reorderStates' afa@Afa{qterms, states, initState} =
+  afa{qterms = qterms', states = states', initState = initState'}
+  where
+  A.Afa qterms' states' initState' = A.reorderStates (A.Afa qterms states initState)
 
 simplify :: forall p. (Eq p, Hashable p) => Afa p -> Either Bool (Afa p)
 simplify Afa{aterms, qterms, states, initState} = do

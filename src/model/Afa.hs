@@ -12,6 +12,7 @@ import Debug.Trace
 import Data.Functor
 import Data.Array
 import Afa.Term.Mix (Term(..))
+import qualified Afa.Term.Mix as MTerm
 import Afa.Lib.Tree
 import Control.RecursionSchemes.Lens
 import Control.Monad.Trans
@@ -41,5 +42,21 @@ delayPredicates afa@Afa{terms, states} = afa
   Identity ((terms1, terms2), states2) =
     runNoConsTFrom stateCount$ runNoConsTFrom termCount$
       for terms$ \case
-        p@(Predicate _) -> (nocons p >>= lift . nocons) <&> (\x -> traceShow (p, x)$ State x)
+        p@(Predicate _) -> (nocons p >>= lift . nocons) <&> State
         x -> return x
+
+
+reorderStates :: Functor f
+  => Afa (f (Term p' Int t')) (Array Int a) Int
+  -> Afa (f (Term p' Int t')) (Array Int a) Int
+reorderStates afa@Afa{initState = 0} = afa
+reorderStates Afa{terms, states, initState} = Afa
+  { initState = 0
+  , states = states // [(0, states!initState), (initState, states!0)]
+  , terms = terms <&> runIdentity . MTerm.modChilds MTerm.pureChildMod
+      { MTerm.lQ = Identity . \case
+          0 -> initState
+          q | q == initState -> 0
+            | otherwise -> q
+      }
+  }

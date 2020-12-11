@@ -7,6 +7,7 @@ module Main where
 
 import Options.Applicative
 
+import Data.Maybe
 import Data.List
 import Data.Array
 import Control.Exception
@@ -20,6 +21,9 @@ import Ltl.Parser
 import Afa.Convert.Ltle
 import Afa.Convert.Capnp.Afa
 import Afa.Convert.Capnp.CnfAfa (hWriteCnfAfa)
+import qualified Afa.Convert.Capnp.Separated as SepCap
+import qualified Afa.Convert.Separated as Sep
+import qualified Afa.Convert.Separated.Model as Sep
 import Afa.Convert.CnfAfa (tseytin')
 import Afa.Bool
 import Afa
@@ -27,12 +31,11 @@ import Data.Time.Clock.POSIX (getPOSIXTime)
 import System.Directory
 
 data Opts = Opts
-  { readers :: Fix (Compose IO (ListF (BoolAfaUnswallowed Int)))
-  , writers :: [BoolAfaUnswallowed Int -> IO ()]
-  , preprocessor :: BoolAfaUnswallowed Int -> Either Bool (BoolAfaUnswallowed Int)
+  { readers :: Fix (Compose IO (ListF (String, BoolAfaUnswallowed Int)))
+  , writers :: [String -> BoolAfaUnswallowed Int -> Either Bool ((Int, Int, Int), IO ())]
   }
 
-afaReaders :: String -> Fix (Compose IO (ListF (BoolAfaUnswallowed Int)))
+afaReaders :: String -> Fix (Compose IO (ListF (String, BoolAfaUnswallowed Int)))
 afaReaders indir = Fix$ Compose$ do
   (sort . map read -> files0 :: [Int]) <- listDirectory indir
   reader (project files0) <&> \case
@@ -42,14 +45,48 @@ afaReaders indir = Fix$ Compose$ do
   reader Nil = return Nil
   reader (Cons file a) = do
     afa <- withFile (indir ++ "/" ++ show file) ReadMode hReadAfa
-    return$ Cons afa a
+    return$ Cons (show file, afa) a
+
+arrSize :: Ix i => Array i a -> Int
+arrSize = rangeSize . bounds
+
+edgeCount :: (Functor f, Foldable f, Foldable g) => f (g a) -> Int
+edgeCount = sum . fmap length
+
+afaCosts bafa = (qCount, nCount, eCount)
+  where
+  qafa = afa bafa
+  qCount = arrSize$ states qafa
+  nCount = arrSize (terms qafa) + arrSize (boolTerms bafa)
+  eCount = edgeCount (terms qafa) + edgeCount (boolTerms bafa)
+
+sepAfaCosts sepafa = (qCount, nCount, eCount)
+  where
+  qCount = arrSize$ Sep.states sepafa
+  nCount = arrSize (Sep.aterms sepafa) + arrSize (Sep.qterms sepafa) +
+    sum (Sep.states sepafa <&> length . filter (\(a, q) -> isJust a && isJust q))
+  eCount = edgeCount (Sep.aterms sepafa) + edgeCount (Sep.qterms sepafa) +
+    sum (Sep.states sepafa <&> length) +
+    sum (Sep.states sepafa <&> (2*) . length . filter (\(a, q) -> isJust a && isJust q))
+
+afaWriter outdir i (reorderStates' -> bafa) = 
+  ( afaCosts bafa
+  , withFile (outdir ++ "/" ++ i) WriteMode$ hWriteAfa bafa
+  )
+
+sepAfaWriter outdir i (Sep.reorderStates' -> sepafa) =
+  ( sepAfaCosts sepafa
+  , withFile (outdir ++ "/" ++ i) WriteMode$ SepCap.hWrite sepafa
+  )
 
 optParser :: Parser Opts
 optParser = Opts
   <$> option
     ( eitherReader$ \case
-      "ltl" -> Right$ flip ana ()$ \_ -> Compose$
-        (getLine <&> parseLtl <&> ltleToUnswallowedAfa <&> flip Cons ())
+      "ltl" -> Right$ flip ana 0$ \i -> Compose$
+        ( getLine <&> parseLtl <&> ltleToUnswallowedAfa
+          <&> (show i,) <&> flip Cons (i+1)
+        )
         `catch` \(SomeException _) -> return Nil
       (break (== ':') -> ("afa", ':':indir)) -> Right$ afaReaders indir
       x -> Left$ "expected one of: ltl, afa:<path>; got " ++ x
@@ -60,36 +97,38 @@ optParser = Opts
     )
   <*> option
     ( eitherReader$ \case
-      (break (== ':') -> ("afa", ':':outdir)) -> Right$ flip map [0..]$ \i afa ->
-        withFile (outdir ++ "/" ++ show i) WriteMode$ hWriteAfa afa
-      (break (== ':') -> ("cnfafa", ':':outdir)) -> Right$ flip map [0..]$ \i afa ->
-        withFile (outdir ++ "/" ++ show i) WriteMode$ hWriteCnfAfa$ tseytin' afa
-      x -> Left$ "expected afa:<path>; got " ++ x
+      (break (== ':') -> ("afa", ':':outdir)) ->
+        Right$ repeat$ \i bafa ->
+          Right$ afaWriter outdir i bafa
+      (break (== ':') -> ("afaBasicSimp", ':':outdir)) ->
+        Right$ repeat$ \i bafa ->
+          simplifyAll bafa <&> afaWriter outdir i
+      (break (== ':') -> ("cnfafa", ':':outdir)) ->
+        Right$ repeat$ \i bafa ->
+          Right$ (afaCosts bafa,)$
+            withFile (outdir ++ "/" ++ show i) WriteMode$ hWriteCnfAfa$ tseytin' bafa
+      (break (== ':') -> ("sepafaExploding", ':':outdir)) ->
+        Right$ repeat$ \i bafa ->
+          let Just sepafa = Sep.mixedToSeparated bafa
+                <|> Sep.mixedToSeparated bafa{ afa = Sep.separabilizeAfa$ afa bafa }
+          in Sep.simplify sepafa <&> sepAfaWriter outdir i
+      (break (== ':') -> ("sepafaDelaying", ':':outdir)) ->
+        Right$ repeat$ \i bafa ->
+          let Just sepafa = Sep.mixedToSeparated bafa
+                <|> Sep.mixedToSeparated bafa{ afa = delayPredicates$ afa bafa }
+          in Sep.simplify sepafa <&> sepAfaWriter outdir i
+      x -> Left$ "expected one of: \
+        \{afa,afaBasicSimp,cnfafa,sepafaExploding,sepafaDelaying}:<path>; got " ++ x
     )
     ( long "output"
       <> short 'o'
-      <> help "Output format: afa:<path>"
+      <> help "Output format: \
+        \{afa,afaBasicSimp,cnfafa,sepafaExploding,sepafaDelaying}:<path>"
     )
-  <*> option
-    ( eitherReader$ \case
-      "none" -> Right Right
-      "basic" -> Right simplifyAll
-    )
-    ( long "preprocess"
-      <> short 'p'
-      <> value Right
-      <> help "Preprocessor: none, basic"
-    )
-
-arrSize :: Ix i => Array i a -> Int
-arrSize = rangeSize . bounds
-
-edgeCount :: (Functor f, Foldable f, Foldable g) => f (g a) -> Int
-edgeCount = sum . fmap length
 
 main :: IO ()
 main = do
-  (Opts readers writers preprocessor) <- execParser$ info (optParser <**> helper)$
+  (Opts readers writers) <- execParser$ info (optParser <**> helper)$
     fullDesc
     <> progDesc
       "Convert LTLe to a symbolic alternating finite automaton, possibly \
@@ -100,9 +139,9 @@ main = do
     ( \(Compose (writer, Compose action)) ->
       action >>= \case
         Nil -> return ()
-        Cons bafa rec -> do
+        Cons (name, bafa) rec -> do
           tic <- getPOSIXTime
-          case preprocessor bafa of
+          case writer name bafa of
             Left result -> do
               toc <- getPOSIXTime
               putStrLn$ intercalate "\t"
@@ -112,16 +151,14 @@ main = do
                 , "0"
                 , if result then "1" else "0"
                 ]
-            Right bafa0 -> do
-              let bafa = bafa0{afa = reorderStates$ afa bafa0}
-              let qafa = afa bafa
-              writer bafa
+            Right ((qCount, nodeCount, edgeCount), write) -> do
+              write
               toc <- getPOSIXTime
               putStrLn$ intercalate "\t"
                 [ show$ floor$ 1000*(toc - tic)
-                , show$ arrSize$ states qafa
-                , show$ arrSize (terms qafa) + arrSize (boolTerms bafa)
-                , show$ edgeCount (terms qafa) + edgeCount (boolTerms bafa)
+                , show qCount
+                , show nodeCount
+                , show edgeCount
                 , "-1"
                 ]
           rec
