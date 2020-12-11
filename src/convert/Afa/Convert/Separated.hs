@@ -17,7 +17,6 @@ import Data.Traversable
 import Data.Bifunctor
 import Control.Monad.ST
 import Data.Array
-import Data.Array.Unsafe
 import Data.Array.ST
 import Afa
 import Afa.Lib (listArray')
@@ -45,8 +44,8 @@ separabilizeTerms :: forall p q.
   Array Int (Term p q Int) -> (Array Int Int, Array Int (Term p q Int))
 separabilizeTerms arr = second listArray'$ runST action where
   action :: forall s. ST s (Array Int Int, [Term p q Int])
-  action = runNoConsT$ fmap (fmap fst)$
-    cataScanT @(LiftArray (STArray s)) traversed separabilize arr >>= unsafeFreeze
+  action = runNoConsT$ fmap fst <$>
+    cataScanT' @(LiftArray (STArray s)) traversed separabilize arr
 
 -- Note: The function looks recursive but it recurs only one level down.
 separabilize
@@ -151,9 +150,8 @@ mixedToSeparated
   action = do
     result <- runHashConsT$ runHashConsT$ runMaybeT$ do
       bixMap <- for bterms$ lift . lift .  hashCons'
-      cataScanT @(LiftArray (LiftArray (LiftArray (STArray s))))
+      cataScanT' @(LiftArray (LiftArray (LiftArray (STArray s))))
         traversed (alg bixMap) mterms
-        >>= unsafeFreeze
 
     case result of
       ((Just ixMap, mterms), bterms) -> return$ Just SepAfa.Afa

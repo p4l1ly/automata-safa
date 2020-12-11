@@ -14,7 +14,6 @@ module Afa.Convert.Ltle where
 
 import Data.Array
 import Data.Array.ST
-import Data.Array.Unsafe
 import Control.Monad.Trans
 import Control.Monad.State
 import Control.Monad.Writer.Lazy
@@ -107,8 +106,7 @@ ltleToUnswallowedAfa ltl = BoolAfa
   (((ixMap, states), mterms), bterms) = runST$ runUnswallowedAfaBuilderT action
 
   action :: forall s. UnswallowedAfaBuilderT (ST s) (Array Int (Int, Bool))
-  action = unsafeFreeze =<<
-    cataScanT @(LiftArray (STArray s)) traversed (toAfa >=> addTerm) consedLtl
+  action = cataScanT' @(LiftArray (STArray s)) traversed (toAfa >=> addTerm) consedLtl
 
   ltl' = preprocessCoRecursive ltl
   (rootIx, listArray' -> consedLtl) = runIdentity$ runHashConsT$

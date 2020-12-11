@@ -13,7 +13,6 @@ import Data.Functor.Compose
 import Data.Array
 import Data.Array.Unsafe
 import Control.Monad.ST
-import Data.Array.ST
 import Data.Maybe
 import Control.Monad
 import Data.Monoid (Endo(..), Any(..))
@@ -142,10 +141,9 @@ simplifyDag :: forall p. (Eq p, Hashable p)
 simplifyDag gs (ixMap, arr) = runST action where
   action :: forall s. ST s (Array Int (Either Bool Int), Array Int (Term p Int))
   action = do
-    (gs'M :: STArray s Int Any) <- unsafeThaw$ eixMappedGs arr ixMap gs
-    (LiftArray ixMap'M, tList) <- runHashConsT$
-      hyloScanTTerminal' traversed hylogebra (LiftArray gs'M)
-    ixMap' <- unsafeFreeze ixMap'M
+    (ixMap', tList) <- runHashConsT$ do
+      (gs'M :: LSTArray s Int Any) <- unsafeThaw$ eixMappedGs arr ixMap gs
+      unsafeFreeze =<< hyloScanTTerminal' traversed hylogebra gs'M
     return (fmap (>>= (ixMap'!) >&> fst) ixMap, listArray' tList)
 
   alg (Any False) _ = return$ error "accessing element without parents"

@@ -13,7 +13,6 @@ import Data.Traversable
 import Data.Fix
 import Data.Functor.Compose
 import Control.RecursionSchemes.Lens
-import Data.Array.Unsafe
 import Data.Array.ST
 import Control.Monad.ST
 import qualified Data.HashSet as HS
@@ -156,9 +155,8 @@ simplifyStatesAndQTerms ixMap mterms states init
 
   (ixMap2, listArray' -> mterms2) = runST action where
     action :: forall s. ST s (Array Int (Either Bool Int), [MTerm.Term p Int Int])
-    action = runHashConsT$ do
-      mterms2M <- cataScanT @(LiftArray (STArray s)) traversed alg mterms
-      fmap (fmap fst) <$> unsafeFreeze mterms2M
+    action = runHashConsT$
+      fmap (fmap fst) <$> cataScanT' @(LiftArray (STArray s)) traversed alg mterms
 
   alg t = case MTerm.modChilds MTerm.pureChildMod{ MTerm.lQ = (qMap!) } t of
     Left b -> return$ Left b

@@ -115,9 +115,8 @@ simplifyStatesAndMixTs ixMap mterms states init = case sequence states1 of
 
   (ixMap2, listArray' -> mterms2) = runST action where
     action :: forall s. ST s (Array Int (Either Bool Int), [MTerm.Term p Int Int])
-    action = runHashConsT$ do
-      mterms2M <- cataScanT @(LiftArray (STArray s)) traversed alg mterms
-      fmap (fmap fst) <$> unsafeFreeze mterms2M
+    action = runHashConsT$
+      fmap (fmap fst) <$> cataScanT' @(LSTArray s) traversed alg mterms
 
   alg t = case MTerm.modChilds MTerm.pureChildMod{ MTerm.lQ = (qMap!) } t of
     Left b -> return$ Left b
@@ -164,18 +163,16 @@ simplifyInitMixAndBoolTs mgs ixMap bterms mterms = runST action where
     , Array Int (MTerm.Term Int q Int)
     )
   action = do
-    (mgs'M :: STArray s Int Any) <- unsafeThaw$ eixMappedGs mterms ixMap mgs
-    bgs'M <- newArray @(STArray s) (bounds bterms) mempty
-    let mgs'M' = LiftArray mgs'M
+    (((_, bterms'), ixMap'), tList) <- runHashConsT$ do
+      bgs'M <- newArray @(LSTArray s) (bounds bterms) mempty
+      (mgs'M :: LSTArray s Int Any) <- unsafeThaw$ eixMappedGs mterms ixMap mgs
+      runKleisli (second$ Kleisli unsafeFreeze) =<< hyloScanT00'
+        (atBottom <$> unsafeFreeze bgs'M)
+        (\t (bIxMap, _) -> (t, bIxMap))
+        (modPT (arrayEncloser' bgs'M snd) (arrayEncloser mgs'M fst))
+        mhylogebra
+        mgs'M
 
-    (((_, bterms'), LiftArray ixMapM), tList) <- runHashConsT$ hyloScanT00'
-      (atBottom <$> lift (unsafeFreeze bgs'M))
-      (\t (bIxMap, _) -> (t, bIxMap))
-      (modPT (arrayEncloser' (LiftArray bgs'M) snd) (arrayEncloser mgs'M' fst))
-      mhylogebra
-      mgs'M'
-
-    ixMap' <- unsafeFreeze ixMapM
     return (fmap (>>= (ixMap'!) >&> fst) ixMap, bterms', listArray' tList)
 
   atBottom = flip BTerm.simplifyDagUntilFixpoint (bInitIxMap, bterms)
@@ -194,7 +191,6 @@ simplifyInitMixAndBoolTs mgs ixMap bterms mterms = runST action where
       Right (Left it) -> return$ Right it
       Right (Right t) -> Right . (, Fix$ Compose t) <$> hashCons' (fmap fst t)
 
-
 -- to be able to cons them with boolterms
 separateStatelessBottoms :: forall p. (Eq p, Hashable p)
   => BoolAfaUnswallowed p -> BoolAfaUnswallowed p
@@ -202,23 +198,20 @@ separateStatelessBottoms (BoolAfa bterms afa@Afa{terms=mterms, states=states}) =
   runST action where
   action :: forall s. ST s (BoolAfaUnswallowed p)
   action = do
-    ((LiftArray (LiftArray ixMapM), mList), bList) <-
+    ((ixMap, mList), bList) <-
       runHashConsT$ do
-        LiftArray bixMapM <- ($bterms)$ traverseOf (cataScanT traversed) hashCons'
-        bixMap <- lift$ unsafeFreeze (bixMapM :: STArray s Int Int)
-        runNoConsT$
-          ($mterms)$ traverseOf (cataScanT traversed)$ \case
-            MTerm.State q -> (Nothing,) <$> nocons (MTerm.State q)
-            MTerm.Predicate ((bixMap!) -> b) -> (Just b,) <$> nocons (MTerm.Predicate b)
-            MTerm.LTrue -> handleStateless BTerm.LTrue
-            MTerm.And bts -> case mapM fst bts of
-              Nothing -> (Nothing,) <$> nocons (MTerm.And$ snd <$> bts)
-              Just bs -> handleStateless$ BTerm.And bs
-            MTerm.Or bts -> case mapM fst bts of
-              Nothing -> (Nothing,) <$> nocons (MTerm.Or$ snd <$> bts)
-              Just bs -> handleStateless$ BTerm.Or bs
+        bixMap <- ($bterms)$ cataScanT' @(LSTArray s) traversed `traverseOf` hashCons'
+        runNoConsT$ mterms & cataScanT' @(LLSTArray s) traversed `traverseOf` \case
+          MTerm.State q -> (Nothing,) <$> nocons (MTerm.State q)
+          MTerm.Predicate ((bixMap!) -> b) -> (Just b,) <$> nocons (MTerm.Predicate b)
+          MTerm.LTrue -> handleStateless BTerm.LTrue
+          MTerm.And bts -> case mapM fst bts of
+            Nothing -> (Nothing,) <$> nocons (MTerm.And$ snd <$> bts)
+            Just bs -> handleStateless$ BTerm.And bs
+          MTerm.Or bts -> case mapM fst bts of
+            Nothing -> (Nothing,) <$> nocons (MTerm.Or$ snd <$> bts)
+            Just bs -> handleStateless$ BTerm.Or bs
 
-    ixMap <- unsafeFreeze (ixMapM :: STArray s Int (Maybe Int, Int))
     return$ BoolAfa
       (listArray' bList)
       afa{ terms = listArray' mList, states = fmap (snd . (ixMap!)) states }
@@ -238,17 +231,15 @@ separatePositiveTops bterms mterms =
   action :: forall s. ST s
     (Array Int Int, Array Int (BTerm.Term p Int), Array Int (MTerm.Term Int q Int))
   action = do
-    bgs <- LiftArray . LiftArray <$> newArray @(STArray s) (bounds bterms) mempty
-
-    ((LiftArray (LiftArray ixMapM), mList), bList) <- runNoConsT$ runHashConsT$ do
+    ((ixMap, mList), bList) <- runNoConsT$ runHashConsT$ do
+      bgs <- newArray @(LLSTArray s) (bounds bterms) mempty
       bixMap <- unsafeFreeze =<< hyloScanTTerminal' traversed bhylogebra bgs
-      ($mterms)$ traverseOf (cataScanT traversed)$ \case
+      ($mterms)$ traverseOf (cataScanT' @(LLSTArray s) traversed)$ \case
         MTerm.Predicate p -> case bixMap!p of
           Right p' -> hashCons'$ MTerm.Predicate p'
           Left t -> return t
         x -> hashCons' x
 
-    ixMap <- unsafeFreeze (ixMapM :: STArray s Int Int)
     return (ixMap, listArray' bList, listArray' mList)
 
   bhylogebra (g, i) = return
@@ -281,21 +272,21 @@ unswallow BoolAfa{boolTerms=bterms, afa=afa@Afa{terms=mterms, states=transitions
   runST action where
   action :: forall s. ST s (BoolAfaUnswallowed p)
   action = do
-    mgs <- LiftArray . LiftArray <$> newArray @(STArray s) (bounds mterms) mempty
-    bgs <- LiftArray <$> newArray @(STArray s) (bounds bterms) mempty
-
-    ((transitions', mterms'), bterms') <- runNoConsT$ runNoConsT$ do
-      trs <- for transitions$ mhylogebra (Any True) 
-      let Enclosing before after = traverseOf (traversed . _1)
-            (msetter mgs bgs arrayEncloser') trs
-      before
-      ixMaps <- traverseOf _2 unsafeFreeze =<< hyloScanT00'
-        (lift$ hyloScanTTerminal' traversed bhylogebra bgs >>= unsafeFreeze)
-        (,)
-        (msetter mgs bgs arrayEncloser)
-        (\(g, i) -> mhylogebra g (mterms!i))
-        mgs
-      runReaderT after ixMaps >>= traverse (\(t, alg) -> alg t)
+    ((transitions', mterms'), bterms') <- runNoConsT$ do
+      bgs <- newArray @(LSTArray s) (bounds bterms) mempty
+      runNoConsT$ do
+        mgs <- newArray @(LLSTArray s) (bounds mterms) mempty
+        trs <- for transitions$ mhylogebra (Any True) 
+        let Enclosing before after = traverseOf (traversed . _1)
+              (msetter mgs bgs arrayEncloser') trs
+        before
+        ixMaps <- traverseOf _2 unsafeFreeze =<< hyloScanT00'
+          (lift$ unsafeFreeze =<< hyloScanTTerminal' traversed bhylogebra bgs)
+          (,)
+          (msetter mgs bgs arrayEncloser)
+          (\(g, i) -> mhylogebra g (mterms!i))
+          mgs
+        runReaderT after ixMaps >>= traverse (\(t, alg) -> alg t)
 
     return$ BoolAfa (listArray' bterms')
       afa{ terms = listArray' mterms', states = transitions'}
@@ -320,19 +311,19 @@ swallow BoolAfa{boolTerms=bterms, afa=afa@Afa{terms=mterms, states=transitions}}
   runST action where
   action :: forall s. ST s (BoolAfaSwallowed p)
   action = do
-    mgs <- LiftArray . LiftArray <$> newArray @(STArray s) (bounds mterms) mempty
-    bgs <- LiftArray <$> newArray @(STArray s) (bounds bterms) mempty
-
-    ((transitions', mterms'), bterms') <- runNoConsT$ runNoConsT$ do
-      let Enclosing before after = for transitions$ arrayEncloser' mgs id . (Sum 1,)
-      before
-      ixMaps <- unsafeFreeze . snd =<< hyloScanT00'
-        (lift$ hyloScanTTerminal' traversed bhylogebra bgs >>= unsafeFreeze)
-        (,)
-        (modPT (arrayEncloser' (LiftArray bgs) snd) (arrayEncloser mgs fst))
-        mhylogebra
-        mgs
-      runReaderT after ixMaps
+    ((transitions', mterms'), bterms') <- runNoConsT$ do
+      bgs <- newArray @(LSTArray s) (bounds bterms) mempty
+      runNoConsT$ do
+        mgs <- newArray @(LLSTArray s) (bounds mterms) mempty
+        let Enclosing before after = for transitions$ arrayEncloser' mgs id . (Sum 1,)
+        before
+        ixMaps <- unsafeFreeze . snd =<< hyloScanT00'
+          (lift$ hyloScanTTerminal' traversed bhylogebra bgs >>= unsafeFreeze)
+          (,)
+          (modPT (arrayEncloser' (LiftArray bgs) snd) (arrayEncloser mgs fst))
+          mhylogebra
+          mgs
+        runReaderT after ixMaps
 
     return$ BoolAfa (listArray' bterms')
       afa{ terms = listArray' mterms', states = transitions'}

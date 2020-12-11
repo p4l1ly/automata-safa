@@ -5,6 +5,7 @@ module Afa.Lib.LiftArray where
 
 import Control.Monad.Trans
 import Data.Array.Base
+import Data.Array.ST
 
 newtype LiftArray a i e = LiftArray (a i e)
 instance (MonadTrans mt, Monad (mt m), MArray a e m)
@@ -23,3 +24,7 @@ instance (MonadTrans mt, Monad (mt m), MArray a e m)
   newArray_ bnds = LiftArray<$> lift (newArray_ bnds)
   {-# INLINE unsafeNewArray_ #-}
   unsafeNewArray_ bnds = LiftArray<$> lift (unsafeNewArray_ bnds)
+
+
+type LSTArray s = LiftArray (STArray s)
+type LLSTArray s = LiftArray (LSTArray s)
