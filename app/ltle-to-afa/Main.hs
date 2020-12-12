@@ -119,7 +119,7 @@ optParser = Opts
       (break (== ':') -> ("cnfafa", ':':outdir)) ->
         Right$ repeat$ \i bafa ->
           Right$ (afaCosts bafa,)$
-            withFile (outdir ++ "/" ++ show i) WriteMode$ hWriteCnfAfa$ tseytin' bafa
+            withFile (outdir ++ "/" ++ i) WriteMode$ hWriteCnfAfa$ tseytin' bafa
       (break (== ':') -> ("sepafaExploding", ':':outdir)) ->
         Right$ repeat$ \i bafa ->
           let Just sepafa = Sep.mixedToSeparated bafa

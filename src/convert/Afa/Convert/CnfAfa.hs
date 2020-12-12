@@ -35,7 +35,8 @@ data CnfAfa = CnfAfa
   , clauses :: [[Lit]]
   }
 
-tseytin' bafa = tseytin (CapAfa.varCount$ boolTerms bafa) bafa
+tseytin' bafa = tseytin varCnt bafa{boolTerms = aterms'} where
+  (varCnt, aterms') = CapAfa.varCount$ boolTerms bafa
 
 tseytin :: Int -> BoolAfaUnswallowed Int -> CnfAfa
 tseytin varCount (BoolAfa bterms (Afa.Afa mterms states 0)) = CnfAfa

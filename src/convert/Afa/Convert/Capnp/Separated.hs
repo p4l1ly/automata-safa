@@ -19,12 +19,13 @@ hWrite afa h = Capnp.hPutValue h$ serializeAfa afa
 
 serializeAfa :: Afa Int -> AfaC.BoolAfa
 serializeAfa (Afa aterms qterms states 0) = AfaC.BoolAfa
-  { AfaC.aterms = V.fromList$ map serializeBTerm$ elems aterms
-  , AfaC.varCount = fromIntegral$ varCount aterms
+  { AfaC.aterms = V.fromList$ map serializeBTerm$ elems aterms'
+  , AfaC.varCount = fromIntegral varCnt
   , AfaC.qterms = V.fromList$ map serializeQTerm$ elems qterms
   , AfaC.states = V.fromList$ elems states <&>
       V.fromList . map (uncurry AfaC.Conjunct11 . (toMaybe1 *** toMaybe1))
   }
+  where (varCnt, aterms') = varCount aterms
 
 toMaybe1 :: Maybe Int -> AfaC.Maybe1
 toMaybe1 Nothing = AfaC.Maybe1'nothing

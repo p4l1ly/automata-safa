@@ -2,6 +2,7 @@
 
 module Afa.Convert.Capnp.Afa where
 
+import Control.Lens
 import qualified Data.List.NonEmpty as NE
 import Data.Array
 import qualified Capnp
@@ -10,8 +11,7 @@ import qualified Capnp.Gen.Afa.Model.Succinct.Pure as AfaC
 import qualified Capnp.Gen.Afa.Model.Term.Pure as TermC
 import System.IO
 import qualified Data.HashSet as HS
-import Data.Hashable
-import Data.Functor.Const
+import qualified Data.HashMap.Strict as HM
 import Data.Monoid (Endo(..))
 
 import Afa.Lib (listArray')
@@ -52,16 +52,23 @@ deserializeMTerm (TermC.PredicateQTerm111'and xs) = MTerm.And$ iVecToNe xs
 
 serializeAfa :: BoolAfaUnswallowed Int -> AfaC.BoolAfa
 serializeAfa (BoolAfa bterms (Afa mterms states 0)) = AfaC.BoolAfa
-  { AfaC.aterms = V.fromList$ map serializeBTerm$ elems bterms
+  { AfaC.aterms = V.fromList$ map serializeBTerm$ elems bterms'
   , AfaC.mterms = V.fromList$ map serializeMTerm$ elems mterms
   , AfaC.states = V.fromList$ map fromIntegral$ elems states
-  , AfaC.varCount = fromIntegral$ varCount bterms
+  , AfaC.varCount = fromIntegral varCnt
   }
+  where (varCnt, bterms') = varCount bterms
 
 -- TODO multifold, multitraverse, multimap
-varCount :: (Traversable f, Eq p, Hashable p) => f (BTerm.Term p t) -> Int
-varCount = HS.size . (`appEndo` HS.empty) . getConst .
-  traverse (BTerm.modChilds BTerm.pureChildMod{ BTerm.lP = Const . Endo . HS.insert })
+varCount :: (Traversable f) => f (BTerm.Term Int t) -> (Int, f (BTerm.Term Int t))
+varCount arr = (count, arr') where
+  vars = arr & (`appEndo` HS.empty) . getConst .
+    traverse (BTerm.modChilds BTerm.pureChildMod{ BTerm.lP = Const . Endo . HS.insert })
+  count = HS.size vars
+  varMap = HM.fromList$ zip (HS.toList vars) [0..]
+  arr' = arr <&>
+    runIdentity . BTerm.modChilds BTerm.pureChildMod
+      { BTerm.lP = return . (varMap HM.!) }
 
 serializeBTerm :: BTerm.Term Int Int -> TermC.BoolTerm11
 serializeBTerm BTerm.LTrue = TermC.BoolTerm11'litTrue
