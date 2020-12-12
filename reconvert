@@ -1,0 +1,11 @@
+#! /bin/zsh
+
+rm $1/{afa0,afaBasic,afaBasicAgain,afaCnf,sepExploding,sepDelaying}/*
+mkdir -p $1/{afa0,afaBasic,afaBasicAgain,afaCnf,sepExploding,sepDelaying}
+
+cat $1/ltls| cabal exec ltle-to-afa -- -i ltl -o afa:$1/afa0 > $1/afa0.csv
+cabal exec ltle-to-afa -- -i afa:$1/afa0 -o afaBasicSimp:$1/afaBasic > $1/afaBasic.csv
+cabal exec ltle-to-afa -- -i afa:$1/afaBasic -o afaBasicSimp:$1/afaBasicAgain > $1/afaBasicAgain.csv
+cabal exec ltle-to-afa -- -i afa:$1/afaBasic -o cnfafa:$1/afaCnf > $1/afaCnf.csv
+cabal exec ltle-to-afa -- -i afa:$1/afaBasic -o sepafaExploding:$1/sepExploding > $1/sepExploding.csv
+cabal exec ltle-to-afa -- -i afa:$1/afaBasic -o sepafaDelaying:$1/sepDelaying > $1/sepDelaying.csv
