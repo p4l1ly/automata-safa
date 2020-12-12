@@ -29,6 +29,8 @@ import Afa.Bool
 import Afa
 import Data.Time.Clock.POSIX (getPOSIXTime)
 import System.Directory
+import qualified Afa.Term.Mix as MTerm
+import qualified Afa.Term.Bool as BTerm
 
 data Opts = Opts
   { readers :: Fix (Compose IO (ListF (String, BoolAfaUnswallowed Int)))
@@ -47,8 +49,16 @@ afaReaders indir = Fix$ Compose$ do
     afa <- withFile (indir ++ "/" ++ show file) ReadMode hReadAfa
     return$ Cons (show file, afa) a
 
-arrSize :: Ix i => Array i a -> Int
+arrSize :: Array Int a -> Int
 arrSize = rangeSize . bounds
+
+mtermNCount :: Array Int (MTerm.Term p q t) -> Int
+mtermNCount arr = length$ ($ elems arr)$ filter$
+  \case MTerm.And _ -> True; MTerm.Or _ -> True; _ -> False
+
+btermNCount :: Array Int (BTerm.Term p t) -> Int
+btermNCount arr = length$ ($ elems arr)$ filter$
+  \case BTerm.And _ -> True; BTerm.Or _ -> True; _ -> False
 
 edgeCount :: (Functor f, Foldable f, Foldable g) => f (g a) -> Int
 edgeCount = sum . fmap length
@@ -57,13 +67,13 @@ afaCosts bafa = (qCount, nCount, eCount)
   where
   qafa = afa bafa
   qCount = arrSize$ states qafa
-  nCount = arrSize (terms qafa) + arrSize (boolTerms bafa)
+  nCount = btermNCount (boolTerms bafa) + mtermNCount (terms qafa)
   eCount = edgeCount (terms qafa) + edgeCount (boolTerms bafa)
 
 sepAfaCosts sepafa = (qCount, nCount, eCount)
   where
   qCount = arrSize$ Sep.states sepafa
-  nCount = arrSize (Sep.aterms sepafa) + arrSize (Sep.qterms sepafa) +
+  nCount = btermNCount (Sep.aterms sepafa) + mtermNCount (Sep.qterms sepafa) +
     sum (Sep.states sepafa <&> length . filter (\(a, q) -> isJust a && isJust q))
   eCount = edgeCount (Sep.aterms sepafa) + edgeCount (Sep.qterms sepafa) +
     sum (Sep.states sepafa <&> length) +
