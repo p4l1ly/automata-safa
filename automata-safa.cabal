@@ -126,11 +126,13 @@ executable ltle-to-afa
     time ^>= 1.9.3,
     array ^>= 0.5.4.0,
     directory ^>= 1.3.6.0,
+    stm ^>=2.5.0.0,
     automata-safa,
     automata-safa:ltl,
     automata-safa:convert,
   hs-source-dirs:      app/ltle-to-afa
   default-language:    Haskell2010
+  ghc-options: -threaded
 
 executable ltle-sat
   main-is:             Main.hs

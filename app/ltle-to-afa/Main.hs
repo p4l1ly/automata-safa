@@ -7,6 +7,9 @@ module Main where
 
 import Options.Applicative
 
+import Control.Monad
+import Control.Concurrent.STM
+import Control.Concurrent
 import Data.Maybe
 import Data.List
 import Data.Array
@@ -136,6 +139,8 @@ optParser = Opts
         \{afa,afaBasicSimp,cnfafa,sepafaExploding,sepafaDelaying}:<path>"
     )
 
+timeoutMicro = 10000000
+
 main :: IO ()
 main = do
   (Opts readers writers) <- execParser$ info (optParser <**> helper)$
@@ -151,26 +156,41 @@ main = do
         Nil -> return ()
         Cons (name, bafa) rec -> do
           tic <- getPOSIXTime
-          case writer name bafa of
-            Left result -> do
-              toc <- getPOSIXTime
-              putStrLn$ intercalate "\t"
-                [ show$ floor$ 1000*(toc - tic)
-                , "0"
-                , "0"
-                , "0"
-                , if result then "1" else "0"
-                ]
-            Right ((qCount, nodeCount, edgeCount), write) -> do
-              write
-              toc <- getPOSIXTime
-              putStrLn$ intercalate "\t"
-                [ show$ floor$ 1000*(toc - tic)
-                , show qCount
-                , show nodeCount
-                , show edgeCount
-                , "-1"
-                ]
+          finishedVar <- registerDelay timeoutMicro
+          resultVar <- newTVarIO Nothing
+          threadId <- forkIO$
+            case writer name bafa of
+              Left result -> do
+                atomically$ do
+                  writeTVar finishedVar True
+                  writeTVar resultVar$ Just$ Left result
+              Right (sizes, write) -> do
+                write
+                atomically$ do
+                  writeTVar finishedVar True
+                  writeTVar resultVar$ Just$ Right sizes
+
+          mresult <- atomically$ readTVar finishedVar >>= \case
+            False -> retry
+            _ -> readTVar resultVar
+
+          toc <- getPOSIXTime
+
+          when (isNothing mresult)$ killThread threadId
+
+          let (qCount, nodeCount, edgeCount, result) = case mresult of
+                Nothing -> (0, 0, 0, -2)
+                Just (Left result) -> (0, 0, 0, if result then 1 else 0)
+                Just (Right (qCount, nCount, eCount)) -> (qCount, nCount, eCount, -1)
+
+          putStrLn$ intercalate "\t"
+            [ show$ floor$ 1000*(toc - tic)
+            , show qCount
+            , show nodeCount
+            , show edgeCount
+            , show result
+            ]
+
           rec
     )
     ( \(writer:writers, Fix readers) -> Compose (writer, fmap (writers,) readers) )
