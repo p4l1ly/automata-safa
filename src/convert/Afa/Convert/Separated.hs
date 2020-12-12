@@ -62,7 +62,7 @@ separabilize (Or tseps) = do
     (purePs, pureQs, mAnds, mOrs) -> do
       pureP <- nothingSingleMulti Or$ purePs ++ mapMaybe (^._2) mOrs
       pureQ <- nothingSingleMulti Or$ pureQs ++ mapMaybe (^._3) mOrs
-      return (result, MixedOr pureP pureQ mAnds)
+      return (result, MixedOr pureP pureQ (mAnds ++ concatMap (^._4) mOrs))
 separabilize (And tseps) = case partitionBySepData$ NE.toList tseps of
   (purePs, [], [], []) -> (, PureP) <$> nocons (And$ NE.fromList purePs)
   ([], pureQs, [], []) -> (, PureQ) <$> nocons (And$ NE.fromList pureQs)
@@ -92,8 +92,8 @@ separabilize (And tseps) = case partitionBySepData$ NE.toList tseps of
       x:xs -> separabilize (And$ x:|xs) <&> \x -> [[x]]
 
     let action0:actions = starter ++ mOrs'
-    x <- foldM step action0 actions
-    separabilize$ Or$ NE.fromList x
+    explosion <- foldM step action0 actions
+    separabilize$ Or$ NE.fromList explosion
 separabilize LTrue = (, PureQ) <$> nocons LTrue
 
 data SepData t
