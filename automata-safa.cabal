@@ -23,12 +23,12 @@ library
     Afa.Lib
     Afa.Lib.LiftArray
     Afa.Lib.Tree
+    Afa.Ops.Goblin
     -- Afa.Term.Fix
     -- Afa.Term.TreeFBase
     -- Afa.Term.TreeF
     -- Afa.Term.Prism
     -- Afa.Term.Prism.Ops.Simplify
-    -- Afa.Ops.Language
     -- Afa.Ops.Preprocess
   build-depends:
     base ^>=4.13.0.0,
@@ -107,6 +107,7 @@ test-suite automata-safa-test
   main-is:             Main.hs
   other-modules:
     Test.Afa.Simplify
+    Test.Afa.Goblin
     Test.Afa.Convert.Separated
   build-depends:
     base ^>=4.13.0.0,

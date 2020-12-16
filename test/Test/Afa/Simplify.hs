@@ -5,7 +5,7 @@ import Test.HUnit hiding (State)
 import Data.Functor
 import Data.List.NonEmpty (NonEmpty(..))
 
-import Afa
+import Afa hiding (simplifyAll)
 import Afa.Lib
 import Afa.Bool
 import qualified Afa.Term.Bool as BoolT

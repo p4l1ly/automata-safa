@@ -8,16 +8,13 @@
 
 module Afa.Bool where
 
-import GHC.Exts (sortWith, groupWith)
-import Data.List (partition)
-import Data.Either
 import Control.Arrow
 import Data.Traversable
 import Control.Monad.Reader
 import Data.Array
 import Data.Array.ST
 import Data.Array.Unsafe
-import Data.Monoid (Any(..), Sum(..), Endo(..))
+import Data.Monoid (Any(..), Sum(..))
 import Control.RecursionSchemes.Lens
 import Control.Lens
 import Control.Monad.ST
@@ -25,7 +22,7 @@ import Data.Fix
 import Data.Functor.Compose
 import Data.Hashable
 
-import Afa
+import Afa hiding (simplifyAll)
 import qualified Afa.Term.Mix as MTerm
 import qualified Afa.Term.Mix.Simplify as MTerm
 import qualified Afa.Term.Bool as BTerm
@@ -68,52 +65,6 @@ simplifyAll bafa = do
   BoolAfa bterms (Afa mterms states init) = separateStatelessBottoms bafa
   mgs = accumArray (\_ x -> x) mempty (bounds mterms)$ map (, Any True) (elems states)
   (ixMap1, bterms1, mterms1) = simplifyMixAndBoolTs mgs bterms mterms
-
-
--- TODO: This is not implemented in an idyllistic traversal way
-simplifyStatesAndMixTs :: forall p. (Eq p, Hashable p)
-  => Array Int (Either Bool Int)
-  -> Array Int (MTerm.Term p Int Int)
-  -> Array Int Int
-  -> Int
-  -> Either Bool (Array Int (MTerm.Term p Int Int), Array Int Int, Int)
-simplifyStatesAndMixTs ixMap mterms states init = case sequence states1 of
-  Right states' -> Right (mterms, states', init)
-  Left _ -> states1!init >> simplifyStatesAndMixTs ixMap2 mterms2 states2 init2
-  where
-  states1 = fmap (ixMap!) states
-
-  getQs = (`appEndo` []) . getConst .
-    MTerm.modChilds MTerm.pureChildMod{ MTerm.lQ = Const . Endo . (:) }
-  parented = accumArray (\_ _ -> True) False (bounds states)$
-    (init, ()) : map (, ()) (concatMap getQs$ elems mterms)
-  (lefts, rights) = partition (isLeft . snd)$
-    zipWith noparentLeft [0..] (elems states1)
-    where noparentLeft i x = if parented!i then (i, x) else (i, Left False)
-
-  lefts' = lefts <&> \case (i, Left x) -> (i, x)
-  rights' = rights <&> \case (i, Right x) -> (i, x)
-
-  groups = groupWith snd$ sortWith snd rights'  -- PERF: use hashmap? radix grouping?
-  states2 = listArray'$ snd . head <$> groups
-  oldToNew = concat$ zipWith (\i' xs -> map ((, i') . fst) xs) [0..] groups
-
-  qMap :: Array Int (Either Bool Int)
-  qMap = array (bounds states)$ map (second Left) lefts' ++ map (second Right) oldToNew
-
-  init2 = qMap!init & \case Right x -> x
-
-  (ixMap2, listArray' -> mterms2) = runST action where
-    action :: forall s. ST s (Array Int (Either Bool Int), [MTerm.Term p Int Int])
-    action = runHashConsT$
-      fmap (fmap fst) <$> cataScanT' @(LSTArray s) traversed alg mterms
-
-  alg t = case MTerm.modChilds MTerm.pureChildMod{ MTerm.lQ = (qMap!) } t of
-    Left b -> return$ Left b
-    Right t -> case MTerm.simplify (getCompose . unFix . snd) fst t of
-      Left b -> return$ Left b
-      Right (Left it) -> return$ Right it
-      Right (Right t) -> Right . (, Fix$ Compose t) <$> hashCons' (fmap fst t)
 
 
 simplifyMixAndBoolTs :: forall p q. (Eq p, Hashable p, Eq q, Hashable q)

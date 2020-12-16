@@ -162,7 +162,7 @@ simplifyDagUntilFixpoint :: forall p. (Eq p, Hashable p)
 simplifyDagUntilFixpoint gs (ixMap, arr) =
   fromJust$ msum$ zipWith better iters (tail iters)
   where
-  cost ts = (length ts, sum$ fmap length ts)
+  cost ts = (rangeSize$ bounds ts, sum$ fmap length ts)
   iters = iterate
     ((cost . snd &&& id) . simplifyDag gs . snd)
     (cost arr, (ixMap, arr))

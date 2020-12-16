@@ -6,6 +6,7 @@ import Test.HUnit
 
 import qualified Test.Afa.Simplify
 import qualified Test.Afa.Convert.Separated
+import qualified Test.Afa.Goblin
 
 check result = do
   guard$ failures result == 0
@@ -14,5 +15,5 @@ check result = do
 main = (check =<<)$ runTestTT$ TestList$ concat
   [ Test.Afa.Simplify.tests
   , Test.Afa.Convert.Separated.tests
-  , []
+  , Test.Afa.Goblin.tests
   ]
