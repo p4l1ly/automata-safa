@@ -3,28 +3,38 @@
 {-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE TupleSections #-}
-{-# LANGUAGE ViewPatterns #-}
 {-# LANGUAGE RankNTypes #-}
+{-# LANGUAGE ViewPatterns #-}
 
 module Afa.Ops.QMinCut where
 
-import Control.Monad
+import Debug.Trace
+
 import Control.Monad.Trans
-import Data.Bifunctor
+import Control.Monad.Trans.Except
+import Data.Monoid (Any(..), Endo(..))
+import Control.Lens
 import Data.Array.Unsafe
 import Data.Foldable
-import Control.Monad.Trans.Except
 import Control.Monad.ST
 import Data.Array
 import Data.Array.ST
 import Control.RecursionSchemes.Lens
-import Data.Monoid
 
 import Afa.Lib.LiftArray
 
-data Position = Source | Sink | Middle
+data Dfs = Unreachable | Recur | Reachable deriving Show
+instance Semigroup Dfs where
+  Unreachable <> x = x
+  _ <> _ = Reachable
 
-data InPath
+trueIndices :: [Bool] -> [Int]
+trueIndices xs = [i | (i, True) <- zip [0..] xs]
+
+isReachable Unreachable = False
+isReachable _ = True
+
+data Path
   = Unvisited
   | Visited (Endo [Int])
   | Blind
@@ -33,87 +43,57 @@ showInPath Unvisited = "U"
 showInPath (Visited pp) = "V" ++ show (pp `appEndo` [])
 showInPath Blind = "B"
 
-instance Semigroup InPath where
+instance Semigroup Path where
   Blind <> _ = Blind
   Visited _ <> _ = Blind
   _ <> x = x
 
-maxFlow :: Array Int (Maybe ([Int], [Int])) -> [Int] -> Array Int Bool
-maxFlow nodes sources = runST action 
+paths :: Foldable f => Array Int (f Int) -> [Int] -> Array Int Bool
+paths nodes sources = runST action
   where
   action :: forall s. ST s (Array Int Bool)
   action = do
     blockersM <- newArray @(STArray s) (bounds nodes) False
     let getPath = do
           blockers <- unsafeFreeze blockersM
-          passArr <- newArray @(STArray s) (bounds nodes) (Unvisited, Unvisited)
-          for_ sources$ \src -> writeArray passArr src (Visited$ Endo id, Unvisited)
-          runExceptT$ for_ sources$ dfs (traversal blockers passArr)$ LiftArray passArr
+          arr <- newArray @(STArray s) (bounds nodes) Unvisited
+          for_ sources$ \src -> writeArray arr src$ Visited$ Endo id
+          runExceptT$ for_ sources$
+            dfs (traversal blockers arr)$ LiftArray arr
         subtractPath ixs = for_ ixs$ \ix -> writeArray blockersM ix True
         rec = getPath >>= \case Left p -> subtractPath p >> rec; _ -> return ()
     rec
     unsafeFreeze blockersM
 
-  traversal blockers passArr rec (v, i) = do
-    lift$ writeArray passArr i$ bimap visitedToBlind visitedToBlind v
-    traversal1 snd snd first fst True
-    void$ traversal1 fst fst second snd False
-    where
-    traversal1 getMine getMine2 modOther getOther downwards = case getMine v of
-      Blind -> return ()
-      Visited pp -> add pp
-      Unvisited
-        | blockers!i && downwards -> return ()
-        | otherwise -> add$ case getOther v of
-            Visited pp -> if blockers!i then pp else pp <> Endo (i:)
-      where
-      add pp = do
-        case nodes!i of
-          Nothing -> throwE$ pp `appEndo` []
-          Just (getMine2 -> neighbours) -> for_ neighbours (rec . (childG,))
-        where childG = modOther (const$ Visited pp) (Unvisited, Unvisited)
+  traversal blockers arr rec = \case
+    (Visited pp, i)
+      | blockers!i -> return ()
+      | null node -> throwE$ pp `appEndo` [i]
+      | otherwise -> do
+          lift$ writeArray arr i Blind
+          for_ node$ rec . (Visited$ pp <> Endo (i:),)
+      where node = nodes!i
+    _ -> return ()
 
-    visitedToBlind (Visited _) = Blind
-    visitedToBlind x = if blockers!i then x else Blind
-
-trueIndices :: [Bool] -> [Int]
-trueIndices xs = [i | (i, True) <- zip [0..] xs]
-
-data Reachable = Unreachable | Recur | Reachable deriving Show
-instance Semigroup Reachable where
-  Unreachable <> x = x
-  _ <> _ = Reachable
-
-isReachable Unreachable = False
-isReachable _ = True
-
-minCut :: Array Int (Maybe ([Int], [Int])) -> [Int] -> [Int]
+minCut :: Traversable f => Array Int (f Int) -> [Int] -> [Int]
 minCut nodes sources = runST action where
   action :: forall s. ST s [Int]
   action = do
-    reachableM <- newArray @(STArray s) (bounds nodes) (Unreachable, Unreachable)
-    for_ sources$ \src -> writeArray reachableM src (Recur, Unreachable)
-    for_ sources$ dfs (traversal reachableM) reachableM
-    reachable <- unsafeFreeze reachableM
-    let isBorder (Reachable, Unreachable) = True
-        isBorder _ = False
-    return$ trueIndices$ map isBorder$ elems reachable
+    let (traceShowId -> marks) = paths nodes sources
+    let (traceShowId -> marks10) = ixedNodes & cataScan (_2 . traversed) %~ \(i, fb) ->
+          let undermined = all snd fb && not (null fb)
+              mark = marks!i
+          in (not undermined, mark || undermined)
+    let marks1 = fmap fst marks10
+    let setter rec = \case
+          (Any False, _) -> pure False
+          (Any True, i) -> if marks1!i
+            then pure True
+            else True <$ for_ (nodes!i) (rec . (Any True,))
 
-  blockers = maxFlow nodes sources
-  traversal arr rec (x, i) = do
-    writeArray arr i$ bimap recurToReachable recurToReachable x
-    traversal1 snd snd first True
-    void$ traversal1 fst fst second False
-    where
-    traversal1 getMine getMine2 modOther downwards = case getMine x of
-      Reachable -> return ()
-      Unreachable | blockers!i && downwards -> return ()
-      _ -> add
-      where
-      add = case nodes!i of
-        Nothing -> return ()
-        Just (getMine2 -> neighbours) -> for_ neighbours (rec . (childG,))
-        where childG = modOther (const Recur) (Unreachable, Unreachable)
+    marks2Init :: STArray s Int Any <- unsafeThaw$
+      accumArray (\_ _ -> Any True) (Any False) (bounds nodes)$ map (, ()) sources
+    marks2M :: STArray s Int Bool <- marks2Init & anaScanT2 setter return
+    trueIndices . elems <$> unsafeFreeze marks2M
 
-    recurToReachable Unreachable | blockers!i = Unreachable
-    recurToReachable _ = Reachable
+  ixedNodes = listArray (bounds nodes)$ zip [0..] (elems nodes)
