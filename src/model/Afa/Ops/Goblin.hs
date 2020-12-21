@@ -1,4 +1,3 @@
-{-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE ViewPatterns #-}
 {-# LANGUAGE TupleSections #-}
 {-# LANGUAGE NamedFieldPuns #-}
@@ -7,8 +6,6 @@
 {-# LANGUAGE PartialTypeSignatures #-}
 
 module Afa.Ops.Goblin where
-
-import Debug.Trace
 
 import Data.Functor
 import Control.Monad
@@ -50,7 +47,7 @@ split'
   -> NoConsT (Term Void Int (Int, Bool))
        (NoConsT (Term p (Int, Bool) Int) m)
        (Maybe (Int, Bool), Int)
-split' x = case traceShow (x, split x)$ split x of
+split' x = case split x of
   Left (State ((, False) -> q), []) -> (Just q,) <$> lift (nocons$ State q)
   Left (State _, _) -> error "state with adep arguments"
   Left (tq, []) -> do

@@ -14,8 +14,8 @@ check result = do
   guard$ errors result == 0
 
 main = (check =<<)$ runTestTT$ TestList$ concat
-  -- [ Test.Afa.Simplify.tests
-  -- , Test.Afa.Convert.Separated.tests
-  -- , Test.Afa.Goblin.tests
-  [ Test.Afa.QMinCut.tests
+  [ Test.Afa.Simplify.tests
+  , Test.Afa.Convert.Separated.tests
+  , Test.Afa.Goblin.tests
+  , Test.Afa.QMinCut.tests
   ]

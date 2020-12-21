@@ -22,6 +22,7 @@ library
     Afa.Bool
     Afa.Lib
     Afa.Lib.LiftArray
+    Afa.Lib.QMinCut
     Afa.Lib.Tree
     Afa.Ops.Goblin
     Afa.Ops.QMinCut

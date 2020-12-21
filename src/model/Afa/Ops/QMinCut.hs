@@ -1,141 +1,63 @@
-{-# LANGUAGE ScopedTypeVariables #-}
-{-# LANGUAGE TypeApplications #-}
 {-# LANGUAGE LambdaCase #-}
-{-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE TypeApplications #-}
 {-# LANGUAGE TupleSections #-}
+{-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE ViewPatterns #-}
 
 module Afa.Ops.QMinCut where
 
-import Data.List
-import Data.Maybe
-import Control.Monad
 import Control.Monad.Trans
-import Control.Monad.Trans.Except
-import Data.Monoid (Any(..), Endo(..))
+import Data.Maybe
 import Control.Lens
-import Data.Array.Unsafe
-import Data.Foldable
 import Control.Monad.ST
+import Data.List
 import Data.Array
-import Data.Array.ST
 import Control.RecursionSchemes.Lens
 
+import Afa
+import Afa.Term.Mix
+import Afa.Lib.QMinCut
+import Afa.Lib
 import Afa.Lib.LiftArray
 
-data Dfs = Unreachable | Recur | Reachable deriving Show
-instance Semigroup Dfs where
-  Unreachable <> x = x
-  _ <> _ = Reachable
-
-trueIndices :: [Bool] -> [Int]
-trueIndices xs = [i | (i, True) <- zip [0..] xs]
-
-isReachable Unreachable = False
-isReachable _ = True
-
-data Path
-  = Unvisited
-  | Visited (Endo [Int])
-  | Blind
-
-showInPath Unvisited = "U"
-showInPath (Visited pp) = "V" ++ show (pp `appEndo` [])
-showInPath Blind = "B"
-
-instance Semigroup Path where
-  Blind <> _ = Blind
-  Visited _ <> _ = Blind
-  _ <> x = x
-
-
-maxFlow :: Foldable f => Array Int (f Int) -> [Int] -> [Int] -> Array Int Bool
-maxFlow nodes sources sinks = runST action
+qminCut :: forall p. AfaUnswallowed p -> AfaUnswallowed p
+qminCut (Afa terms states init) = Afa terms' states'' init''
   where
-  action :: forall s. ST s (Array Int Bool)
-  action = do
-    residualGraphM <- newArray @(STArray s) (bounds nodes) Nothing
-    let getPath = do
-          residualGraph <- unsafeFreeze residualGraphM
-          arr <- newArray @(STArray s) (bounds nodes) Unvisited
-          for_ sources$ \src -> writeArray arr src$ Visited$ Endo id
-          runExceptT$ for_ sources$
-            dfs (traversal residualGraph arr)$ LiftArray arr
-        subtractPath ixs = do
-          writeArray residualGraphM (head ixs)$ Just Nothing
-          for_ (zip (tail ixs) ixs)$ \(next, this) ->
-            if next < this
-            then writeArray residualGraphM next (Just$ Just this)
-            else writeArray residualGraphM this Nothing
-        rec = getPath >>= \case Left p -> subtractPath p >> rec; _ -> return ()
-    rec
-    fmap isJust <$> unsafeFreeze residualGraphM
+  sinks = map fst$ ($ assocs terms)$ filter$ \(_, x) -> case x of
+    Predicate _ -> True
+    State _ -> True
+    LTrue -> True
+    _ -> False
 
-  traversal residualGraph arr rec = \case
-    (Visited pp, i) -> do
-      lift$ writeArray arr i Blind
-      case residualGraph!i of
-        Just (Just back) -> for_ (nodes!back) (recBackDown back) >> rec' back
-        Just _ -> return ()
-        _ | sinkFlags!i -> throwE$ pp `appEndo` [i]
-          | otherwise -> for_ (nodes!i) recDown
-      where
-      rec' = rec . (Visited$ pp <> Endo (i:),)
-      recDown j = unless (sourceFlags!j)$ rec' j
-      recBackDown back j = unless (sourceFlags!j)$ rec'' j
-        where rec'' = rec . (Visited$ pp <> Endo (\xs -> i:back:xs),)
-    _ -> return ()
+  sources = map head$ group$ sort$ elems states
 
-  sinkFlags = accumArray (\_ _ -> True) False (bounds nodes)$ map (, ()) sinks
-  sourceFlags = accumArray (\_ _ -> True) False (bounds nodes)$ map (, ()) sources
+  states' = minCut terms sinks sources
+  (init'', states'') = case terms'!init' of
+    State q -> (q, listArray' states')
+    _ -> let qs = listArray'$ init' : states' in (snd$ bounds qs, qs)
 
+  (init', listArray' -> terms') = runST topToBottom
 
-minCut :: Traversable f => Array Int (f Int) -> [Int] -> [Int] -> [Int]
-minCut nodes sources sinks = runST action where
-  action :: forall s. ST s [Int]
-  action = do
-    let marks = maxFlow nodes sources sinks
-    let marks1 = ixedNodes & cataScan (_2 . traversed) %~ \(i, fb) ->
-          marks!i || or fb && not (sinkFlags!i)
+  topToBottom :: forall s. ST s (Int, [Term p Int Int])
+  topToBottom = runNoConsT$ do
+    (ixMap, listArray' -> below) <- runNoConsT$ partitionByCut terms states'
+    ($ below)$ cataScanT' @(LSTArray s) traversed$ \case
+      State q -> return$ fromJust$ snd$ ixMap!(states!q)
+      x -> nocons x
+    return$ fromJust$ snd$ ixMap!(states!init)
 
-    let setter rec = \(g, i) -> let overmined = marks!i || getAny g in
-          overmined <$ for_ (nodes!i) (rec . (Any overmined,))
-    marks2Init :: STArray s Int Any <- newArray (bounds nodes) (Any False)
-    marks2M :: STArray s Int Bool <- marks2Init & anaScanT2 setter return
-    marks2 <- unsafeFreeze marks2M
-
-    if all (marks1!) sinks  -- topmost min cut: all (marks2!) sources
-      then return sinks  -- topmost min cut: return sources
-      else do
-        let newSources = map head$ group$ sort
-              [ j
-              | (i, node) <- elems ixedNodes
-              , area!i && not (marks2!i)
-              , j <- toList node
-              , marks2!j && not (sourceFlags!j)
-              ]
-        let newSinks = map head$ group$ sort
-              [ i
-              | (i, node) <- elems ixedNodes
-              , marks1!i && not (sinkFlags!i)
-              , any (\j -> area!j && not (marks1!j)) node
-              ]
-        let sources' = filter (marks2!) sources ++ newSources
-        let sinks' = filter (marks1!) sinks ++ newSinks
-        return$ minCut nodes sources' sinks'
-
-  ixedNodes = listArray (bounds nodes)$ zip [0..] (elems nodes)
-
-  sinkFlags = accumArray (\_ _ -> True) False (bounds nodes)$ map (, ()) sinks
-  sourceFlags = accumArray (\_ _ -> True) False (bounds nodes)$ map (, ()) sources
-
-  aboveSinks = ixedNodes & cataScan (_2 . traversed) %~ \(i, fb) -> sinkFlags!i || or fb
-  underSources = runST action where
-    action :: forall s. ST s (Array Int Bool)
-    action = do
-      let setter rec = \(g, i) -> let overmined = sourceFlags!i || getAny g in
-            overmined <$ for_ (nodes!i) (rec . (Any overmined,))
-      marks2Init :: STArray s Int Any <- newArray (bounds nodes) (Any False)
-      marks2M :: STArray s Int Bool <- marks2Init & anaScanT2 setter return
-      unsafeFreeze marks2M
-
-  area = listArray (bounds nodes)$ zipWith (&&) (elems aboveSinks) (elems underSources)
+partitionByCut :: forall s p.
+     Array Int (Term p Int Int)
+  -> [Int]
+  -> NoConsT (Term p Int Int) (NoConsT (Term p Int Int) (ST s))
+       (Array Int (Int, Maybe Int))
+partitionByCut nodes cut = ($ cutFlaggedNodes)$
+  cataScanT' @(LLSTArray s) (_2 . traversed)$ \(cut, x) -> do
+    belowIx <- nocons (fmap fst x)
+    (belowIx,) <$> case cut of
+      Just q -> fmap Just$ lift$ nocons$ State q
+      _ | null x || any (isNothing . snd) x -> return Nothing
+        | otherwise -> fmap Just$ lift$ nocons$ fmap (fromJust . snd) x
+  where
+  tagCut (Nothing, x) q = (Just q, x)
+  cutFlaggedNodes = accum tagCut (fmap (Nothing,) nodes)$ zip cut [0..]
