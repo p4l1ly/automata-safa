@@ -21,30 +21,31 @@ import Afa.Lib
 import Afa.Lib.LiftArray
 
 qminCut :: forall p. AfaUnswallowed p -> AfaUnswallowed p
-qminCut (Afa terms states init) = Afa terms' states'' init''
+qminCut (Afa terms states init) = Afa terms' states''' init''
   where
   sinks = map fst$ ($ assocs terms)$ filter$ \(_, x) -> case x of
     Predicate _ -> True
     State _ -> True
     LTrue -> True
     _ -> False
-
   sources = map head$ group$ sort$ elems states
+  states' = minCut terms sources sinks
 
-  states' = minCut terms sinks sources
-  (init'', states'') = case terms'!init' of
-    State q -> (q, listArray' states')
-    _ -> let qs = listArray'$ init' : states' in (snd$ bounds qs, qs)
+  ((init', states''), listArray' -> terms') = runST topToBottom
+  (init'', states''') = case terms'!init' of
+    State q -> (q, listArray' states'')
+    _ -> let qs = listArray'$ states'' ++ [init'] in (snd$ bounds qs, qs)
 
-  (init', listArray' -> terms') = runST topToBottom
-
-  topToBottom :: forall s. ST s (Int, [Term p Int Int])
+  topToBottom :: forall s. ST s ((Int, [Int]), [Term p Int Int])
   topToBottom = runNoConsT$ do
     (ixMap, listArray' -> below) <- runNoConsT$ partitionByCut terms states'
-    ($ below)$ cataScanT' @(LSTArray s) traversed$ \case
+    ixMapNewTop <- ($ below)$ cataScanT' @(LSTArray s) traversed$ \case
       State q -> return$ fromJust$ snd$ ixMap!(states!q)
       x -> nocons x
-    return$ fromJust$ snd$ ixMap!(states!init)
+    return
+      ( fromJust$ snd$ ixMap!(states!init)
+      , map (ixMapNewTop!) states'
+      )
 
 partitionByCut :: forall s p.
      Array Int (Term p Int Int)

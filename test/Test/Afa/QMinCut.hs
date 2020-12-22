@@ -4,13 +4,16 @@ import Test.HUnit hiding (State)
 
 import Data.Array
 import Data.List
+import Data.List.NonEmpty (NonEmpty(..))
 
+import Afa
+import Afa.Term.Mix
 import Afa.Lib
 import Afa.Lib.QMinCut
+import Afa.Ops.QMinCut
 
 tests =
-  [ "Afa.QMinCut" ~: do
-      putStrLn ""
+  [ "Lib.QMinCut" ~: do
       assertEqual "dag0" [3, 4]$ sort$ minCut dag0 [7, 8, 9] [0, 1, 2]
       assertEqual "dag1" [3, 4]$ sort$ minCut dag1 [7, 8, 9] [0, 1, 2]
       assertEqual "dag2" [0, 1, 2]$ sort$ minCut dag2 [7, 8, 9] [0, 1, 2]
@@ -19,7 +22,34 @@ tests =
       assertEqual "dag5" [0, 4]$ sort$ minCut dag5 [5, 6] [0, 1, 2]
       assertEqual "dag6" [0, 2, 4]$ sort$ minCut dag6 [6, 7, 8] [0, 1, 2, 3]
       assertEqual "dag7" [4, 9]$ sort$ minCut dag7 [8, 9] [0, 1, 2, 3]
+  , "Afa.QMinCut" ~: do
+      putStrLn ""
+      print$ qminCut afa0
   ]
+
+afa0 :: AfaUnswallowed Int
+afa0 = Afa
+  { terms = listArray'$ reverse
+      [ {- 15 -} And$ 13 :| [7]
+      , {- 14 -} And$ 12 :| [13]
+      , {- 13 -} And$ 10 :| [7]
+      , {- 12 -} Or$ 1 :| [10]
+      , {- 11 -} And$ 1 :| [10]
+      , {- 10 -} And$ 8 :| [9]
+      , {- 9 -} Or$ 4 :| [6, 5]
+      , {- 8 -} Or$ 0 :| [2, 3, 4]
+      , {- 7 -} Predicate 1
+      , {- 6 -} Predicate 0
+      , {- 5 -} State 5
+      , {- 4 -} State 4
+      , {- 3 -} State 3
+      , {- 2 -} State 2
+      , {- 1 -} State 1
+      , {- 0 -} State 0
+      ]
+  , states = listArray' [11, 12, 13, 7, 14, 15]
+  , initState = 4
+  }
 
 dag0 :: Array Int [Int]
 dag0 = listArray'$ reverse
