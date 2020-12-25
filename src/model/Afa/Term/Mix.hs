@@ -60,7 +60,7 @@ data ChildMod p q t p' q' t' f = ChildMod
   , lT :: t -> f t'
   }
 
-pureChildMod :: Applicative f => ChildMod p q t p q t f
+pureChildMod :: forall f p q t p' q' t'. Applicative f => ChildMod p q t p q t f
 pureChildMod = ChildMod{ lP = pure, lQ = pure, lT = pure }
 
 childModToPlate :: Applicative f => ChildMod p q t p' q' t' f -> Plate p q t p' q' t' f
@@ -71,6 +71,6 @@ childModToPlate ChildMod{lP, lQ, lT} = plateBase
   , pOr = fmap Or . traverse lT
   }
 
-modChilds :: Applicative f
+modChilds :: forall f p q t p' q' t'. Applicative f
   => ChildMod p q t p' q' t' f -> Term p q t -> f (Term p' q' t')
 modChilds = applyPlate . childModToPlate

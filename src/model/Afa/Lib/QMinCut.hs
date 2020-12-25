@@ -55,11 +55,10 @@ maxFlow nodes sources sinks = runST action
   action = do
     residualGraphM <- newArray @(STArray s) (bounds nodes) Nothing
     let getPath = do
-          residualGraph <- unsafeFreeze residualGraphM
           arr <- newArray @(STArray s) (bounds nodes) Unvisited
           for_ sources$ \src -> writeArray arr src$ Visited$ Endo id
           runExceptT$ for_ sources$
-            dfs (traversal residualGraph arr)$ LiftArray arr
+            dfs (traversal residualGraphM arr)$ LiftArray arr
         subtractPath ixs = do
           writeArray residualGraphM (head ixs)$ Just Nothing
           for_ (zip (tail ixs) ixs)$ \(next, this) ->
@@ -73,10 +72,10 @@ maxFlow nodes sources sinks = runST action
     rec
     fmap isJust <$> unsafeFreeze residualGraphM
 
-  traversal residualGraph arr rec = \case
+  traversal residualGraphM arr rec = \case
     (Visited pp, i) -> do
       lift$ writeArray arr i Blind
-      case residualGraph!i of
+      lift (readArray residualGraphM i) >>= \case
         Just (Just back) -> for_ (nodes!back) (recBackDown back) >> rec' back
         Just _ -> return ()
         _ | sinkFlags!i -> throwE$ pp `appEndo` [i]

@@ -28,3 +28,4 @@ instance (MonadTrans mt, Monad (mt m), MArray a e m)
 
 type LSTArray s = LiftArray (STArray s)
 type LLSTArray s = LiftArray (LSTArray s)
+type LLLSTArray s = LiftArray (LLSTArray s)

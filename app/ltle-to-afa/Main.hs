@@ -29,7 +29,8 @@ import qualified Afa.Convert.Separated as Sep
 import qualified Afa.Convert.Separated.Model as Sep
 import Afa.Convert.CnfAfa (tseytin')
 import Afa.Bool
-import Afa
+import Afa hiding (simplifyAll)
+import Afa.Ops.Compound
 import Data.Time.Clock.POSIX (getPOSIXTime)
 import System.Directory
 import qualified Afa.Term.Mix as MTerm
@@ -116,6 +117,9 @@ optParser = Opts
       (break (== ':') -> ("afaBasicSimp", ':':outdir)) ->
         Right$ repeat$ \i bafa ->
           simplifyAll bafa <&> afaWriter outdir i
+      (break (== ':') -> ("afaSimpGoblinMincut", ':':outdir)) ->
+        Right$ repeat$ \i bafa ->
+          simpGoblinMincut bafa <&> afaWriter outdir i
       (break (== ':') -> ("cnfafa", ':':outdir)) ->
         Right$ repeat$ \i bafa ->
           Right$ (afaCosts bafa,)$
@@ -139,7 +143,7 @@ optParser = Opts
         \{afa,afaBasicSimp,cnfafa,sepafaExploding,sepafaDelaying}:<path>"
     )
 
-timeoutMicro = 10000000
+timeoutMicro = 100000000
 
 main :: IO ()
 main = do
