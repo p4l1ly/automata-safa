@@ -8,6 +8,8 @@
 
 module Afa.Bool where
 
+import Debug.Trace
+
 import Control.Arrow
 import Data.Traversable
 import Control.Monad.Reader
@@ -53,7 +55,7 @@ reorderStates' :: BoolAfaUnswallowed p -> BoolAfaUnswallowed p
 reorderStates' bafa = bafa{afa = reorderStates$ afa bafa}
 
 
-simplifyAll :: forall p. (Eq p, Hashable p)
+simplifyAll :: forall p. (Eq p, Hashable p, Show p)
   => BoolAfaUnswallowed p -> Either Bool (BoolAfaUnswallowed p)
 simplifyAll bafa = do
   (mterms2, states2, init2) <- simplifyStatesAndMixTs ixMap1 mterms1 states init

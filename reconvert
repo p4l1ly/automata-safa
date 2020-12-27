@@ -1,22 +1,21 @@
 #! /bin/zsh
 
-
-# afa0 afaBasic afaBasicAgain afaCnf sepExploding sepDelaying
 for dir in \
+  afa0 afaBasic afaBasicAgain afaCnf sepExploding sepDelaying \
   afaSimpGoblinMincut afaCnf2 sepExploding2 sepDelaying2;
 do
   rm $1/$dir/*
   mkdir -p $1/$dir/*
 done
 
-# cat $1/ltls| cabal exec ltle-to-afa -- -i ltl -o afa:$1/afa0 > $1/afa0.csv
-# cabal exec ltle-to-afa -- -i afa:$1/afa0 -o afaBasicSimp:$1/afaBasic > $1/afaBasic.csv
-# cabal exec ltle-to-afa -- -i afa:$1/afaBasic -o afaBasicSimp:$1/afaBasicAgain > $1/afaBasicAgain.csv
-# cabal exec ltle-to-afa -- -i afa:$1/afaBasic -o cnfafa:$1/afaCnf > $1/afaCnf.csv
-# cabal exec ltle-to-afa -- -i afa:$1/afaBasic -o sepafaExploding:$1/sepExploding > $1/sepExploding.csv
-# cabal exec ltle-to-afa -- -i afa:$1/afaBasic -o sepafaDelaying:$1/sepDelaying > $1/sepDelaying.csv
+cat $1/ltls| cabal exec ltle-to-afa -- -i ltl -o afa:$1/afa0 > $1/afa0.csv
+cabal exec ltle-to-afa -- -i afa:$1/afa0 -o afaBasicSimp:$1/afaBasic > $1/afaBasic.csv
+cabal exec ltle-to-afa -- -i afa:$1/afaBasic -o afaBasicSimp:$1/afaBasicAgain > $1/afaBasicAgain.csv
+cabal exec ltle-to-afa -- -i afa:$1/afaBasic -o cnfafa:$1/afaCnf > $1/afaCnf.csv
+cabal exec ltle-to-afa -- -i afa:$1/afaBasic -o sepafaExploding:$1/sepExploding > $1/sepExploding.csv
+cabal exec ltle-to-afa -- -i afa:$1/afaBasic -o sepafaDelaying:$1/sepDelaying > $1/sepDelaying.csv
 
 cabal exec ltle-to-afa -- -i afa:$1/afaBasic -o afaSimpGoblinMincut:$1/afaSimpGoblinMincut > $1/afaSimpGoblinMincut.csv
-# cabal exec ltle-to-afa -- -i afa:$1/afaSimpGoblinMincut -o cnfafa:$1/afaCnf2 > $1/afaCnf2.csv
-# cabal exec ltle-to-afa -- -i afa:$1/afaSimpGoblinMincut -o sepafaExploding:$1/sepExploding2 > $1/sepExploding2.csv
-# cabal exec ltle-to-afa -- -i afa:$1/afaSimpGoblinMincut -o sepafaDelaying:$1/sepDelaying2 > $1/sepDelaying2.csv
+cabal exec ltle-to-afa -- -i afa:$1/afaSimpGoblinMincut -o cnfafa:$1/afaCnf2 > $1/afaCnf2.csv
+cabal exec ltle-to-afa -- -i afa:$1/afaSimpGoblinMincut -o sepafaExploding:$1/sepExploding2 > $1/sepExploding2.csv
+cabal exec ltle-to-afa -- -i afa:$1/afaSimpGoblinMincut -o sepafaDelaying:$1/sepDelaying2 > $1/sepDelaying2.csv

@@ -1,10 +1,9 @@
-{-# LANGUAGE ViewPatterns #-}
 {-# LANGUAGE TupleSections #-}
-{-# LANGUAGE NamedFieldPuns #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TypeApplications #-}
 {-# LANGUAGE PartialTypeSignatures #-}
 {-# LANGUAGE LambdaCase #-}
+{-# LANGUAGE ViewPatterns #-}
 
 module Afa.Ops.Goblin where
 
@@ -31,97 +30,30 @@ import Afa
 import Afa.Term.Mix
 import Afa.Term.Mix.Simplify (deUnary)
 
--- split
---   :: Term p q (Maybe tq, ta)
---   -> Either (Term Void q tq, [ta]) (Term p tq ta)
--- split LTrue = Left (LTrue, [])
--- split (State q) = Left (State q, [])
--- split (Predicate p) = Right (Predicate p)
--- split (Or ts) = case sequence tqs of
---   Just ts' -> Left (Or ts', [])
---   _ -> Right$ Or tas
---   where (tqs, tas) = NE.unzip ts
--- split (And ts) = case mapM fst ts of
---   Just ts' -> Left (And ts', [])
---   _ | null tqs -> Right$ And$ NE.map snd ts
---     | otherwise -> Left (And$ NE.fromList tqs, tas)
---   where
---   (map (fromJust . fst) -> tqs, map snd -> tas) = NE.partition (isJust . fst) ts
--- 
--- split'
---   :: (Show p, Monad m)
---   => (Bool, Term p Int (Maybe (Int, Bool), Int))
---   -> NoConsT (Term Void Int (Int, Bool))
---        (NoConsT (Term p (Int, Bool) Int) m)
---        (Maybe (Int, Bool), Int)
--- split' (False, Or xs) = (Nothing,) <$> lift (nocons$ Or$ fmap snd xs)
--- split' (_, x) =
---   case split x of
---     Left (State ((, False) -> q), []) -> (Just q,) <$> lift (nocons$ State q)
---     Left (State _, _) -> error "state with adep arguments"
---     Left (tq, tas) -> do
---       q <- case deUnary tq of
---         Left q -> return q
---         Right tq -> (, True) <$> nocons tq
---       a <- lift$ nocons$ State q
---       if null tas
---         then return (Just q, a)
---         else (Just q,) <$> lift (nocons$ And$ a :| tas)
---     Right ta -> (Nothing,) <$> lift (nocons ta)
--- 
--- isGate (Or _) = True
--- isGate (And _) = True
--- isGate _ = False
--- 
--- -- FIXME!!!! resolve cycles, e.g. Q0 -> q0 & q1
--- goblin :: forall p. Show p => AfaUnswallowed p -> Maybe (AfaUnswallowed p)
--- goblin afa@Afa{terms, states} = guard (any isGate qdep) $> afa
---   { terms = listArray'$ adep' ++ qdep'
---   , states = listArray'$ elems states' ++ zipWith const [adepL ..] qdep
---   }
---   where
---   purities = terms & cataScan traversed %~ \case
---     Predicate _ -> False
---     x -> and x
--- 
---   termsWithPurities = listArray (bounds terms)$ zip (elems purities) (elems terms)
--- 
---   ((ixMap, traceShowId -> qdep), adep) = runST action where
---     action :: forall s. ST s
---       ( (Array Int (Maybe (Int, Bool), Int)
---         , [Term Void Int (Int, Bool)]
---         )
---       , [Term p (Int, Bool) Int]
---       )
---     action = runNoConsT$ runNoConsT$
---       cataScanT' @(LLSTArray s) (_2 . traversed) split' termsWithPurities
--- 
---   stateL = rangeSize$ bounds states
---   adepL = length adep
---   adep' = adep <&> runIdentity . modChilds pureChildMod {lQ = shiftState}
---   qdep' = qdep <&> runIdentity . modChilds pureChildMod {lP = absurd, lT = shiftQDep}
--- 
---   shiftState (i, new) = Identity$ if new then i + stateL else i
---   shiftQDep (i, new) = Identity$ if new then i + adepL else snd$ ixMap!(states!i)
--- 
---   states' = fmap (snd . (ixMap!)) states
--- 
--- goblinUntilFixpoint :: forall p. Show p => AfaUnswallowed p -> AfaUnswallowed p
--- goblinUntilFixpoint (traceShowId -> afa) = maybe afa goblinUntilFixpoint$ goblin afa
-
+goblinUntilFixpoint :: forall p. Show p => AfaUnswallowed p -> AfaUnswallowed p
+goblinUntilFixpoint afa = afa'{terms = unmarked} where
+  marked = markBack afa
+  closure afa = maybe afa closure$ goblin2 afa
+  afa' = closure$ afa{terms = marked}
+  unmarked = terms afa' <&> runIdentity . modChilds pureChildMod
+    { lQ = return . snd, lT = return . snd }
 
 data BackEdgeMark p
   = Unvisited
   | Recur
   | Recurring
   | Evaluated (Term p (Bool, Int) (Bool, Int))
+  deriving Show
 
 instance Semigroup (BackEdgeMark p) where
   Unvisited <> x = x
   x <> _ = x
 
-markBack :: forall p. AfaUnswallowed p -> Array Int (Term p (Bool, Int) (Bool, Int))
-markBack (Afa terms states init) = runST getMarks <&> \case Evaluated x -> x
+markBack :: forall p. Show p => AfaUnswallowed p
+  -> Array Int (Term p (Bool, Int) (Bool, Int))
+markBack afa@(Afa terms states init) = runST getMarks &
+  \arr -> listArray (bounds arr) (zip [0..] (elems arr)) <&>
+    \case (_, Evaluated x) -> x; (i, _) -> error$ show (i, afa)
   where
   getMarks :: forall s. ST s (Array Int (BackEdgeMark p))
   getMarks = do
@@ -157,43 +89,44 @@ newQDep = lift . nocons
 
 qac
   :: Monad m
-  => Term p (Bool, Int) (Bool, (Maybe (Bool, Either (Bool, Int) Int, Int), Maybe Int, Int))
+  => Term p (Bool, Int)
+       (Bool, (Maybe (Bool, Either (Bool, Int) Int, Int, Bool), Maybe Int, Int))
   -> NoConsT Int
        ( NoConsT (Term Void Void (Bool, Either (Bool, Int) Int))
            (NoConsT (Term p (Bool, Int) (Bool, Int)) m)
        )
-       (Maybe (Bool, Either (Bool, Int) Int, Int), Maybe Int, Int)
+       (Maybe (Bool, Either (Bool, Int) Int, Int, Bool), Maybe Int, Int)
 qac LTrue = do
   c <- newCombined LTrue
   q <- newQDep LTrue
-  return (Just (False, Right q, c), Nothing, c)
+  return (Just (False, Right q, c, False), Nothing, c)
 qac (Predicate p) = do
   c <- newCombined$ Predicate p
   return (Nothing, Just c, c)
 qac (State bq@(back, q)) = do
   c <- newCombined$ State bq
-  return (Just (back, Left (back, q), c), Nothing, c)
+  return (Just (back, Left (back, q), c, False), Nothing, c)
 qac (Or ts)
   | not$ null as = do
       c <- newCombined$ Or$ fmap (\(b, (_, _, t)) -> (b, t)) ts
       return (Nothing, Just c, c)
-  | all fst qs = do
+  | back = do
       c <- newCombined$ Or$ fmap (\(b, (_, _, t)) -> (b, t)) ts
       q <- newQDep$ Or$ NE.fromList qs0
-      return (Just (True, Right q, c), Nothing, c)
+      return (Just (True, Right q, c, False), Nothing, c)
   | otherwise = do
       q <- newQDep$ Or$ NE.fromList qs0
       s <- newState q
       c <- newCombined$ State (False, s)
-      return (Just (False, Right q, c), Nothing, c)
+      return (Just (False, Right q, c, False), Nothing, c)
   where
   lts = NE.toList ts
   qsBoth = mapMaybe (\(b, (q, _, _)) -> (b,) <$> q) lts
-  qs0 = map (\(b, (_, q, _)) -> (b, q)) qsBoth
-  qs = map (\(b, (qb, q, _)) -> (b || qb, q)) qsBoth
+  qs0 = map (\(b, (_, q, _, b2)) -> (b || b2, q)) qsBoth
+  back = all (\(b, (qb, q, _, _)) -> b || qb) qsBoth
   as = mapMaybe (^._2._2) lts
 qac (And ts)
-  | null qs = do
+  | null qs0 = do
       c <- newCombined$ And$ fmap (\(b, (_, _, t)) -> (b, t)) ts
       return (Nothing, Just c, c)
   | null as =
@@ -201,40 +134,39 @@ qac (And ts)
       then do
         c <- newCombined$ And$ fmap (\(b, (_, _, t)) -> (b, t)) ts
         q <- newQDep$ And$ NE.fromList qs0
-        return (Just (True, Right q, c), Nothing, c)
+        return (Just (True, Right q, c, False), Nothing, c)
       else do
         q <- newQDep$ And$ NE.fromList qs0
         s <- newState q
         c <- newCombined$ State (False, s)
-        return (Just (False, Right q, c), Nothing, c)
+        return (Just (False, Right q, c, False), Nothing, c)
   | otherwise = do
       a <- case as of
         [a] -> return a
         _:_:_ -> newCombined$ And$ NE.fromList$ map (False,) as
       case qsBoth of
-        [(b, (qb, q, qc))] -> do
-          c <- newCombined$ And$ (qb, qc) :| [(False, a)]
-          return (Just (back, q, qc), Just a, c)
+        [(b, (_, q, qc, b2))] -> do
+          c <- newCombined$ And$ (b || b2, qc) :| [(False, a)]
+          return (Just (back, q, qc, b2), Just a, c)
         _:_:_
           | back -> do
              q <- newQDep$ And$ NE.fromList qs0
              qc <- newCombined$ And$ NE.fromList qcs
              c <- newCombined$ And$ (False, qc) :| [(False, a)]
-             return (Just (True, Right q, qc), Just a, c)
+             return (Just (True, Right q, qc, False), Just a, c)
           | otherwise -> do
              q <- newQDep$ And$ NE.fromList qs0
              s <- newState q
              qc <- newCombined$ State (False, s)
              c <- newCombined$ And$ (False, qc) :| [(False, a)]
-             return (Just (False, Right q, qc), Just a, c)
+             return (Just (False, Right q, qc, False), Just a, c)
   where
   lts = NE.toList ts
   qsBoth = mapMaybe (\(b, (q, _, _)) -> (b,) <$> q) lts
-  qs0 = map (\(b, (_, q, _)) -> (b, q)) qsBoth
-  qs = map (\(b, (qb, q, _)) -> (b || qb, q)) qsBoth
-  qcs = map (\(b, (_, _, qc)) -> (b, qc)) qsBoth
+  qs0 = map (\(b, (_, q, _, b2)) -> (b || b2, q)) qsBoth
+  qcs = map (\(b, (_, _, qc, b2)) -> (b || b2, qc)) qsBoth
   as = mapMaybe (^._2._2) lts
-  back = all fst qs
+  back = all (\(b, (qb, q, _, _)) -> b || qb) qsBoth
 
 
 goblin2 :: forall p.

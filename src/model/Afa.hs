@@ -9,8 +9,24 @@
 {-# LANGUAGE TypeApplications #-}
 {-# LANGUAGE ViewPatterns #-}
 
-module Afa where
+module Afa
+  (Afa(..)
+  , MixTermITree
+  , AfaSwallowed
+  , AfaUnswallowed
+  , delayPredicates
+  , reorderStates
+  , simplifyAll
+  , simplifyStatesAndMixTs
+  ) where
 
+import Debug.Trace
+
+import Data.Foldable
+import Data.Maybe
+import Control.Monad
+import Data.Array.ST
+import Data.Array.Unsafe
 import Control.Lens
 import GHC.Exts (sortWith, groupWith)
 import Data.List (partition)
@@ -21,7 +37,7 @@ import Data.Functor.Compose
 import Data.Monoid (Endo(..), Any(..))
 import Control.Monad.ST
 import Data.Array
-import Afa.Term.Mix (Term(..))
+import Afa.Term.Mix (Term(..), modChilds, pureChildMod, ChildMod(..))
 import qualified Afa.Term.Mix as MTerm
 import Afa.Lib.Tree
 import Control.RecursionSchemes.Lens
@@ -75,7 +91,7 @@ reorderStates Afa{terms, states, initState} = Afa
   }
 
 
-simplifyAll :: (Eq p, Hashable p) => AfaUnswallowed p -> Either Bool (AfaUnswallowed p)
+simplifyAll :: (Eq p, Hashable p, Show p) => AfaUnswallowed p -> Either Bool (AfaUnswallowed p)
 simplifyAll (Afa terms states initState) = do
   (terms', states', initState') <-
     simplifyStatesAndMixTs ixMap terms states initState
@@ -83,24 +99,54 @@ simplifyAll (Afa terms states initState) = do
   where ixMap = listArray (bounds terms)$ map Right [0..]
 
 
--- TODO: This is not implemented in an idyllistic traversal way
-simplifyStatesAndMixTs :: forall p. (Eq p, Hashable p)
+data ReachableMark = Unvisited | Recur | Visited
+instance Semigroup ReachableMark where
+  Unvisited <> x = x
+  x <> _ = x
+
+markReachable :: Foldable f => Afa (Array Int (Term p Int Int)) (Array Int (f Int)) Int
+  -> Array Int Bool
+markReachable (Afa terms states init) =
+  accumArray (\_ _ -> True) False (bounds states)$ (init, ()) :
+    [ (q, ())
+    | (i@((terms!) -> State q), True)<- zip [0..] (elems termMarks)
+    ]
+  where
+  termMarks = runST getMarks <&> \case Unvisited -> False; _ -> True
+
+  getMarks :: forall s. ST s (Array Int ReachableMark)
+  getMarks = do
+    marks <- newArray @(STArray s) (bounds terms) Unvisited
+    for_ (states!init)$ \i -> do
+      writeArray marks i Recur
+      dfs (traversal marks) marks i
+    unsafeFreeze marks
+
+  traversal arr rec (x, i) = case x of
+    Recur -> do
+      writeArray arr i Visited
+      void$ terms!i & modChilds pureChildMod
+        { lQ = \q -> for_ (states!q)$ \i -> rec (Recur, i)
+        , lT = \j -> rec (Recur, j)
+        }
+    Visited -> return ()
+    Unvisited -> error "visiting unvisited"
+
+
+simplifyStatesAndMixTs :: forall p. (Eq p, Hashable p, Show p)
   => Array Int (Either Bool Int)
   -> Array Int (MTerm.Term p Int Int)
   -> Array Int Int
   -> Int
   -> Either Bool (Array Int (MTerm.Term p Int Int), Array Int Int, Int)
 simplifyStatesAndMixTs ixMap mterms states init = case sequence states1 of
-  Right states' | cost mterms <= cost mterms3 -> Right (mterms, states', init)
+  Right states' | cost mterms <= cost mterms3 -> Right (mterms3, states2, init2)
   _ -> states1!init >> simplifyStatesAndMixTs ixMap3 mterms3 states2 init2
   where
   cost ts = (rangeSize$ bounds ts, sum$ fmap length ts)
   states1 = fmap (ixMap!) states
 
-  getQs = (`appEndo` []) . getConst .
-    MTerm.modChilds MTerm.pureChildMod{ MTerm.lQ = Const . Endo . (:) }
-  parented = accumArray (\_ _ -> True) False (bounds states)$
-    (init, ()) : map (, ()) (concatMap getQs$ elems mterms)
+  parented = markReachable$ Afa mterms states1 init
   (lefts, rights) = partition (isLeft . snd)$
     zipWith noparentLeft [0..] (elems states1)
     where noparentLeft i x = if parented!i then (i, x) else (i, Left False)

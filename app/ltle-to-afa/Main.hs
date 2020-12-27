@@ -143,7 +143,7 @@ optParser = Opts
         \{afa,afaBasicSimp,cnfafa,sepafaExploding,sepafaDelaying}:<path>"
     )
 
-timeoutMicro = 100000000
+timeoutMicro = 10000000
 
 main :: IO ()
 main = do
