@@ -143,7 +143,7 @@ optParser = Opts
         \{afa,afaBasicSimp,cnfafa,sepafaExploding,sepafaDelaying}:<path>"
     )
 
-timeoutMicro = 10000000
+timeoutMicro = 100*1000000
 
 main :: IO ()
 main = do
@@ -188,12 +188,15 @@ main = do
                 Just (Right (qCount, nCount, eCount)) -> (qCount, nCount, eCount, -1)
 
           putStrLn$ intercalate "\t"
-            [ show$ floor$ 1000*(toc - tic)
+            [ name
+            , show$ floor$ 1000*(toc - tic)
             , show qCount
             , show nodeCount
             , show edgeCount
             , show result
             ]
+
+          hFlush stdout
 
           rec
     )
