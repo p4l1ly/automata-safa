@@ -147,7 +147,7 @@ qac (And ts)
       case qsBoth of
         [(b, (_, q, qc, b2))] -> do
           c <- newCombined$ And$ (b || b2, qc) :| [(False, a)]
-          return (Just (back, q, qc, b2), Just a, c)
+          return (Just (back, q, qc, b || b2), Just a, c)
         _:_:_
           | back -> do
              q <- newQDep$ And$ NE.fromList qs0
@@ -166,7 +166,7 @@ qac (And ts)
   qs0 = map (\(b, (_, q, _, b2)) -> (b || b2, q)) qsBoth
   qcs = map (\(b, (_, _, qc, b2)) -> (b || b2, qc)) qsBoth
   as = mapMaybe (^._2._2) lts
-  back = all (\(b, (qb, q, _, _)) -> b || qb) qsBoth
+  back = all (\(b, (qb, _, _, _)) -> b || qb) qsBoth
 
 
 goblin2 :: forall p.
