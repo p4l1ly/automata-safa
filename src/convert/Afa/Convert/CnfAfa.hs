@@ -61,10 +61,12 @@ btermTseytin stateCount = \case
   BTerm.And lits -> do
     ix <- newSignal
     newClauses$ map (: [Lit ix False])$ NE.toList lits
+    newClause$ Lit ix True : map (\(Lit i b) -> Lit i$ not b) (NE.toList lits)
     return$ Lit ix True
   BTerm.Or lits -> do
     ix <- newSignal
     newClause$ Lit ix False : NE.toList lits
+    newClauses$ map ((: [Lit ix True]) . (\(Lit i b) -> Lit i$ not b))$ NE.toList lits
     return$ Lit ix True
   BTerm.LFalse -> error
     "Tseytin does not support LFalse, please simplify the AFA"
@@ -78,10 +80,12 @@ mtermTseytin bIxMap = \case
   MTerm.And lits -> do
     ix <- newSignal
     newClauses$ map (: [Lit ix False])$ NE.toList lits
+    newClause$ Lit ix True : map (\(Lit i b) -> Lit i$ not b) (NE.toList lits)
     return$ Lit ix True
   MTerm.Or lits -> do
     ix <- newSignal
     newClause$ Lit ix False : NE.toList lits
+    newClauses$ map ((: [Lit ix True]) . (\(Lit i b) -> Lit i$ not b))$ NE.toList lits
     return$ Lit ix True
   MTerm.LTrue -> error
     "Tseytin does not support LFalse, please simplify the AFA"
