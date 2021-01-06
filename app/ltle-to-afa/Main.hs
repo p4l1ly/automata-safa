@@ -120,6 +120,12 @@ optParser = Opts
       (break (== ':') -> ("afaSimpGoblinMincut", ':':outdir)) ->
         Right$ repeat$ \i bafa ->
           simpGoblinMincut bafa <&> afaWriter outdir i
+      (break (== ':') -> ("afaSimpGoblin", ':':outdir)) ->
+        Right$ repeat$ \i bafa ->
+          simpGoblin bafa <&> afaWriter outdir i
+      (break (== ':') -> ("afaSimpMincut", ':':outdir)) ->
+        Right$ repeat$ \i bafa ->
+          simpMincut bafa <&> afaWriter outdir i
       (break (== ':') -> ("cnfafa", ':':outdir)) ->
         Right$ repeat$ \i bafa ->
           Right$ (afaCosts bafa,)$
