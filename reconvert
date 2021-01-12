@@ -2,39 +2,41 @@
 
 # m6: zsh reconvert ../data/m6  480.37s user 7.20s system 99% cpu 8:07.94 total
 
-# afa0 \
-# afaBasic \
-# afaCnf \
-# sepDelaying \
-# afaSimpGoblinMincut3 \
-# afaCnf3 \
-# sepDelaying3 \
 # afaSimpGoblin4 \
 # afaCnf4 \
 # sepDelaying4 \
 # afaSimpMincut5 \
 # afaCnf5 \
 # sepDelaying5 \
+# afaCnf0 \
+# afaCnf \
+# afa0 \
+# afaBasic \
+# afaSimpGoblinMincut3 \
+# afaCnf3 \
+# sepDelaying3 \
+# sepDelaying \
 
-# for dir in \
-#   afaMincutGoblinMincut6 \
-#   afaCnf6 \
-#   sepDelaying6 \
-#   ;
-# do
-#   rm $1/$dir/*
-#   mkdir -p $1/$dir
-# done
-# 
+for dir in \
+  sepDelaying0
+  ;
+do
+  rm $1/$dir/*
+  mkdir -p $1/$dir
+done
+
 # cat $1/ltls| cabal exec ltle-to-afa -- -i ltl -o afa:$1/afa0 > $1/afa0.csv
+# cabal exec ltle-to-afa -- -i afa:$1/afa0 -o cnfafa:$1/afaCnf0 > $1/afaCnf.csv
+cabal exec ltle-to-afa -- -i afa:$1/afa0 -o sepafaDelaying:$1/sepDelaying0 > $1/sepDelaying0.csv
+
 # cabal exec ltle-to-afa -- -i afa:$1/afa0 -o afaBasicSimp:$1/afaBasic > $1/afaBasic.csv
 # cabal exec ltle-to-afa -- -i afa:$1/afaBasic -o cnfafa:$1/afaCnf > $1/afaCnf.csv
 # cabal exec ltle-to-afa -- -i afa:$1/afaBasic -o sepafaDelaying:$1/sepDelaying > $1/sepDelaying.csv
-# 
+
 # cabal exec ltle-to-afa -- -i afa:$1/afaBasic -o afaSimpGoblinMincut:$1/afaSimpGoblinMincut3 > $1/afaSimpGoblinMincut3.csv
 # cabal exec ltle-to-afa -- -i afa:$1/afaSimpGoblinMincut3 -o cnfafa:$1/afaCnf3 > $1/afaCnf3.csv
 # cabal exec ltle-to-afa -- -i afa:$1/afaSimpGoblinMincut3 -o sepafaDelaying:$1/sepDelaying3 > $1/sepDelaying3.csv
-# 
+
 # cabal exec ltle-to-afa -- -i afa:$1/afaBasic -o afaSimpGoblin:$1/afaSimpGoblin4 > $1/afaSimpGoblin4.csv
 # cabal exec ltle-to-afa -- -i afa:$1/afaSimpGoblin4 -o cnfafa:$1/afaCnf4 > $1/afaCnf4.csv
 # cabal exec ltle-to-afa -- -i afa:$1/afaSimpGoblin4 -o sepafaDelaying:$1/sepDelaying4 > $1/sepDelaying4.csv
@@ -43,24 +45,25 @@
 # cabal exec ltle-to-afa -- -i afa:$1/afaSimpMincut5 -o cnfafa:$1/afaCnf5 > $1/afaCnf5.csv
 # cabal exec ltle-to-afa -- -i afa:$1/afaSimpMincut5 -o sepafaDelaying:$1/sepDelaying5 > $1/sepDelaying5.csv
 
-# cabal exec ltle-to-afa -- -i afa:$1/afaSimpMincut5 -o afaSimpGoblinMincut:$1/afaMincutGoblinMincut6 > $1/afaMincutGoblinMincut6.csv
-# cabal exec ltle-to-afa -- -i afa:$1/afaMincutGoblinMincut6 -o cnfafa:$1/afaCnf6 > $1/afaCnf6.csv
-# cabal exec ltle-to-afa -- -i afa:$1/afaMincutGoblinMincut6 -o sepafaDelaying:$1/sepDelaying6 > $1/sepDelaying6.csv
-
 cd ../afapipe
 
 # ./build/file-solver-2 $1/afaCnf > $1/afasat.csv
-./build/file-solver-2 $1/afaCnf3 > $1/afasat3.csv
-./build/file-solver-2 $1/afaCnf4 > $1/afasat4.csv
-./build/file-solver-2 $1/afaCnf5 > $1/afasat5.csv
-./build/file-solver-2 $1/afaCnf6 > $1/afasat6.csv
-./build/file-solver-3 $1/afaCnf > $1/afasatClausal.csv
-./build/file-solver-3 $1/afaCnf3 > $1/afasatClausal3.csv
-./build/file-solver-3 $1/afaCnf4 > $1/afasatClausal4.csv
-./build/file-solver-3 $1/afaCnf5 > $1/afasatClausal5.csv
-./build/file-solver-3 $1/afaCnf6 > $1/afasatClausal6.csv
-./build/file-solver-1 $1/sepDelaying > $1/dantoni.csv
-./build/file-solver-1 $1/sepDelaying3 > $1/dantoni3.csv
-./build/file-solver-1 $1/sepDelaying4 > $1/dantoni4.csv
-./build/file-solver-1 $1/sepDelaying5 > $1/dantoni5.csv
-./build/file-solver-1 $1/sepDelaying6 > $1/dantoni6.csv
+# ./build/file-solver-2 $1/afaCnf3 > $1/afasat3.csv
+# ./build/file-solver-2 $1/afaCnf0 > $1/afasat0.csv
+# ./build/file-solver-2 $1/afaCnf4 > $1/afasat4.csv
+# ./build/file-solver-2 $1/afaCnf5 > $1/afasat5.csv
+# ./build/file-solver-3 $1/afaCnf > $1/afasatClausal.csv
+# ./build/file-solver-3 $1/afaCnf3 > $1/afasatClausal3.csv
+# ./build/file-solver-3 $1/afaCnf4 > $1/afasatClausal4.csv
+# ./build/file-solver-3 $1/afaCnf5 > $1/afasatClausal5.csv
+./build/file-solver-1 $1/sepDelaying0 > $1/dantoni0.csv
+# ./build/file-solver-1 $1/sepDelaying > $1/dantoni.csv
+# ./build/file-solver-1 $1/sepDelaying3 > $1/dantoni3.csv
+# ./build/file-solver-1 $1/sepDelaying4 > $1/dantoni4.csv
+# ./build/file-solver-1 $1/sepDelaying5 > $1/dantoni5.csv
+
+# ./build/file-solver-1 $1/sepDelaying3 > $1/dantoniSat3.csv
+# ./build/file-solver-1 $1/sepDelaying3 > $1/dantoniBdd3.csv
+# ./build/file-solver-1 $1/sepDelaying3 > $1/dantoniSatBdd3.csv
+
+# ./build/file-solver-1-2 $1/sepDelaying3 $1/afaCnf3 > $1/dantoni3-afasat3.csv
