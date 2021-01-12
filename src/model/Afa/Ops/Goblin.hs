@@ -88,7 +88,7 @@ newQDep :: (MonadTrans mt, Monad m) => x -> mt (NoConsT x m) Int
 newQDep = lift . nocons
 
 data QRef = QRef
-  { transitiveBack :: Bool
+  { allBackUnderneath :: Bool
   , qref :: Either (Bool, Int) Int  -- Left points to the transition of a state
   , qcref :: Int
   , unappliedBack :: Bool

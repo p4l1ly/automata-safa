@@ -5,8 +5,9 @@
 
 module Main where
 
-import Options.Applicative
+import Debug.Trace
 
+import Options.Applicative
 import Control.Monad
 import Control.Concurrent.STM
 import Control.Concurrent
@@ -35,14 +36,15 @@ import Data.Time.Clock.POSIX (getPOSIXTime)
 import System.Directory
 import qualified Afa.Term.Mix as MTerm
 import qualified Afa.Term.Bool as BTerm
+import qualified Afa.Convert.Stranger as Stranger
 
 data Opts = Opts
   { readers :: Fix (Compose IO (ListF (String, BoolAfaUnswallowed Int)))
   , writers :: [String -> BoolAfaUnswallowed Int -> Either Bool ((Int, Int, Int), IO ())]
   }
 
-afaReaders :: String -> Fix (Compose IO (ListF (String, BoolAfaUnswallowed Int)))
-afaReaders indir = Fix$ Compose$ do
+dirReaders :: (Handle -> IO a) -> String -> Fix (Compose IO (ListF (String, a)))
+dirReaders fileReader indir = Fix$ Compose$ do
   (sort . map read -> files0 :: [Int]) <- listDirectory indir
   reader (project files0) <&> \case
     Nil -> Nil
@@ -50,8 +52,19 @@ afaReaders indir = Fix$ Compose$ do
   where
   reader Nil = return Nil
   reader (Cons file a) = do
-    afa <- withFile (indir ++ "/" ++ show file) ReadMode hReadAfa
+    afa <- withFile (indir ++ "/" ++ show file) ReadMode fileReader
     return$ Cons (show file, afa) a
+
+afaReaders :: String -> Fix (Compose IO (ListF (String, BoolAfaUnswallowed Int)))
+afaReaders = dirReaders hReadAfa
+
+strangerReaders :: String -> Fix (Compose IO (ListF (String, BoolAfaUnswallowed Int)))
+strangerReaders = dirReaders$ hGetContents >=> \str ->
+  case Stranger.runWParser Stranger.afa str of
+    Left err -> error$ show err
+    Right afa -> do
+      print afa
+      return undefined
 
 arrSize :: Array Int a -> Int
 arrSize = rangeSize . bounds
@@ -103,6 +116,7 @@ optParser = Opts
         )
         `catch` \(SomeException _) -> return Nil
       (break (== ':') -> ("afa", ':':indir)) -> Right$ afaReaders indir
+      (break (== ':') -> ("stranger", ':':indir)) -> Right$ strangerReaders indir
       x -> Left$ "expected one of: ltl, afa:<path>; got " ++ x
     )
     ( long "input"
