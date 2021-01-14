@@ -233,10 +233,9 @@ goblin2 (Afa terms states init) = do
 
     let qshift = length aterms
     let mappedStates = states <&> \i -> ixMap!i ^._2
-    let pureChildMod' = pureChildMod @Identity
     let qterms' :: [Term p (Bool, Int) (Bool, Int)]
         qterms' = ($ qterms)$ map$ runIdentity . modChilds 
-          pureChildMod'
+          ChildMod
           { lP = absurd
           , lQ = absurd
           , lT = \(b, i) -> case i of

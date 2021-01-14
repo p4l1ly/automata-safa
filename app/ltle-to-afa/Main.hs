@@ -62,9 +62,7 @@ strangerReaders :: String -> Fix (Compose IO (ListF (String, BoolAfaUnswallowed 
 strangerReaders = dirReaders$ hGetContents >=> \str ->
   case Stranger.runWParser Stranger.afa str of
     Left err -> error$ show err
-    Right afa -> do
-      print afa
-      return undefined
+    Right afa -> return afa
 
 arrSize :: Array Int a -> Int
 arrSize = rangeSize . bounds

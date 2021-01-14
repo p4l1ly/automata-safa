@@ -9,9 +9,7 @@ import Data.Functor.Classes
 
 freeModChilds :: Functor m
   => LensLike m (f (Free f i)) (g (Free g j)) (Free f i) (Free g j)
-  -> (i -> m j)
-  -> Free f i
-  -> m (Free g j)
+  -> LensLike m (Free f i) (Free g j) i j
 freeModChilds setter lLeaf = rec where
   rec (Pure i) = Pure <$> lLeaf i
   rec (Free x) = Free <$> setter rec x
