@@ -8,6 +8,7 @@
 
 module Afa.Convert.Separated where
 
+import Control.Monad.Free
 import Data.Void
 import Control.Category ((>>>))
 import Control.Monad.Trans.Maybe
@@ -31,7 +32,6 @@ import qualified Data.List.NonEmpty as NE
 import Afa.Bool
 import qualified Afa.Term.Bool as BTerm
 import Data.Hashable
-import Afa.Lib.Tree
 
 import qualified Afa.Convert.Separated.Model as SepAfa
 
@@ -203,13 +203,13 @@ separatedToMixed (SepAfa.Afa aterms qterms states initState) = BoolAfa
 
 separatedToMixedSwallowed :: forall p. SepAfa.Afa p -> BoolAfaSwallowed p
 separatedToMixedSwallowed (SepAfa.Afa aterms qterms states initState) = BoolAfa
-  { boolTerms = fmap (Node . fmap Leaf) aterms
+  { boolTerms = fmap (Free . fmap Pure) aterms
   , afa = Afa
-    { terms = fmap (Node . fmap Leaf . absurdPredicates) qterms
+    { terms = fmap (Free . fmap Pure . absurdPredicates) qterms
     , states = fmap toFormula states
     , initState = initState
     }
   }
   where
-  toFormula = ((Node . Or . NE.fromList) .)$ map$ \(a, b) -> Node$ And$
-    maybe (Node LTrue) (Node . Predicate . Leaf) a :| [maybe (Node LTrue) Leaf b]
+  toFormula = ((Free . Or . NE.fromList) .)$ map$ \(a, b) -> Free$ And$
+    maybe (Free LTrue) (Free . Predicate . Pure) a :| [maybe (Free LTrue) Pure b]

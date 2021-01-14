@@ -23,16 +23,10 @@ library
     Afa.Lib
     Afa.Lib.LiftArray
     Afa.Lib.QMinCut
-    Afa.Lib.Tree
+    Afa.Lib.Free
     Afa.Ops.Goblin
     Afa.Ops.QMinCut
     Afa.Ops.Compound
-    -- Afa.Term.Fix
-    -- Afa.Term.TreeFBase
-    -- Afa.Term.TreeF
-    -- Afa.Term.Prism
-    -- Afa.Term.Prism.Ops.Simplify
-    -- Afa.Ops.Preprocess
   build-depends:
     base >=4.13.0.0 && <4.15,
     recursion-schemes ^>=5.2.1,
@@ -46,6 +40,7 @@ library
     data-fix ^>=0.3.0,
     ghc >=8.8.4 && < 8.11,
     transformers ^>=0.5.6.2,
+    free ^>=5.1.4,
     lens-recursion-schemes,
   hs-source-dirs:      src/model
   default-language:    Haskell2010
@@ -121,6 +116,7 @@ test-suite automata-safa-test
     HUnit ^>= 1.6.0.0,
     array ^>= 0.5.4.0,
     data-fix ^>=0.3.0,
+    free ^>=5.1.4,
     automata-safa,
     automata-safa:convert,
 

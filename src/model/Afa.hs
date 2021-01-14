@@ -11,7 +11,7 @@
 
 module Afa
   (Afa(..)
-  , MixTermITree
+  , MixTermIFree
   , AfaSwallowed
   , AfaUnswallowed
   , delayPredicates
@@ -22,6 +22,7 @@ module Afa
 
 import Debug.Trace
 
+import Control.Monad.Free
 import Data.Foldable
 import Data.Maybe
 import Control.Monad
@@ -39,7 +40,6 @@ import Control.Monad.ST
 import Data.Array
 import Afa.Term.Mix (Term(..), modChilds, pureChildMod, ChildMod(..))
 import qualified Afa.Term.Mix as MTerm
-import Afa.Lib.Tree
 import Control.RecursionSchemes.Lens
 import Control.Monad.Trans
 import Data.Traversable
@@ -55,8 +55,8 @@ data Afa terms states init = Afa
   }
   deriving (Show, Eq)
 
-type MixTermITree p = Tree (Term p Int) Int
-type AfaSwallowed p = Afa (Array Int (MixTermITree p)) (Array Int (MixTermITree p)) Int
+type MixTermIFree p = Free (Term p Int) Int
+type AfaSwallowed p = Afa (Array Int (MixTermIFree p)) (Array Int (MixTermIFree p)) Int
 type AfaUnswallowed p = Afa (Array Int (Term p Int Int)) (Array Int Int) Int
 
 

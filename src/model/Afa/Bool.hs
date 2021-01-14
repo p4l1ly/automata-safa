@@ -10,6 +10,7 @@ module Afa.Bool where
 
 import Debug.Trace
 
+import Control.Monad.Free
 import Control.Arrow
 import Data.Traversable
 import Control.Monad.Reader
@@ -29,7 +30,7 @@ import qualified Afa.Term.Mix as MTerm
 import qualified Afa.Term.Mix.Simplify as MTerm
 import qualified Afa.Term.Bool as BTerm
 import qualified Afa.Term.Bool.Simplify as BTerm
-import Afa.Lib.Tree
+import Afa.Lib.Free
 import Afa.Lib.LiftArray
 import Afa.Lib (listArray', (>&>), nonemptyCanonicalizeWith, eixMappedGs)
 
@@ -41,11 +42,10 @@ data BoolAfa boolTerms afa = BoolAfa
   deriving (Show, Eq)
 
 
--- TODO Tree is actually Free
-type BoolTermITree p = Tree (BTerm.Term p) Int
+type BoolTermIFree p = Free (BTerm.Term p) Int
 type BoolAfaSwallowed p = BoolAfa
-  (Array Int (BoolTermITree p))
-  (AfaSwallowed (BoolTermITree p))
+  (Array Int (BoolTermIFree p))
+  (AfaSwallowed (BoolTermIFree p))
 type BoolAfaUnswallowed p = BoolAfa
   (Array Int (BTerm.Term p Int))
   (AfaUnswallowed Int)
@@ -207,7 +207,7 @@ separatePositiveTops bterms mterms =
       _ -> g
 
 
--- TODO the trees are traversed thrice, we need a setter generator for trees
+-- TODO the frees are traversed thrice, we need a setter generator for frees
 unswallow :: forall p. BoolAfaSwallowed p -> BoolAfaUnswallowed p
 unswallow BoolAfa{boolTerms=bterms, afa=afa@Afa{terms=mterms, states=transitions}} =
   runST action where
@@ -235,15 +235,15 @@ unswallow BoolAfa{boolTerms=bterms, afa=afa@Afa{terms=mterms, states=transitions
   ifG (Any True) x = x
   ifG _ _ = return$ error "accessing element without parents"
 
-  untree t = cataT (treeTraversal traversed) (either return nocons) t
-  bhylogebra (g, i) = return ((g,) <$> bterms!i, ifG g untree)
+  unfree t = cataT (freeTraversal traversed) (either return nocons) t
+  bhylogebra (g, i) = return ((g,) <$> bterms!i, ifG g unfree)
 
   modPT lP lT = MTerm.modChilds MTerm.pureChildMod{ MTerm.lT = lT, MTerm.lP = lP }
-  msetter mgs bgs mEncloser = flip treeModChilds (mEncloser mgs fst)$
+  msetter mgs bgs mEncloser = flip freeModChilds (mEncloser mgs fst)$
     modPT$ traverseOf traversed (arrayEncloser' (LiftArray bgs) snd)
   mhylogebra g t = return
-    ( runIdentity$ treeModChilds (modPT$ return . ((g,) <$>)) (return . (g,)) t
-    , ifG g$ cataT (treeTraversal$ modPT$ lift . untree) (either return nocons)
+    ( runIdentity$ freeModChilds (modPT$ return . ((g,) <$>)) (return . (g,)) t
+    , ifG g$ cataT (freeTraversal$ modPT$ lift . unfree) (either return nocons)
     )
 
 
@@ -270,8 +270,8 @@ swallow BoolAfa{boolTerms=bterms, afa=afa@Afa{terms=mterms, states=transitions}}
       afa{ terms = listArray' mterms', states = transitions'}
 
   alg 0 _ = return$ error "accessing element without parents"
-  alg 1 t = return$ Node t
-  alg _ tb = Leaf<$> nocons (Node tb)
+  alg 1 t = return$ Free t
+  alg _ tb = Pure<$> nocons (Free tb)
 
   modPT lP lT = MTerm.modChilds MTerm.pureChildMod{ MTerm.lT = lT, MTerm.lP = lP }
 

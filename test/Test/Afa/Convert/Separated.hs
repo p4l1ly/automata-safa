@@ -4,10 +4,10 @@ import Test.HUnit hiding (State)
 
 import Data.List.NonEmpty (NonEmpty(..))
 import qualified Data.List.NonEmpty as NE
+import Control.Monad.Free
 
 import Afa
 import Afa.Lib
-import Afa.Lib.Tree
 import Afa.Bool
 import qualified Afa.Term.Bool as BoolT
 import qualified Afa.Term.Mix as MixT
@@ -57,8 +57,8 @@ afa0 = unswallow$ BoolAfa
   , afa = Afa
     { terms = listArray' []
     , states = listArray'
-        [ Node$ MixT.Or$ NE.fromList [Node$ MixT.State 1, Node$ MixT.Predicate$ Node$ BoolT.Predicate 0]
-        , Node$ MixT.Predicate$ Node$ BoolT.Predicate 0
+        [ Free$ MixT.Or$ NE.fromList [Free$ MixT.State 1, Free$ MixT.Predicate$ Free$ BoolT.Predicate 0]
+        , Free$ MixT.Predicate$ Free$ BoolT.Predicate 0
         ]
     , initState = 0
     }

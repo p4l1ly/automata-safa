@@ -8,19 +8,20 @@ import Data.Fix
 import Afa.Convert.Stranger
 
 
-pattern FLTrue = Fix LTrue
-pattern FLFalse = Fix LFalse
-pattern FState i = Fix (State i)
-pattern FVar x = Fix (Var x)
-pattern FNot x = Fix (Not x)
-pattern FAnd a b = Fix (And a b)
-pattern FOr a b = Fix (Or a b)
+pattern FSTrue = Fix STrue
+pattern FSFalse = Fix SFalse
+pattern FSState i = Fix (SState i)
+pattern FSVar x = Fix (SVar x)
+pattern FSNot x = Fix (SNot x)
+pattern FSAnd a b = Fix (SAnd a b)
+pattern FSOr a b = Fix (SOr a b)
 
 tests =
   [ "Convert.Stranger" ~: do
       assertEqual "term"
-        ( Right$
-          FAnd (FAnd (FState 1) (FNot$ FVar "e_0")) (FOr (FVar "a_0") (FVar "a_1"))
+        ( Right$ FSAnd
+            (FSAnd (FSState 1) (FSNot$ FSVar "e_0"))
+            (FSOr (FSVar "a_0") (FSVar "a_1"))
         )
         $ runWParser expr "(s_1 ∧ ¬e_0 ∧ (a_0 ∨ a_1))"
   ]
