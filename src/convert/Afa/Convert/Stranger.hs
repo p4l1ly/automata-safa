@@ -9,6 +9,8 @@
 
 module Afa.Convert.Stranger where
 
+import Debug.Trace
+
 import GHC.Generics hiding (Prefix, Infix)
 import Data.Functor.Classes
 import Generic.Data (Generically1(..))
@@ -99,8 +101,11 @@ toAfa (qcount, init, final, states) = unswallow BoolAfa
   where
   (simpleNonfinal, nonsimpleFinal) = finalSplitSimple qcount final
 
-  nonsimpleFinal' = (nonsimpleFinal <&>)$ cataRecursive$ getCompose >>> \xs ->
-    Free$ BTerm.And$ NE.fromList$ xs <&> \case
+  nonsimpleFinal' = (nonsimpleFinal <&>)$ cataRecursive$ getCompose >>> \case
+    [x] -> alg x
+    xs -> Free$ BTerm.And$ NE.fromList$ xs <&> alg
+    where
+    alg = \case
       SState q
         | simpleNonfinal!q -> Pure 1
         | otherwise -> Free$ BTerm.Predicate q
@@ -158,9 +163,7 @@ toAfa (qcount, init, final, states) = unswallow BoolAfa
     Just finalTrans ->
       ( qcount
       , listArray (0, qcount + 1)$ states'' ++
-          [ Free$ MTerm.And$ init' :| [Free$ MTerm.State$ qcount + 1]
-          , finalTrans
-          ]
+          [Free$ MTerm.And$ init' :| [Free$ MTerm.State$ qcount + 1], finalTrans]
       )
     Nothing -> case init' of
       Free (MTerm.State q) -> (q, listArray (0, qcount - 1) states'')

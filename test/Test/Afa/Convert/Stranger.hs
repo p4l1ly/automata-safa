@@ -19,9 +19,23 @@ pattern FSOr a b = Fix (SOr a b)
 tests =
   [ "Convert.Stranger" ~: do
       assertEqual "term"
-        ( Right$ FSAnd
+        ( FSAnd
             (FSAnd (FSState 1) (FSNot$ FSVar "e_0"))
             (FSOr (FSVar "a_0") (FSVar "a_1"))
         )
-        $ runWParser expr "(s_1 ∧ ¬e_0 ∧ (a_0 ∨ a_1))"
+        $ parseExpr "(s_1 ∧ ¬e_0 ∧ (a_0 ∨ a_1))"
+
+      putStrLn ""
+      print$ runWParser afa
+        "numOfStates:   3\n\
+        \initialStates: s_0\n\
+        \finalStates:   ¬s_0 ∧ ¬s_1 ∧ (¬s_1 ∨ ¬s_2)\n\
+        \States: \n\
+        \state 0:\n\
+        \s_1 ∧ e_0\n\
+        \state 1:\n\
+        \s_2 ∧ ¬e_0\n\
+        \state 2:\n\
+        \s_0 ∧ ¬e_0\n\
+        \"
   ]

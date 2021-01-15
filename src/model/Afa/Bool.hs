@@ -24,6 +24,7 @@ import Control.Monad.ST
 import Data.Fix
 import Data.Functor.Compose
 import Data.Hashable
+import Data.Tuple
 
 import Afa hiding (simplifyAll)
 import qualified Afa.Term.Mix as MTerm
@@ -208,7 +209,7 @@ separatePositiveTops bterms mterms =
 
 
 -- TODO the frees are traversed thrice, we need a setter generator for frees
-unswallow :: forall p. BoolAfaSwallowed p -> BoolAfaUnswallowed p
+unswallow :: forall p. Show p => BoolAfaSwallowed p -> BoolAfaUnswallowed p
 unswallow BoolAfa{boolTerms=bterms, afa=afa@Afa{terms=mterms, states=transitions}} =
   runST action where
   action :: forall s. ST s (BoolAfaUnswallowed p)
@@ -218,8 +219,8 @@ unswallow BoolAfa{boolTerms=bterms, afa=afa@Afa{terms=mterms, states=transitions
       runNoConsT$ do
         mgs <- newArray @(LLSTArray s) (bounds mterms) mempty
         trs <- for transitions$ mhylogebra (Any True) 
-        let Enclosing before after = traverseOf (traversed . _1)
-              (msetter mgs bgs arrayEncloser') trs
+        let Enclosing before after =
+              (traversed . _1) (msetter mgs bgs arrayEncloser') trs
         before
         ixMaps <- traverseOf _2 unsafeFreeze =<< hyloScanT00'
           (lift$ unsafeFreeze =<< hyloScanTTerminal' traversed bhylogebra bgs)
@@ -227,20 +228,20 @@ unswallow BoolAfa{boolTerms=bterms, afa=afa@Afa{terms=mterms, states=transitions
           (msetter mgs bgs arrayEncloser)
           (\(g, i) -> mhylogebra g (mterms!i))
           mgs
-        runReaderT after ixMaps >>= traverse (\(t, alg) -> alg t)
+        runReaderT after (swap ixMaps) >>= traverse (\(t, alg) -> alg t)
 
     return$ BoolAfa (listArray' bterms')
       afa{ terms = listArray' mterms', states = transitions'}
 
-  ifG (Any True) x = x
-  ifG _ _ = return$ error "accessing element without parents"
+  ifG (Any True) action x = action x
+  ifG _ _ _ = return$ error "accessing element without parents"
 
   unfree t = cataT (freeTraversal traversed) (either return nocons) t
   bhylogebra (g, i) = return ((g,) <$> bterms!i, ifG g unfree)
 
   modPT lP lT = MTerm.modChilds MTerm.pureChildMod{ MTerm.lT = lT, MTerm.lP = lP }
   msetter mgs bgs mEncloser = flip freeModChilds (mEncloser mgs fst)$
-    modPT$ traverseOf traversed (arrayEncloser' (LiftArray bgs) snd)
+    modPT$ traverse (arrayEncloser' (LiftArray bgs) snd)
   mhylogebra g t = return
     ( runIdentity$ freeModChilds (modPT$ return . ((g,) <$>)) (return . (g,)) t
     , ifG g$ cataT (freeTraversal$ modPT$ lift . unfree) (either return nocons)
