@@ -15,8 +15,8 @@ freeModChilds setter lLeaf = rec where
   rec (Free x) = Free <$> setter rec x
 
 freeTraversal :: Applicative m
-  => LensLike m (f (Free f i)) (g j) (Free f i) j
-  -> LensLike m (Free f i) (Either i (g j)) (Free f i) j
+  => LensLike m (f (Free f i)) x (Free f i) j
+  -> LensLike m (Free f i) (Either i x) (Free f i) j
 freeTraversal setter rec = \case
   Pure i -> pure$ Left i
   Free t -> Right<$> setter rec t

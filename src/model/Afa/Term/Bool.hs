@@ -5,6 +5,7 @@
 {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE NamedFieldPuns #-}
+{-# LANGUAGE BangPatterns #-}
 
 module Afa.Term.Bool where
 
@@ -21,10 +22,10 @@ import Afa.Lib ()
 data Term p rec
   = LTrue
   | LFalse
-  | Predicate p
-  | And (NonEmpty rec)
-  | Or (NonEmpty rec)
-  | Not rec
+  | Predicate !p
+  | And !(NonEmpty rec)
+  | Or !(NonEmpty rec)
+  | Not !rec
   deriving
     (Functor, Foldable, Traversable, Eq, Generic, Generic1, Hashable, Hashable1, Show)
   deriving Eq1 via (Generically1 (Term p))

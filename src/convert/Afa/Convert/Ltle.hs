@@ -15,8 +15,8 @@ module Afa.Convert.Ltle where
 import Data.Array
 import Data.Array.ST
 import Control.Monad.Trans
-import Control.Monad.State
-import Control.Monad.Writer.Lazy
+import Control.Monad.State.Strict
+import Control.Monad.Writer.Strict
 import Control.Monad.ST
 import Control.Lens
 import Data.Fix

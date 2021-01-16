@@ -21,7 +21,7 @@ import qualified Afa.Term.Bool as BTerm
 import qualified Afa.Term.Mix as MTerm
 
 hReadAfa :: Handle -> IO (BoolAfaUnswallowed Int)
-hReadAfa h = deserializeAfa <$> Capnp.hGetValue h Capnp.defaultLimit
+hReadAfa h = deserializeAfa <$> Capnp.hGetValue h maxBound
 
 hWriteAfa :: BoolAfaUnswallowed Int -> Handle -> IO ()
 hWriteAfa afa h = Capnp.hPutValue h$ serializeAfa afa

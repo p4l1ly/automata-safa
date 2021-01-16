@@ -37,6 +37,7 @@ import System.Directory
 import qualified Afa.Term.Mix as MTerm
 import qualified Afa.Term.Bool as BTerm
 import qualified Afa.Convert.Stranger as Stranger
+import qualified Data.Text.IO as TIO
 
 data Opts = Opts
   { readers :: Fix (Compose IO (ListF (String, BoolAfaUnswallowed Int)))
@@ -59,10 +60,7 @@ afaReaders :: String -> Fix (Compose IO (ListF (String, BoolAfaUnswallowed Int))
 afaReaders = dirReaders hReadAfa
 
 strangerReaders :: String -> Fix (Compose IO (ListF (String, BoolAfaUnswallowed Int)))
-strangerReaders = dirReaders$ hGetContents >=> \str ->
-  case Stranger.runWParser Stranger.afa str of
-    Left err -> error$ show err
-    Right afa -> return afa
+strangerReaders = dirReaders$ \h -> TIO.hGetContents h <&> Stranger.parseAfa
 
 arrSize :: Array Int a -> Int
 arrSize = rangeSize . bounds
@@ -161,7 +159,7 @@ optParser = Opts
         \{afa,afaBasicSimp,cnfafa,sepafaExploding,sepafaDelaying}:<path>"
     )
 
-timeoutMicro = 100*1000000
+timeoutMicro = 500*1000000
 
 main :: IO ()
 main = do
@@ -172,50 +170,48 @@ main = do
       \preprocess the automaton and output it somewhere further."
     <> header "ltle-to-afa: symbolic alternating finite automata preprocessing"
 
-  ($ (writers, readers))$ hylo
-    ( \(Compose (writer, Compose action)) ->
-      action >>= \case
-        Nil -> return ()
-        Cons (name, bafa) rec -> do
-          tic <- getPOSIXTime
-          finishedVar <- registerDelay timeoutMicro
-          resultVar <- newTVarIO Nothing
-          threadId <- forkIO$
-            case writer name bafa of
-              Left result -> do
-                atomically$ do
-                  writeTVar finishedVar True
-                  writeTVar resultVar$ Just$ Left result
-              Right (sizes, write) -> do
-                write
-                atomically$ do
-                  writeTVar finishedVar True
-                  writeTVar resultVar$ Just$ Right sizes
+  applyWritersAndReaders writers readers
 
-          mresult <- atomically$ readTVar finishedVar >>= \case
-            False -> retry
-            _ -> readTVar resultVar
+applyWritersAndReaders (writer:writers) (Fix (Compose action)) = action >>= \case
+  Nil -> return ()
+  Cons (name, bafa) readers' -> do
+    tic <- getPOSIXTime
+    finishedVar <- registerDelay timeoutMicro
+    resultVar <- newTVarIO Nothing
+    threadId <- forkIO$
+      case writer name bafa of
+        Left result -> do
+          atomically$ do
+            writeTVar finishedVar True
+            writeTVar resultVar$ Just$ Left result
+        Right (sizes, write) -> do
+          write
+          atomically$ do
+            writeTVar finishedVar True
+            writeTVar resultVar$ Just$ Right sizes
 
-          toc <- getPOSIXTime
+    mresult <- atomically$ readTVar finishedVar >>= \case
+      False -> retry
+      _ -> readTVar resultVar
 
-          when (isNothing mresult)$ killThread threadId
+    toc <- getPOSIXTime
 
-          let (qCount, nodeCount, edgeCount, result) = case mresult of
-                Nothing -> (0, 0, 0, -2)
-                Just (Left result) -> (0, 0, 0, if result then 1 else 0)
-                Just (Right (qCount, nCount, eCount)) -> (qCount, nCount, eCount, -1)
+    when (isNothing mresult)$ killThread threadId
 
-          putStrLn$ intercalate "\t"
-            [ name
-            , show$ floor$ 1000*(toc - tic)
-            , show qCount
-            , show nodeCount
-            , show edgeCount
-            , show result
-            ]
+    let (qCount, nodeCount, edgeCount, result) = case mresult of
+          Nothing -> (0, 0, 0, -2)
+          Just (Left result) -> (0, 0, 0, if result then 1 else 0)
+          Just (Right (qCount, nCount, eCount)) -> (qCount, nCount, eCount, -1)
 
-          hFlush stdout
+    putStrLn$ intercalate "\t"
+      [ name
+      , show$ floor$ 1000*(toc - tic)
+      , show qCount
+      , show nodeCount
+      , show edgeCount
+      , show result
+      ]
 
-          rec
-    )
-    ( \(writer:writers, Fix readers) -> Compose (writer, fmap (writers,) readers) )
+    hFlush stdout
+
+    applyWritersAndReaders writers readers'

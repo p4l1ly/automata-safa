@@ -1,4 +1,5 @@
 {-# LANGUAGE PatternSynonyms #-}
+{-# LANGUAGE OverloadedStrings #-}
 
 module Test.Afa.Convert.Stranger where
 
@@ -26,7 +27,7 @@ tests =
         $ parseExpr "(s_1 ∧ ¬e_0 ∧ (a_0 ∨ a_1))"
 
       putStrLn ""
-      print$ runWParser afa
+      print$ parseAfa
         "numOfStates:   3\n\
         \initialStates: s_0\n\
         \finalStates:   ¬s_0 ∧ ¬s_1 ∧ (¬s_1 ∨ ¬s_2)\n\

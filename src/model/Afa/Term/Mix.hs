@@ -5,6 +5,7 @@
 {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE NamedFieldPuns #-}
+{-# LANGUAGE BangPatterns #-}
 
 module Afa.Term.Mix where
 
@@ -20,10 +21,10 @@ import Afa.Lib ()
 
 data Term p q rec
   = LTrue
-  | Predicate p
-  | State q
-  | And (NonEmpty rec)
-  | Or (NonEmpty rec)
+  | Predicate !p
+  | State !q
+  | And !(NonEmpty rec)
+  | Or !(NonEmpty rec)
   deriving
     (Functor, Foldable, Traversable, Eq, Generic, Generic1, Hashable, Hashable1, Show)
   deriving Eq1 via (Generically1 (Term p q))

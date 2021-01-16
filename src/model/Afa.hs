@@ -8,6 +8,7 @@
 {-# LANGUAGE TupleSections #-}
 {-# LANGUAGE TypeApplications #-}
 {-# LANGUAGE ViewPatterns #-}
+{-# LANGUAGE BangPatterns #-}
 
 module Afa
   (Afa(..)
@@ -49,9 +50,9 @@ import Data.Hashable
 import qualified Afa.Term.Mix.Simplify as MTerm
 
 data Afa terms states init = Afa
-  { terms :: terms
-  , states :: states
-  , initState :: init
+  { terms :: !terms
+  , states :: !states
+  , initState :: !init
   }
   deriving (Show, Eq)
 

@@ -83,17 +83,20 @@ library convert
     array ^>= 0.5.4.0,
     recursion-schemes ^>=5.2.1,
     parsec ^>=3.1.0.0,
+    attoparsec ^>=0.13.2.4,
+    attoparsec-expr ^>=0.1.1.2,
     composition ^>=1.0.2.1,
     containers ^>=0.6.2.1,
-    interpolatedstring-perl6 ^>=1.0.2,
+    -- interpolatedstring-perl6 ^>=1.0.2,
     automata-safa-capnp ^>=0.1.0.0,
-    capnp ^>=0.6.0.3,
+    capnp ^>=0.10.0.0,
     hashable ^>=1.3.0.0,
     unordered-containers ^>=0.2.12.0,
     generic-data ^>=0.8.3.0,
     lens ^>=4.19.2,
     data-fix ^>=0.3.0,
     transformers ^>=0.5.6.2,
+    text ^>=1.2.4.1,
     automata-safa,
     ltl,
     lens-recursion-schemes,
@@ -131,36 +134,37 @@ executable ltle-to-afa
     time ^>= 1.9.3,
     array ^>= 0.5.4.0,
     directory ^>= 1.3.6.0,
+    text ^>=1.2.4.1,
     stm ^>=2.5.0.0,
     automata-safa,
     automata-safa:ltl,
     automata-safa:convert,
   hs-source-dirs:      app/ltle-to-afa
   default-language:    Haskell2010
-  ghc-options: -threaded
+  ghc-options: -threaded -rtsopts
 
-executable ltle-sat
-  main-is:             Main.hs
-  build-depends:
-    base >=4.13.0.0 && <4.15,
-    capnp ^>=0.6.0.3,
-    network-simple ^>=0.4.5,
-    automata-safa-capnp ^>=0.1.0.0,
-    automata-safa:automata-safa,
-    automata-safa:ltl,
-    automata-safa:convert,
-    primitive ^>=0.7.1.0,
-  hs-source-dirs:      app/ltle-sat
-  default-language:    Haskell2010
-
-executable dir-checker
-  main-is:             Main.hs
-  build-depends:
-    base >=4.13.0.0 && <4.15,
-    capnp ^>=0.6.0.3,
-    network-simple ^>=0.4.5,
-    automata-safa-capnp ^>=0.1.0.0,
-    primitive ^>=0.7.1.0,
-    directory ^>=1.3.6.0,
-  hs-source-dirs:      app/dir-checker
-  default-language:    Haskell2010
+-- executable ltle-sat
+--   main-is:             Main.hs
+--   build-depends:
+--     base >=4.13.0.0 && <4.15,
+--     capnp ^>=0.10.0.0,
+--     network-simple ^>=0.4.5,
+--     automata-safa-capnp ^>=0.1.0.0,
+--     automata-safa:automata-safa,
+--     automata-safa:ltl,
+--     automata-safa:convert,
+--     primitive ^>=0.7.1.0,
+--   hs-source-dirs:      app/ltle-sat
+--   default-language:    Haskell2010
+-- 
+-- executable dir-checker
+--   main-is:             Main.hs
+--   build-depends:
+--     base >=4.13.0.0 && <4.15,
+--     capnp ^>=0.10.0.0,
+--     network-simple ^>=0.4.5,
+--     automata-safa-capnp ^>=0.1.0.0,
+--     primitive ^>=0.7.1.0,
+--     directory ^>=1.3.6.0,
+--   hs-source-dirs:      app/dir-checker
+--   default-language:    Haskell2010

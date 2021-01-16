@@ -67,6 +67,18 @@ flatten project = \case
       _ -> t :| []
   bt -> bt
 
+flatten0 :: (t -> Maybe (Term p q t)) -> Term p q t -> Term p q t
+flatten0 project = \case
+  And ts -> And$ flip nonEmptyConcatMap ts$ \t ->
+    case project t of
+      Just (And ts2) -> ts2
+      _ -> t :| []
+  Or ts -> Or$ flip nonEmptyConcatMap ts$ \t ->
+    case project t of
+      Just (Or ts2) -> ts2
+      _ -> t :| []
+  bt -> bt
+
 absorb :: (Eq r, Hashable r) => (t -> Term p q t) -> (t -> r)
   -> Term p q t -> Either Bool (Term p q t)
 absorb project getR = \case

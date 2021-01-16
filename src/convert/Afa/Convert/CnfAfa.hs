@@ -9,8 +9,8 @@ module Afa.Convert.CnfAfa (CnfAfa(..), Lit(..), tseytin, tseytin') where
 import Control.Lens
 import Data.Bifunctor
 import Control.Monad.ST
-import Control.Monad.State
-import Control.Monad.Writer
+import Control.Monad.State.Strict
+import Control.Monad.Writer.Strict
 import Data.Array
 import Data.Array.ST
 import qualified Data.List.NonEmpty as NE

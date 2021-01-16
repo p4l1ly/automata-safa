@@ -77,6 +77,18 @@ flatten project = \case
       _ -> t :| []
   bt -> bt
 
+flatten0 :: (t -> Maybe (Term p t)) -> Term p t -> Term p t
+flatten0 project = \case
+  And ts -> And$ flip nonEmptyConcatMap ts$ \t ->
+    case project t of
+      Just (And ts2) -> ts2
+      _ -> t :| []
+  Or ts -> Or$ flip nonEmptyConcatMap ts$ \t ->
+    case project t of
+      Just (Or ts2) -> ts2
+      _ -> t :| []
+  bt -> bt
+
 -- PERF: use list? radix grouping?
 absorb :: (Eq r, Hashable r) => (t -> Term p t) -> (t -> r) -> Term p t -> Term p t
 absorb project getR = \case
