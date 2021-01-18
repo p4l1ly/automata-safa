@@ -6,11 +6,15 @@
 {-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE NamedFieldPuns #-}
 {-# LANGUAGE BangPatterns #-}
+{-# LANGUAGE KindSignatures #-}
+{-# LANGUAGE FlexibleInstances #-}
+{-# LANGUAGE MultiParamTypeClasses #-}
 
 module Afa.Bool where
 
 import Debug.Trace
 
+import Data.Foldable
 import Control.Monad.Free
 import Control.Arrow
 import Data.Traversable
@@ -22,6 +26,7 @@ import Data.Monoid (Any(..), Sum(..))
 import Control.RecursionSchemes.Lens
 import Control.Lens
 import Control.Monad.ST
+import qualified Control.Monad.ST.Lazy as LST
 import Data.Fix
 import Data.Functor.Compose
 import Data.Hashable
@@ -211,56 +216,78 @@ separatePositiveTops bterms mterms =
 
 -- TODO the frees are traversed thrice, we need a setter generator for frees
 unswallow :: forall p. (Show p, Hashable p, Eq p) => BoolAfaSwallowed p -> BoolAfaUnswallowed p
-unswallow (traceShowId -> BoolAfa{boolTerms=bterms, afa=afa@Afa{terms=mterms, states=transitions}}) =
+unswallow BoolAfa{boolTerms=bterms, afa=afa@Afa{terms=mterms, states=transitions}} =
   runST action where
   action :: forall s. ST s (BoolAfaUnswallowed p)
   action = do
-    ((transitions', mterms'), bterms') <- runNoConsT$ do
-      bgs <- traceShow ("hey", length bterms)$ newArray @(LSTArray s) (bounds bterms) mempty
-      runNoConsT$ do
-        mgs <- traceShow "hou"$ newArray @(LLSTArray s) (bounds mterms) mempty
-        trs <- traceShow "trs"$ for transitions$ mhylogebra (Any True)
-        let Enclosing before after =
-              (traversed . _1) (msetter2 mgs bgs) trs
-        traceShow "before" before
-        traceShow "beforeDone"$ return ()
-        ixMaps <- traceShow "foo"$ traverseOf _2 unsafeFreeze =<< hyloScanT00'
-          (lift$ unsafeFreeze =<< hyloScanTTerminal' traversed bhylogebra bgs)
-          (,)
-          (msetter1 mgs bgs)
-          (\(g, i) -> mhylogebra g (mterms!i))
-          mgs
-        remappedTransitions <- traceShow "bar"$ runReaderT after (swap ixMaps)
-        traceShow "baz"$ traverse (\(t, alg) -> alg t) remappedTransitions
+    bgs <- newArray @(STArray s) (bounds bterms) mempty
+    mgs <- newArray @(STArray s) (bounds mterms) mempty
 
-    traceShow "qux"$ return$ BoolAfa (listArray' bterms')
+    ((transitions', mterms'), bterms') <- runNoConsT$ do
+      runNoConsT$ do
+        trs <- for transitions$ mhylogebra (Any True)
+        let encls = fmap (first$ uncurry$ MEncloser mgs bgs) trs
+        lift$ lift$ for_ encls$ actionBefore . fst
+        ixMaps <- traverseOf _2 unsafeFreeze =<< hyloScanT00'
+          ( lift$ unsafeFreeze . snd =<< hyloScanT00'
+              (return ()) const (bsetter1 (LiftArray bgs)) bhylogebra (LiftArray bgs)
+          )
+          (,)
+          (msetter1 (LiftArray$ LiftArray mgs) (LiftArray$ LiftArray bgs))
+          (\(g, i) -> mhylogebra g (mterms!i))
+          (LiftArray$ LiftArray mgs)
+        remappedTransitions <- lift$ lift$
+          runReaderT ((traversed . _1) actionAfter encls) (swap ixMaps)
+        traverse (\(t, alg) -> alg t) remappedTransitions
+
+    return$ BoolAfa (listArray' bterms')
       afa{ terms = listArray' mterms', states = transitions'}
 
   ifG (Any True) action !x = action x
   ifG _ _ _ = return$ error "accessing element without parents"
 
   unfree !t = cataT (freeTraversal traversed) (either return nocons) t
-  bhylogebra (!g, !i) = return ((g,) <$> bterms!i, ifG g unfree)
+  bhylogebra (!g, !i) = return ((g, bterms!i), ifG g unfree)
 
-  modPT lP lT = MTerm.modChilds MTerm.pureChildMod{ MTerm.lT = lT, MTerm.lP = lP }
-  msetter1 !mgs (LiftArray -> !bgs) = \(!g, !t) -> ($t)$
+  bsetter1 bgs = \(!g, !t) -> ($t)$ traverse$ \j ->
+    Enclosing (beforeP bgs g j) (afterPM j)
+
+  msetter1 !mgs !bgs = \(!g, !t) -> ($t)$
     modPT (traverse$ \(!j) -> Enclosing (beforeP bgs g j) (afterP2 j))
     `freeModChilds` \(!i) -> Enclosing (beforeP mgs g i) (afterP1M i)
 
-  msetter2 !mgs (LiftArray -> !bgs) = \(!g, !t) -> ($t)$
-    modPT (traverse$ \(!j) -> Enclosing (beforeP bgs g j) (afterP2 j))
-    `freeModChilds` \(!i) -> Enclosing (beforeP mgs g i) (afterP1 i)
-
   mhylogebra !g !t = return
-    ( (g, t)
-    , ifG g$ cataT (freeTraversal$ modPT$ lift . unfree) (either return nocons)
+    ((g, t), ifG g$ cataT (freeTraversal$ modPT$ lift . unfree) (either return nocons))
+
+modPT lP lT = MTerm.modChilds MTerm.pureChildMod{ MTerm.lT = lT, MTerm.lP = lP }
+
+type MixBoolTerm p = MixTermIFree (BoolTermIFree p)
+
+data MEncloser arr (m :: * -> *) p = MEncloser
+  !(arr Int Any) !(arr Int Any) !Any !(MixBoolTerm p)
+
+instance (Monad m, MArray arr Any m) => Encloser
+  (MEncloser arr m p) m (ReaderT (Array Int Int, Array Int Int) m) (MixBoolTerm p)
+  where
+  {-# NOINLINE actionBefore #-}
+  actionBefore (MEncloser mgs bgs g t) = ($t)$ freeFor_
+    ( \rec -> \case
+      MTerm.Predicate !p -> for_ p (beforeP bgs g)
+      MTerm.LTrue -> return ()
+      MTerm.State !q -> return ()
+      MTerm.And !xs -> for_ xs rec 
+      MTerm.Or !xs -> for_ xs rec 
     )
+    (beforeP mgs g)
+  {-# NOINLINE actionAfter #-}
+  actionAfter (MEncloser mgs bgs g t) = ($t)$
+    freeModChilds (modPT$ traverse afterP2) afterP1
 
 {-# NOINLINE beforeP #-}
 beforeP !bgs !g !j = do
   !g0 <- readArray bgs j
   let !g1 = g0 <> g
-  traceShow (j, g1)$ writeArray bgs j g1
+  writeArray bgs j g1
 
 {-# NOINLINE afterP2 #-}
 afterP2 !j = asks snd <&> (!j)
@@ -270,6 +297,9 @@ afterP1 !j = asks fst <&> (!j)
 
 {-# NOINLINE afterP1M #-}
 afterP1M !j = asks fst >>= \bs -> lift$ readArray bs j
+
+{-# NOINLINE afterPM #-}
+afterPM !j = ask >>= \bs -> lift$ readArray bs j
 
 swallow :: forall p. BoolAfaUnswallowed p -> BoolAfaSwallowed p
 swallow BoolAfa{boolTerms=bterms, afa=afa@Afa{terms=mterms, states=transitions}} =

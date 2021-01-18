@@ -7,7 +7,8 @@ import Control.Monad.Trans
 import Data.Array.Base
 import Data.Array.ST
 
-newtype LiftArray a i e = LiftArray (a i e)
+newtype LiftArray a i e = LiftArray {unLiftArray :: a i e}
+
 instance (MonadTrans mt, Monad (mt m), MArray a e m)
   => MArray (LiftArray a) e (mt m) where
   {-# INLINE getBounds #-}
