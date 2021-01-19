@@ -70,6 +70,7 @@ library convert
     -- Afa.Convert.Pretty
     -- Afa.Convert.Dot
     Afa.Convert.Stranger
+    Afa.Convert.Smv
     Afa.Convert.CnfAfa
     Afa.Convert.Separated
     Afa.Convert.Separated.Model
@@ -87,7 +88,7 @@ library convert
     attoparsec-expr ^>=0.1.1.2,
     composition ^>=1.0.2.1,
     containers ^>=0.6.2.1,
-    -- interpolatedstring-perl6 ^>=1.0.2,
+    interpolate ^>=0.2.1,
     automata-safa-capnp ^>=0.1.0.0,
     capnp ^>=0.10.0.0,
     hashable ^>=1.3.0.0,

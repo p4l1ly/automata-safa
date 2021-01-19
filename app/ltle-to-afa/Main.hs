@@ -22,6 +22,7 @@ import Data.Functor.Compose
 import Data.Functor
 import System.IO
 import Ltl.Parser
+import Afa.Convert.Smv
 import Afa.Convert.Ltle
 import Afa.Convert.Capnp.Afa
 import Afa.Convert.Capnp.CnfAfa (hWriteCnfAfa)
@@ -150,6 +151,9 @@ optParser = Opts
           let Just sepafa = Sep.mixedToSeparated bafa
                 <|> Sep.mixedToSeparated bafa{ afa = delayPredicates$ afa bafa }
           in Sep.simplify sepafa <&> sepAfaWriter outdir i
+      (break (== ':') -> ("smv", ':':outdir)) ->
+        Right$ repeat$ \i bafa ->
+          Right$ (afaCosts bafa,)$ TIO.writeFile (outdir ++ "/" ++ i)$ toSmv bafa
       x -> Left$ "expected one of: \
         \{afa,afaBasicSimp,cnfafa,sepafaExploding,sepafaDelaying}:<path>; got " ++ x
     )
