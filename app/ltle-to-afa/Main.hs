@@ -22,6 +22,7 @@ import Data.Functor.Compose
 import Data.Functor
 import System.IO
 import Ltl.Parser
+import Afa.Convert.Dot
 import Afa.Convert.Smv
 import Afa.Convert.Ltle
 import Afa.Convert.Capnp.Afa
@@ -154,6 +155,9 @@ optParser = Opts
       (break (== ':') -> ("smv", ':':outdir)) ->
         Right$ repeat$ \i bafa ->
           Right$ (afaCosts bafa,)$ TIO.writeFile (outdir ++ "/" ++ i)$ toSmv bafa
+      (break (== ':') -> ("dot", ':':outdir)) ->
+        Right$ repeat$ \i bafa ->
+          Right$ (afaCosts bafa,)$ TIO.writeFile (outdir ++ "/" ++ i)$ toDot True bafa
       x -> Left$ "expected one of: \
         \{afa,afaBasicSimp,cnfafa,sepafaExploding,sepafaDelaying}:<path>; got " ++ x
     )

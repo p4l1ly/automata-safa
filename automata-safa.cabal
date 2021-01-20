@@ -68,7 +68,7 @@ library convert
   exposed-modules:
     Afa.Convert.Ltle
     -- Afa.Convert.Pretty
-    -- Afa.Convert.Dot
+    Afa.Convert.Dot
     Afa.Convert.Stranger
     Afa.Convert.Smv
     Afa.Convert.CnfAfa

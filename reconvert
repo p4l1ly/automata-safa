@@ -19,16 +19,16 @@
 # sepDelaying3 \
 
 
-for dir in \
-  smv \
-  smv3 \
-  aig \
-  aig3 \
-  ;
-do
-  rm $1/$dir/*
-  mkdir -p $1/$dir
-done
+# for dir in \
+#   smv \
+#   smv3 \
+#   aig \
+#   aig3 \
+#   ;
+# do
+#   rm $1/$dir/*
+#   mkdir -p $1/$dir
+# done
 
 # cat $1/ltls| cabal exec ltle-to-afa -- -i ltl -o afa:$1/afa0 > $1/afa0.csv
 # cabal exec ltle-to-afa -- -i stranger:$1/input -o afa:$1/afa0 +RTS -N8 > $1/afa0.csv
@@ -39,14 +39,14 @@ done
 # cabal exec ltle-to-afa -- -i afa:$1/afa0 -o afaBasicSimp:$1/afaBasic +RTS -N8 > $1/afaBasic.csv
 # cabal exec ltle-to-afa -- -i afa:$1/afaBasic -o cnfafa:$1/afaCnf > $1/afaCnf.csv
 # cabal exec ltle-to-afa -- -i afa:$1/afaBasic -o sepafaDelaying:$1/sepDelaying > $1/sepDelaying.csv
-cabal exec ltle-to-afa -- -i afa:$1/afaBasic -o smv:$1/smv > $1/smv.csv
-for f in $(ls $1/smv); do ../aiger/smvtoaig $1/smv/$f > $1/aig/$f; done
+# cabal exec ltle-to-afa -- -i afa:$1/afaBasic -o smv:$1/smv > $1/smv.csv
+# for f in $(ls $1/smv); do ../aiger/smvtoaig $1/smv/$f > $1/aig/$f; done
 
 # cabal exec ltle-to-afa -- -i afa:$1/afaBasic -o afaSimpGoblinMincut:$1/afaSimpGoblinMincut3 +RTS -N8 > $1/afaSimpGoblinMincut3.csv
 # cabal exec ltle-to-afa -- -i afa:$1/afaSimpGoblinMincut3 -o cnfafa:$1/afaCnf3 +RTS -N8 > $1/afaCnf3.csv
 # cabal exec ltle-to-afa -- -i afa:$1/afaSimpGoblinMincut3 -o sepafaDelaying:$1/sepDelaying3 +RTS -N8 > $1/sepDelaying3.csv
-cabal exec ltle-to-afa -- -i afa:$1/afaSimpGoblinMincut3 -o smv:$1/smv3 > $1/smv3.csv
-for f in $(ls $1/smv3); do ../aiger/smvtoaig $1/smv3/$f > $1/aig3/$f; done
+# cabal exec ltle-to-afa -- -i afa:$1/afaSimpGoblinMincut3 -o smv:$1/smv3 > $1/smv3.csv
+# for f in $(ls $1/smv3); do ../aiger/smvtoaig $1/smv3/$f > $1/aig3/$f; done
 
 # cabal exec ltle-to-afa -- -i afa:$1/afaBasic -o afaSimpGoblin:$1/afaSimpGoblin4 > $1/afaSimpGoblin4.csv
 # cabal exec ltle-to-afa -- -i afa:$1/afaSimpGoblin4 -o cnfafa:$1/afaCnf4 > $1/afaCnf4.csv
@@ -75,13 +75,13 @@ cd ../afapipe
 # ./build/file-solver-1 $1/sepDelaying4 > $1/dantoni4.csv
 # ./build/file-solver-1 $1/sepDelaying5 > $1/dantoni5.csv
 
-rm -f $1/abc.out
+rm -f $1/abc.csv
 for f in $(ls -v $1/aig); do
   echo checking $f
   result=$(../abc/build/abc -c "read_aiger $1/aig/$f; pdr -T 60" | grep -E '^Property|^Output')
   {
     echo -n -e "$f\t"
-    echo -n -e "$(echo $result | sed -r 's/.*Time =\s+([^ ]+).*/\1/')\t"
+    echo -n -e "$(($(echo $result | sed -r 's/.*Time =\s+([^ ]+).*/\1/')*1000))\t"
     if echo $result | grep Output > /dev/null; then
       echo 1
     elif echo $result | grep prove > /dev/null; then
@@ -89,16 +89,16 @@ for f in $(ls -v $1/aig); do
     else
       echo -2
     fi
-  } >> $1/abc.out
+  } >> $1/abc.csv
 done
 
-rm -f $1/abc3.out
+rm -f $1/abc3.csv
 for f in $(ls -v $1/aig3); do
   echo checking $f
   result=$(../abc/build/abc -c "read_aiger $1/aig3/$f; pdr -T 60" | grep -E '^Property|^Output')
   {
     echo -n -e "$f\t"
-    echo -n -e "$(echo $result | sed -r 's/.*Time =\s+([^ ]+).*/\1/')\t"
+    echo -n -e "$(($(echo $result | sed -r 's/.*Time =\s+([^ ]+).*/\1/')*1000))\t"
     if echo $result | grep Output > /dev/null; then
       echo 1
     elif echo $result | grep prove > /dev/null; then
@@ -106,7 +106,7 @@ for f in $(ls -v $1/aig3); do
     else
       echo -2
     fi
-  } >> $1/abc3.out
+  } >> $1/abc3.csv
 done
 
 # ./build/file-solver-1 $1/sepDelaying3 > $1/dantoniSat3.csv

@@ -1,69 +1,49 @@
 {-# LANGUAGE NamedFieldPuns #-}
 {-# LANGUAGE QuasiQuotes #-}
 {-# LANGUAGE ExtendedDefaultRules #-}
+{-# LANGUAGE OverloadedStrings #-}
 
 module Afa.Convert.Dot (toDot) where
 
 import Data.Foldable
-import Text.InterpolatedString.Perl6 (qq)
-import Data.List
+import Data.String.Interpolate.IsString
+import qualified Data.Text as T
 import Data.Array
-import Data.Array.MArray
-import Control.Monad.Trans
-import Control.Monad.ST
-import Data.Functor.Foldable.Dag.Monadic (cataScanM)
-import Data.Functor.Tree (treeFAlgM)
-import Data.Functor.Foldable.Dag.Consing (nocons, runNoConsMonadT)
 
-import qualified Afa.Term.TreeF as THB
 import Afa
-import Afa.Term
+import Afa.Bool
+import qualified Afa.Term.Bool as BTerm
+import qualified Afa.Term.Mix as MTerm
 
-dagTerms :: Array Int THB.Term -> (Array Int Int, [Term Int])
-dagTerms terms = runST$ runNoConsMonadT$
-  cataScanM (treeFAlgM nocons) terms >>= lift . freeze
-
-toDot :: Bool -> Afa -> String
-toDot cyclic Afa{terms, states} = intercalate "\n"
+toDot :: Bool -> BoolAfaUnswallowed Int -> T.Text
+toDot cyclic (BoolAfa bterms (Afa mterms states init)) = T.unlines
   [ "digraph afa {"
   , "  graph [nodesep=0.2];"
   , "  node [fontsize=20];"
-  , intercalate "\n"
-      [ [qq|  "{termNames!i}" -> "{termNames!j}"|]
-      | (i, term) <- zip [0..] terms'
-      , j <- toList term
-      ]
-  , intercalate "\n"
-      [ [qq|  "q{i}" -> "{termNames!q}"|]
-      | (i, q) <- zip [0..] states'
-      ]
-  , intercalate "\n"
-      [ [qq|  "q{i}" [style=filled, fillcolor=pink]|]
-      | (i, q) <- zip [0..] states'
-      ]
-  , intercalate "\n"
-      [ [qq|  "{termNames!i}" [style=filled, {style term}]|]
-      | (i, term) <- zip [0..] terms'
-      ]
+  -- , T.unlines [[i|  b#{j} -> #{c};|] | (j, t) <- assocs bterms, c <- bchilds t]
+  , T.unlines [[i|  m#{j} -> #{c};|] | (j, t) <- assocs mterms, c <- mchilds t]
+  , T.unlines [[i|  q#{j} -> m#{q}|] | (j, q) <- assocs states]
+  , T.unlines [[i|  q#{j} [style=filled, fillcolor=pink]|] | (j, _) <- assocs states]
+  -- , T.unlines [[i|  b#{j} [style=filled, #{bstyle j t}]|] | (j, t) <- assocs bterms]
+  , T.unlines [[i|  m#{j} [style=filled, #{mstyle j t}]|] | (j, t) <- assocs mterms]
   , "}"
   ]
   where
-    (ixMap, terms') = dagTerms terms
-    states' = map (ixMap!)$ elems states
-    termNames = listArray (0, length terms' - 1)$
-      flip map (zip [0..] terms')$ \(i, t) -> case t of
-        LTrue -> [qq|{i}T|] :: String
-        LFalse -> [qq|{i}F|]
-        (Var j) -> [qq|{i}v{j}|]
-        (State j) -> if cyclic then [qq|q{j}|] else [qq|{i}q{j}|]
-        (Not _) -> [qq|{i}!|]
-        (And _) -> [qq|{i}&|]
-        (Or _) -> [qq|{i}||]
+    bchilds t = [[i|b#{c}|] | c <- toList t]
+    mchilds t = case t of
+      -- MTerm.Predicate p -> [[i|b#{p}|]]
+      MTerm.State q -> if cyclic then [[i|q#{q}|]] else [[i|Q#{q}|]]
+      _ -> [[i|m#{c}|] | c <- toList t]
 
-    style (Not _) = "shape=rectangle, fillcolor=indianred1"
-    style (And _) = "shape=rectangle, fillcolor=lightgoldenrod1"
-    style (Or _) = "shape=rectangle, fillcolor=lightblue"
-    style (Var _) = "shape=rectangle, fillcolor=yellow"
-    style (State _) = "shape=rectangle, fillcolor=pink"
-    style LTrue = "shape=rectangle, fillcolor=green"
-    style LFalse = "shape=rectangle, fillcolor=red"
+    bstyle j (BTerm.Not _) = "shape=rectangle, fillcolor=indianred1"
+    bstyle j (BTerm.And _) = "shape=rectangle, fillcolor=lightgoldenrod1"
+    bstyle j (BTerm.Or _) = "shape=rectangle, fillcolor=lightblue"
+    bstyle j (BTerm.Predicate _) = "shape=rectangle, fillcolor=yellow"
+    bstyle j BTerm.LTrue = "shape=rectangle, fillcolor=green"
+    bstyle j BTerm.LFalse = "shape=rectangle, fillcolor=red"
+
+    mstyle j (MTerm.And _) = "shape=rectangle, fillcolor=lightgoldenrod1"
+    mstyle j (MTerm.Or _) = "shape=rectangle, fillcolor=lightblue"
+    mstyle j (MTerm.Predicate _) = "shape=rectangle, fillcolor=lightgrey"
+    mstyle j (MTerm.State _) = "shape=rectangle, fillcolor=white"
+    mstyle j MTerm.LTrue = "shape=rectangle, fillcolor=green"
