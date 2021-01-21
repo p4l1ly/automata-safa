@@ -11,6 +11,7 @@ import Afa
 import Afa.Lib
 import Afa.Term.Mix
 import Afa.Ops.Goblin
+import Afa.Ops.QMinCut
 
 tests =
   [ "Afa.Goblin" ~: do
@@ -36,21 +37,35 @@ tests =
       -- print$ goblin afa5
 
       putStrLn ""
+      putStrLn "Goblin: afa6"
       print$ markBack afa6
       let afa6' = afa6{terms = markBack afa6}
       print$ goblin2 afa6'
       print$ goblin2 afa6' >>= goblin2
 
       putStrLn ""
+      putStrLn "Goblin: afa7"
       print$ markBack afa7
       let afa7' = afa7{terms = markBack afa7}
       print$ goblin2 afa7'
 
       putStrLn ""
+      putStrLn "Goblin: afa8"
       print$ markBack afa8
       let afa8' = afa8{terms = markBack afa8}
       print$ goblin2 afa8'
       print$ goblin2 afa8' >>= goblin2
+
+      putStrLn ""
+      putStrLn "Goblin: afa9"
+      let afa9' = goblinUntilFixpoint afa9
+      print afa9'
+      let Right afa9'' = simplifyAll afa9'
+      print afa9''
+      let afa9''' = qminCut afa9''
+      print afa9'''
+      let Right afa9'''' = simplifyAll afa9'''
+      print afa9''''
   ]
 
 afa0 :: AfaUnswallowed Int
@@ -185,5 +200,20 @@ afa8 = Afa
       , {-  0 -} State 0
       ]
   , states = listArray' [1, 4, 3]
+  , initState = 0
+  }
+
+afa9 :: AfaUnswallowed Int
+afa9 = Afa
+  { terms = listArray'$ reverse
+      [ {-  6 -} Or$ 0 :| [1, 3]
+      , {-  5 -} Or$ 1 :| [3]
+      , {-  4 -} Or$ 0 :| [2]
+      , {-  3 -} Predicate 1
+      , {-  2 -} Predicate 0
+      , {-  1 -} State 2
+      , {-  0 -} State 1
+      ]
+  , states = listArray' [6, 4, 5]
   , initState = 0
   }

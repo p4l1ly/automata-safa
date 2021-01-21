@@ -44,7 +44,7 @@ import qualified Afa.Term.Mix as MTerm
 import Control.RecursionSchemes.Lens
 import Control.Monad.Trans
 import Data.Traversable
-import Afa.Lib (listArray')
+import Afa.Lib (listArray', DumbCount(..))
 import Afa.Lib.LiftArray
 import Data.Hashable
 import qualified Afa.Term.Mix.Simplify as MTerm
@@ -174,7 +174,7 @@ simplifyStatesAndMixTs ixMap mterms states init = case sequence states1 of
 
   alg t = case MTerm.modChilds MTerm.pureChildMod{ MTerm.lQ = (qMap!) } t of
     Left b -> return$ Left b
-    Right t -> case MTerm.simplify (getCompose . unFix . snd) fst t of
+    Right t -> case MTerm.simplify ((Many,) . getCompose . unFix . snd) fst t of
       Left b -> return$ Left b
       Right (Left it) -> return$ Right it
       Right (Right t) -> Right . (, Fix$ Compose t) <$> hashCons' (fmap fst t)

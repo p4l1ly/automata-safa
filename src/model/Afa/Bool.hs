@@ -39,7 +39,8 @@ import qualified Afa.Term.Bool as BTerm
 import qualified Afa.Term.Bool.Simplify as BTerm
 import Afa.Lib.Free
 import Afa.Lib.LiftArray
-import Afa.Lib (listArray', (>&>), nonemptyCanonicalizeWith, eixMappedGs)
+import Afa.Lib
+  (listArray', (>&>), nonemptyCanonicalizeWith, eixMappedGs, DumbCount(..))
 
 
 data BoolAfa boolTerms afa = BoolAfa
@@ -89,8 +90,8 @@ simplifyMixAndBoolTs mgs bterms mterms = closure ixMap bterms mterms
   ixMap = listArray (bounds mterms)$ map Right [0..]
   cost ts = (length ts, sum$ fmap length ts)
   closure ixMap bterms mterms
-    | cost mterms1 > cost mterms3 = closure ixMap3 bterms2 mterms3
-    | otherwise = (ixMap1, bterms1, mterms1)
+    | cost mterms2 > cost mterms3 = closure ixMap3 bterms2 mterms3
+    | otherwise = (ixMap2', bterms2, mterms2)
     where
     (ixMap1, bterms1, mterms1) = simplifyInitMixAndBoolTs mgs ixMap bterms mterms
     (ixMap2, bterms2, mterms2) = separatePositiveTops bterms1 mterms1
@@ -136,7 +137,7 @@ simplifyInitMixAndBoolTs mgs ixMap bterms mterms = runST action where
   alg (Any False) _ = return$ error "accessing element without parents"
   alg _ !t = case modPT id pure t of
     Left !b -> return$ Left b
-    Right !t -> case MTerm.simplify (getCompose . unFix . snd) fst t of
+    Right !t -> case MTerm.simplify ((Many,) . getCompose . unFix . snd) fst t of
       Left !b -> return$ Left b
       Right (Left !it) -> return$ Right it
       Right (Right !t) -> Right . (, Fix$ Compose t) <$> hashCons' (fmap fst t)

@@ -32,7 +32,7 @@ import Data.Array
 import Data.Hashable
 import qualified Afa as A
 
-import Afa.Lib (listArray')
+import Afa.Lib (listArray', DumbCount(Many))
 import Afa.Lib.LiftArray
 
 data Afa p = Afa
@@ -167,7 +167,7 @@ simplifyStatesAndQTerms ixMap mterms states init
 
   alg t = case MTerm.modChilds MTerm.pureChildMod{ MTerm.lQ = (qMap!) } t of
     Left b -> return$ Left b
-    Right t -> case MTerm.simplify (getCompose . unFix . snd) fst t of
+    Right t -> case MTerm.simplify ((Many,) . getCompose . unFix . snd) fst t of  -- no flattening, I'm lazy. not sure if it would change something...
       Left b -> return$ Left b
       Right (Left it) -> return$ Right it
       Right (Right t) -> Right . (, Fix$ Compose t) <$> hashCons' (fmap fst t)

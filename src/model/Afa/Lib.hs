@@ -38,3 +38,22 @@ eixMappedGs arr ixMap gs = accumArray (\_ _ -> Any True) mempty (bounds arr)
   , isRight ei
   , let Right i = ei
   ]
+
+eixMappedGs2
+  :: Array Int a -> Array Int (Either Bool Int) -> Array Int Any -> Array Int DumbCount
+eixMappedGs2 arr ixMap gs = accumArray (\_ _ -> Many) mempty (bounds arr)
+  [ (i, ())
+  | (i0, Any True) <- assocs gs
+  , let ei = ixMap!i0
+  , isRight ei
+  , let Right i = ei
+  ]
+
+
+data DumbCount = Zero | One | Many deriving (Show)
+instance Semigroup DumbCount where
+  Zero <> x = x
+  x <> Zero = x
+  _ <> _ = Many
+instance Monoid DumbCount where
+  mempty = Zero

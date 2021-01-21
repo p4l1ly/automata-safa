@@ -4,6 +4,8 @@
 
 module Afa.Term.Mix.Simplify where
 
+import Debug.Trace
+
 import Control.Arrow
 import Control.RecursionSchemes.Lens
 import Control.Lens
@@ -22,7 +24,13 @@ import Data.Hashable
 import qualified Data.HashSet as S
 
 import Afa.Lib
-  (nonEmptyConcatMap, (>&>), nonemptyCanonicalizeWith, listArray', eixMappedGs)
+  ( nonEmptyConcatMap
+  , (>&>)
+  , nonemptyCanonicalizeWith
+  , listArray'
+  , eixMappedGs2
+  , DumbCount(..)
+  )
 import Afa.Lib.LiftArray
 import Afa.Term.Mix
 
@@ -103,13 +111,15 @@ canonicalizeWith getR (Or ts) = Or$ nonemptyCanonicalizeWith getR ts
 canonicalizeWith _ x = x
 
 simplify :: (Eq r, Hashable r, Ord r)
-  => (t -> Term p q t)
+  => (t -> (DumbCount, Term p q t))
   -> (t -> r)
   -> Term p q (Either Bool t) -> Either Bool (Either t (Term p q t))
 simplify project getR =
   ( ( deLit
       >&> deUnary
-          >&> flatten project >>> canonicalizeWith getR >>> absorb project getR
+          >&> flatten0 ((\case (Many, _) -> Nothing; (_, x) -> Just x) . project)
+              >>> canonicalizeWith getR
+              >>> absorb (snd . project) getR
     ) >>> skipJoin
   )
   >&> join . fmap deUnary
@@ -128,17 +138,19 @@ simplifyDag gs (ixMap, arr) = runST action where
   action :: forall s. ST s (Array Int (Either Bool Int), Array Int (Term p q Int))
   action = do
     (ixMap', tList) <- runHashConsT$ do
-      (gs'M :: LSTArray s Int Any) <- unsafeThaw$ eixMappedGs arr ixMap gs
+      (gs'M :: LSTArray s Int DumbCount) <- unsafeThaw$ eixMappedGs2 arr ixMap gs
       unsafeFreeze =<< hyloScanTTerminal' traversed hylogebra gs'M
     return (fmap (>>= (ixMap'!) >&> fst) ixMap, listArray' tList)
 
-  alg (Any False) _ = return$ error "accessing element without parents"
-  alg _ t = case simplify (getCompose . unFix . snd) fst t of
+  alg Zero _ = return$ error "accessing element without parents"
+  alg g t = case simplify (\(_, Fix (Compose (Compose gt))) -> gt) fst t of
     Left b -> return$ Left b
     Right (Left it) -> return$ Right it
-    Right (Right t) -> Right . (, Fix$ Compose t) <$> hashCons' (fmap fst t)
+    Right (Right t) -> hashCons' (fmap fst t) <&> \i ->
+      Right (i, Fix$Compose$Compose (g, t))
 
-  hylogebra (g, i) = return ((g,) <$> arr!i, alg g)
+  hylogebra (g, i) = return ((gchild,) <$> arr!i, alg g)
+    where gchild = case g of Zero -> Zero; _ -> One
 
 
 simplifyDagUntilFixpoint :: forall p q. (Eq p, Hashable p, Eq q, Hashable q)
@@ -146,10 +158,11 @@ simplifyDagUntilFixpoint :: forall p q. (Eq p, Hashable p, Eq q, Hashable q)
   -> (Array Int (Either Bool Int), Array Int (Term p q Int))
   -> (Array Int (Either Bool Int), Array Int (Term p q Int))
 simplifyDagUntilFixpoint gs (ixMap, arr) =
-  fromJust$ msum$ zipWith better iters (tail iters)
+  fromJust$ msum$ zipWith3 better iters tailIters (tail tailIters)
   where
+  tailIters = tail iters
   cost ts = (rangeSize$ bounds ts, sum$ fmap length ts)
   iters = iterate
     ((cost . snd &&& id) . simplifyDag gs . snd)
     (cost arr, (ixMap, arr))
-  better (c1, r) (c2, _) = r <$ guard (c1 <= c2)
+  better (c1, r) (c2, _) (c3, _) = r <$ guard (c1 <= c2 && c1 <= c3)
