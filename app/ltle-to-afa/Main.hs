@@ -31,6 +31,7 @@ import qualified Afa.Convert.Capnp.Separated as SepCap
 import qualified Afa.Convert.Separated as Sep
 import qualified Afa.Convert.Separated.Model as Sep
 import Afa.Convert.CnfAfa (tseytin')
+import qualified Afa
 import Afa.Bool
 import Afa hiding (simplifyAll)
 import Afa.Ops.Compound
@@ -157,7 +158,9 @@ optParser = Opts
           Right$ (afaCosts bafa,)$ TIO.writeFile (outdir ++ "/" ++ i)$ toSmv bafa
       (break (== ':') -> ("dot", ':':outdir)) ->
         Right$ repeat$ \i bafa ->
-          Right$ (afaCosts bafa,)$ TIO.writeFile (outdir ++ "/" ++ i)$ toDot True bafa
+          Right$ (afaCosts bafa,)$ TIO.writeFile (outdir ++ "/" ++ i)$ toDot True$
+            let bafa' = separateStatelessBottoms bafa
+            in bafa'{ afa = (\(Right x) -> x)$ Afa.simplifyAll$ afa bafa' }
       x -> Left$ "expected one of: \
         \{afa,afaBasicSimp,cnfafa,sepafaExploding,sepafaDelaying}:<path>; got " ++ x
     )
