@@ -15,20 +15,19 @@ import qualified Afa.Term.Mix as MTerm
 import qualified Afa.Convert.Capnp.Afa as CapAfa (varCount)
 
 toSmv :: BoolAfaUnswallowed Int -> T.Text
-toSmv (BoolAfa bterms (Afa mterms states init)) = T.unlines$
-     [ "MODULE main"
-     , "VAR"
-     ]
-  ++ map (\j -> [i|  q#{j}: boolean;|]) [0..qcount - 1]
-  ++ map (\j -> [i|  v#{j}: boolean;|]) [0..varCnt - 1]
-  ++ "DEFINE"
-   : map (\(j, t) -> [i|  b#{j} := #{fromBTerm t};|]) (assocs bterms)
-  ++ map (\(j, t) -> [i|  m#{j} := #{fromMTerm t};|]) (assocs mterms)
-  ++ [ [i|INIT q#{init}|]
-     , T.append "TRANS "$ T.intercalate " & "$
-         map (\(q, t) -> [i|(q#{q} -> m#{t})|]) (assocs states)
-     , [i|SPEC AG(#{qDisj})|]
-     ]
+toSmv (BoolAfa bterms (Afa mterms states init)) = T.unlines
+  [ "MODULE main"
+  , "VAR"
+  , T.unlines$ map (\j -> [i|  q#{j}: boolean;|]) [0..qcount - 1]
+  , T.unlines$ map (\j -> [i|  v#{j}: boolean;|]) [0..varCnt - 1]
+  , "DEFINE"
+  , T.unlines$ map (\(j, t) -> [i|  b#{j} := #{fromBTerm t};|]) (assocs bterms)
+  , T.unlines$ map (\(j, t) -> [i|  m#{j} := #{fromMTerm t};|]) (assocs mterms)
+  , [i|INIT q#{init}|]
+  , T.append "TRANS "$ T.intercalate " & "$
+      map (\(q, t) -> [i|(q#{q} -> m#{t})|]) (assocs states)
+  , [i|SPEC AG(#{qDisj})|]
+  ]
   where
   qcount = rangeSize$ bounds states
   (varCnt, bterms') = CapAfa.varCount bterms
@@ -48,3 +47,29 @@ fromMTerm (MTerm.Predicate p) = [i|b#{p}|]
 fromMTerm (MTerm.State q) = [i|next(q#{q})|]
 fromMTerm (MTerm.And xs) = T.intercalate " & "$ map (\x -> [i|m#{x}|])$ NE.toList xs
 fromMTerm (MTerm.Or xs) = T.intercalate " | "$ map (\x -> [i|m#{x}|])$ NE.toList xs
+
+fromMTermReverse :: MTerm.Term Int Int Int -> T.Text
+fromMTermReverse MTerm.LTrue = "TRUE"
+fromMTermReverse (MTerm.Predicate p) = [i|b#{p}|]
+fromMTermReverse (MTerm.State q) = [i|q#{q}|]
+fromMTermReverse (MTerm.And xs) = T.intercalate " & "$ map (\x -> [i|m#{x}|])$ NE.toList xs
+fromMTermReverse (MTerm.Or xs) = T.intercalate " | "$ map (\x -> [i|m#{x}|])$ NE.toList xs
+
+toSmvReverse :: BoolAfaUnswallowed Int -> T.Text
+toSmvReverse (BoolAfa bterms (Afa mterms states init)) = T.unlines
+  [ "MODULE main"
+  , "VAR"
+  , T.unlines$ map (\j -> [i|  q#{j}: boolean;|]) [0..qcount - 1]
+  , T.unlines$ map (\j -> [i|  v#{j}: boolean;|]) [0..varCnt - 1]
+  , "DEFINE"
+  , T.unlines$ map (\(j, t) -> [i|  b#{j} := #{fromBTerm t};|]) (assocs bterms)
+  , T.unlines$ map (\(j, t) -> [i|  m#{j} := #{fromMTermReverse t};|]) (assocs mterms)
+  , [i|INIT #{nqConj}|]
+  , T.append "TRANS "$ T.intercalate " & "$
+      map (\(q, t) -> [i|(next(q#{q}) -> m#{t})|]) (assocs states)
+  , [i|SPEC AG(!q0)|]
+  ]
+  where
+  qcount = rangeSize$ bounds states
+  (varCnt, bterms') = CapAfa.varCount bterms
+  nqConj = T.intercalate " & "$ map (\q -> [i|!q#{q}|]) [0..qcount-1]

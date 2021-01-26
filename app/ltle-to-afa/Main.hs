@@ -156,6 +156,9 @@ optParser = Opts
       (break (== ':') -> ("smv", ':':outdir)) ->
         Right$ repeat$ \i bafa ->
           Right$ (afaCosts bafa,)$ TIO.writeFile (outdir ++ "/" ++ i)$ toSmv bafa
+      (break (== ':') -> ("smvReverse", ':':outdir)) ->
+        Right$ repeat$ \i bafa ->
+          Right$ (afaCosts bafa,)$ TIO.writeFile (outdir ++ "/" ++ i)$ toSmvReverse bafa
       (break (== ':') -> ("dot", ':':outdir)) ->
         Right$ repeat$ \i bafa ->
           Right$ (afaCosts bafa,)$ TIO.writeFile (outdir ++ "/" ++ i)$ toDot True$
