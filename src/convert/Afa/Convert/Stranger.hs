@@ -50,7 +50,7 @@ parseExpr str = case parse expr$ T.filter (not . isSpace) str of
   Fail i ctxs err -> error$ show (i, ctxs, err)
   Partial p -> case p "" of
     Fail i ctxs err -> error$ show (i, ctxs, err)
-    Partial p -> error "expr double partial"
+    Partial _ -> error "expr double partial"
     Done _ x -> x
   Done _ x -> x
 

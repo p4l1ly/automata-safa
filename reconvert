@@ -67,8 +67,8 @@
 
 cd ../afapipe
 
-# ./build/file-solver-2 $1/afaCnf > $1/afasat.csv
-# ./build/file-solver-2 $1/afaCnf3 > $1/afasat3.csv
+./build/file-solver-2 $1/afaCnf > $1/afasat.csv
+./build/file-solver-2 $1/afaCnf3 > $1/afasat3.csv
 # ./build/file-solver-2 $1/afaCnf0 > $1/afasat0.csv
 # ./build/file-solver-2 $1/afaCnf4 > $1/afasat4.csv
 # ./build/file-solver-2 $1/afaCnf5 > $1/afasat5.csv
@@ -77,8 +77,8 @@ cd ../afapipe
 # ./build/file-solver-3 $1/afaCnf4 > $1/afasatClausal4.csv
 # ./build/file-solver-3 $1/afaCnf5 > $1/afasatClausal5.csv
 # ./build/file-solver-1 $1/sepDelaying0 > $1/dantoni0.csv
-# ./build/file-solver-1 $1/sepDelaying > $1/dantoni.csv
-# ./build/file-solver-1 $1/sepDelaying3 > $1/dantoni3.csv
+./build/file-solver-1 $1/sepDelaying > $1/dantoni.csv
+./build/file-solver-1 $1/sepDelaying3 > $1/dantoni3.csv
 # ./build/file-solver-1 $1/sepDelaying4 > $1/dantoni4.csv
 # ./build/file-solver-1 $1/sepDelaying5 > $1/dantoni5.csv
 
@@ -116,39 +116,39 @@ cd ../afapipe
 #   } >> $1/abc3.csv
 # done
 
-rm -f $1/abcReverse.csv
-for f in $(ls -v $1/aigReverse); do
-  echo checking $f
-  result=$(../abc/build/abc -c "read_aiger $1/aigReverse/$f; pdr -T 60" | grep -E '^Property|^Output')
-  {
-    echo -n -e "$f\t"
-    echo -n -e "$(($(echo $result | sed -r 's/.*Time =\s+([^ ]+).*/\1/')*1000))\t"
-    if echo $result | grep Output > /dev/null; then
-      echo 1
-    elif echo $result | grep prove > /dev/null; then
-      echo 0
-    else
-      echo -2
-    fi
-  } >> $1/abcReverse.csv
-done
-
-rm -f $1/abc3Reverse.csv
-for f in $(ls -v $1/aig3Reverse); do
-  echo checking $f
-  result=$(../abc/build/abc -c "read_aiger $1/aig3Reverse/$f; pdr -T 60" | grep -E '^Property|^Output')
-  {
-    echo -n -e "$f\t"
-    echo -n -e "$(($(echo $result | sed -r 's/.*Time =\s+([^ ]+).*/\1/')*1000))\t"
-    if echo $result | grep Output > /dev/null; then
-      echo 1
-    elif echo $result | grep prove > /dev/null; then
-      echo 0
-    else
-      echo -2
-    fi
-  } >> $1/abc3Reverse.csv
-done
+# rm -f $1/abcReverse.csv
+# for f in $(ls -v $1/aigReverse); do
+#   echo checking $f
+#   result=$(../abc/build/abc -c "read_aiger $1/aigReverse/$f; pdr -T 60" | grep -E '^Property|^Output')
+#   {
+#     echo -n -e "$f\t"
+#     echo -n -e "$(($(echo $result | sed -r 's/.*Time =\s+([^ ]+).*/\1/')*1000))\t"
+#     if echo $result | grep Output > /dev/null; then
+#       echo 1
+#     elif echo $result | grep prove > /dev/null; then
+#       echo 0
+#     else
+#       echo -2
+#     fi
+#   } >> $1/abcReverse.csv
+# done
+# 
+# rm -f $1/abc3Reverse.csv
+# for f in $(ls -v $1/aig3Reverse); do
+#   echo checking $f
+#   result=$(../abc/build/abc -c "read_aiger $1/aig3Reverse/$f; pdr -T 60" | grep -E '^Property|^Output')
+#   {
+#     echo -n -e "$f\t"
+#     echo -n -e "$(($(echo $result | sed -r 's/.*Time =\s+([^ ]+).*/\1/')*1000))\t"
+#     if echo $result | grep Output > /dev/null; then
+#       echo 1
+#     elif echo $result | grep prove > /dev/null; then
+#       echo 0
+#     else
+#       echo -2
+#     fi
+#   } >> $1/abc3Reverse.csv
+# done
 
 # rm -f $1/abc-again.csv
 # for f in $(ls -v $1/aig-again); do
