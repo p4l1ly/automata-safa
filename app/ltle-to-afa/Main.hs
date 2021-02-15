@@ -24,6 +24,7 @@ import System.IO
 import Ltl.Parser
 import Afa.Convert.Dot
 import Afa.Convert.Smv
+import Afa.Convert.Ada (toAda)
 import Afa.Convert.Ltle
 import Afa.Convert.Capnp.Afa
 import Afa.Convert.Capnp.CnfAfa (hWriteCnfAfa)
@@ -164,6 +165,9 @@ optParser = Opts
           Right$ (afaCosts bafa,)$ TIO.writeFile (outdir ++ "/" ++ i)$ toDot True$
             let bafa' = separateStatelessBottoms bafa
             in bafa'{ afa = (\(Right x) -> x)$ Afa.simplifyAll$ afa bafa' }
+      (break (== ':') -> ("ada", ':':outdir)) ->
+        Right$ repeat$ \i bafa ->
+          Right$ (afaCosts bafa,)$ TIO.writeFile (outdir ++ "/" ++ i ++ ".ada")$ toAda bafa
       x -> Left$ "expected one of: \
         \{afa,afaBasicSimp,cnfafa,sepafaExploding,sepafaDelaying}:<path>; got " ++ x
     )

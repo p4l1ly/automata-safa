@@ -71,6 +71,7 @@ library convert
     Afa.Convert.Dot
     Afa.Convert.Stranger
     Afa.Convert.Smv
+    Afa.Convert.Ada
     Afa.Convert.CnfAfa
     Afa.Convert.Separated
     Afa.Convert.Separated.Model
