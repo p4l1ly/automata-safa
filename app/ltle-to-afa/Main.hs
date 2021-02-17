@@ -167,7 +167,7 @@ optParser = Opts
             in bafa'{ afa = (\(Right x) -> x)$ Afa.simplifyAll$ afa bafa' }
       (break (== ':') -> ("ada", ':':outdir)) ->
         Right$ repeat$ \i bafa ->
-          Right$ (afaCosts bafa,)$ TIO.writeFile (outdir ++ "/" ++ i ++ ".ada")$ toAda bafa
+          Right$ (afaCosts bafa,)$ TIO.writeFile (outdir ++ "/" ++ i)$ toAda bafa
       x -> Left$ "expected one of: \
         \{afa,afaBasicSimp,cnfafa,sepafaExploding,sepafaDelaying}:<path>; got " ++ x
     )

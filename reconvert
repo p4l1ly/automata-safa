@@ -21,12 +21,14 @@
 # smv3 \
 # aig \
 # aig3 \
+# smvReverse \
+# smv3Reverse \
+# aigReverse \
+# aig3Reverse \
 
 # for dir in \
-#   smvReverse \
-#   smv3Reverse \
-#   aigReverse \
-#   aig3Reverse \
+#   ada \
+#   ada3 \
 #   ;
 # do
 #   rm $1/$dir/*
@@ -44,6 +46,7 @@
 # cabal exec ltle-to-afa -- -i afa:$1/afaBasic -o sepafaDelaying:$1/sepDelaying > $1/sepDelaying.csv
 # cabal exec ltle-to-afa -- -i afa:$1/afaBasic -o smv:$1/smv > $1/smv.csv
 # cabal exec ltle-to-afa -- -i afa:$1/afaBasic -o smvReverse:$1/smvReverse > $1/smvReverse.csv
+# cabal exec ltle-to-afa -- -i afa:$1/afaBasic -o ada:$1/ada > $1/ada.csv
 # for f in $(ls $1/smv); do ../aiger/smvtoaig $1/smv/$f > $1/aig/$f; done
 # for f in $(ls $1/smvReverse); do ../aiger/smvtoaig $1/smvReverse/$f > $1/aigReverse/$f; done
 
@@ -52,6 +55,7 @@
 # cabal exec ltle-to-afa -- -i afa:$1/afaSimpGoblinMincut3 -o sepafaDelaying:$1/sepDelaying3 +RTS -N8 > $1/sepDelaying3.csv
 # cabal exec ltle-to-afa -- -i afa:$1/afaSimpGoblinMincut3 -o smv:$1/smv3 > $1/smv3.csv
 # cabal exec ltle-to-afa -- -i afa:$1/afaSimpGoblinMincut3 -o smvReverse:$1/smv3Reverse > $1/smv3Reverse.csv
+# cabal exec ltle-to-afa -- -i afa:$1/afaSimpGoblinMincut3 -o ada:$1/ada3 > $1/ada3.csv
 # for f in $(ls $1/smv3); do ../aiger/smvtoaig $1/smv3/$f > $1/aig3/$f; done
 # for f in $(ls $1/smv3Reverse); do ../aiger/smvtoaig $1/smv3Reverse/$f > $1/aig3Reverse/$f; done
 
@@ -67,8 +71,8 @@
 
 cd ../afapipe
 
-./build/file-solver-2 $1/afaCnf > $1/afasat.csv
-./build/file-solver-2 $1/afaCnf3 > $1/afasat3.csv
+# ./build/file-solver-2 $1/afaCnf > $1/afasat.csv
+# ./build/file-solver-2 $1/afaCnf3 > $1/afasat3.csv
 # ./build/file-solver-2 $1/afaCnf0 > $1/afasat0.csv
 # ./build/file-solver-2 $1/afaCnf4 > $1/afasat4.csv
 # ./build/file-solver-2 $1/afaCnf5 > $1/afasat5.csv
@@ -77,8 +81,8 @@ cd ../afapipe
 # ./build/file-solver-3 $1/afaCnf4 > $1/afasatClausal4.csv
 # ./build/file-solver-3 $1/afaCnf5 > $1/afasatClausal5.csv
 # ./build/file-solver-1 $1/sepDelaying0 > $1/dantoni0.csv
-./build/file-solver-1 $1/sepDelaying > $1/dantoni.csv
-./build/file-solver-1 $1/sepDelaying3 > $1/dantoni3.csv
+# ./build/file-solver-1 $1/sepDelaying > $1/dantoni.csv
+# ./build/file-solver-1 $1/sepDelaying3 > $1/dantoni3.csv
 # ./build/file-solver-1 $1/sepDelaying4 > $1/dantoni4.csv
 # ./build/file-solver-1 $1/sepDelaying5 > $1/dantoni5.csv
 
@@ -199,3 +203,29 @@ cd ../afapipe
 
 # ./build/file-solver-1 $1/sepDelayingPart >> $1/dantoniPart.csv
 # ./build/file-solver-1 $1/sepDelaying3Part >> $1/dantoni3Part.csv
+
+cd ../JAltImpact
+
+rm -f $1/jimpact.csv
+for f in $(ls -v $1/ada); do
+  echo checking $f
+  cp $1/ada/$f /tmp/jimpact.ada
+  timeout 60 ant -Dmodel.path=/tmp/jimpact.ada > /tmp/jimpact.log
+  result=$?
+  {
+    echo -n -e "$f\t"
+    if [ $result = 124 ]; then
+      echo -e "60000\t-2"
+    else
+      if cat /tmp/jimpact.log | grep 'NOT EMPTY' > /dev/null; then
+        echo -n -e "$(cat /tmp/jimpact.log | grep 'Time Cost' | sed 's/.*: //')\t"
+        echo 1
+      elif cat /tmp/jimpact.log | grep 'EMPTY' > /dev/null; then
+        echo -n -e "$(cat /tmp/jimpact.log | grep 'Time Cost' | sed 's/.*: //')\t"
+        echo 0
+      else
+        echo "60000\t-3"
+      fi
+    fi
+  } >> $1/jimpact.csv
+done
