@@ -59,11 +59,10 @@ serializeAfa (BoolAfa bterms (Afa mterms states 0)) = AfaC.BoolAfa
   }
   where (varCnt, bterms') = varCount bterms
 
--- TODO multifold, multitraverse, multimap
 varCount :: (Traversable f) => f (BTerm.Term Int t) -> (Int, f (BTerm.Term Int t))
 varCount arr = (count, arr') where
   vars = (`appEndo` HS.empty)$
-    arr & foldMap (BTerm.appMTFol BTerm.mtfol0{ BTerm.mtfolP = Endo . HS.insert })
+    foldMap (BTerm.appMTFol BTerm.mtfol0{ BTerm.mtfolP = Endo . HS.insert }) arr
   count = HS.size vars
   varMap = HM.fromList$ zip (HS.toList vars) [0..]
   arr' = arr <&> BTerm.appMTFun BTerm.mtfun0{BTerm.mtfunP = (varMap HM.!)}

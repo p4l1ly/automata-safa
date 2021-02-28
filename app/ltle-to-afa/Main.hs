@@ -33,6 +33,7 @@ import qualified Afa.Convert.Separated as Sep
 import qualified Afa.Convert.Separated.Model as Sep
 import Afa.Convert.CnfAfa (tseytin')
 import qualified Afa
+import Afa.Ops.Randomize (randomizeIO)
 import Afa.Bool
 import Afa hiding (simplifyAll)
 import Afa.Ops.Compound
@@ -128,6 +129,10 @@ optParser = Opts
       (break (== ':') -> ("afa", ':':outdir)) ->
         Right$ repeat$ \i bafa ->
           Right$ afaWriter outdir i bafa
+      (break (== ':') -> ("afaRandomized", ':':outdir)) ->
+        Right$ repeat$ \i bafa -> Right$ (afaCosts bafa,)$ do
+          bafa' <- randomizeIO bafa
+          withFile (outdir ++ "/" ++ i) WriteMode$ hWriteAfa (reorderStates' bafa')
       (break (== ':') -> ("afaBasicSimp", ':':outdir)) ->
         Right$ repeat$ \i bafa ->
           simplifyAll bafa <&> afaWriter outdir i

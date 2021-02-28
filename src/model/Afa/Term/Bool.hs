@@ -86,6 +86,7 @@ modChilds = applyPlate . childModToPlate
 
 data MFun p t p' t' = MFun
   { mfunLTrue :: forall p' t'. Term p' t'
+  , mfunLFalse :: forall p' t'. Term p' t'
   , mfunPredicate :: forall t'. p -> Term p' t'
   , mfunAnd :: forall p'. NonEmpty t -> Term p' t'
   , mfunOr :: forall p'. NonEmpty t -> Term p' t'
@@ -95,6 +96,7 @@ data MFun p t p' t' = MFun
 mfun0 :: MFun p t p t
 mfun0 = MFun
   { mfunLTrue = LTrue
+  , mfunLFalse = LTrue
   , mfunPredicate = Predicate
   , mfunAnd = And
   , mfunOr = Or
@@ -102,8 +104,9 @@ mfun0 = MFun
   }
 
 appMFun :: MFun p t p' t' -> Term p t -> Term p' t'
-appMFun MFun{mfunLTrue, mfunPredicate, mfunAnd, mfunOr, mfunNot} = \case
+appMFun MFun{mfunLTrue, mfunLFalse, mfunPredicate, mfunAnd, mfunOr, mfunNot} = \case
   LTrue -> mfunLTrue
+  LFalse -> mfunLFalse
   Predicate p -> mfunPredicate p
   And ts -> mfunAnd ts
   Or ts -> mfunOr ts
@@ -132,6 +135,7 @@ appMTFun = appMFun . fromMTFun
 
 data MFol p t m = MFol
   { mfolLTrue :: m
+  , mfolLFalse :: m
   , mfolPredicate :: p -> m
   , mfolAnd :: NonEmpty t -> m
   , mfolOr :: NonEmpty t -> m
@@ -141,6 +145,7 @@ data MFol p t m = MFol
 mfol0 :: Monoid m => MFol p t m
 mfol0 = MFol
   { mfolLTrue = mempty
+  , mfolLFalse = mempty
   , mfolPredicate = const mempty
   , mfolAnd = const mempty
   , mfolOr = const mempty
@@ -148,8 +153,9 @@ mfol0 = MFol
   }
 
 appMFol :: MFol p t m -> Term p t -> m
-appMFol MFol{mfolLTrue, mfolPredicate, mfolAnd, mfolOr, mfolNot} = \case
+appMFol MFol{mfolLTrue, mfolLFalse, mfolPredicate, mfolAnd, mfolOr, mfolNot} = \case
   LTrue -> mfolLTrue
+  LFalse -> mfolLFalse
   Predicate p -> mfolPredicate p
   And ts -> mfolAnd ts
   Or ts -> mfolOr ts
@@ -178,6 +184,7 @@ appMTFol = appMFol . fromMTFol
 
 data MTra p t p' t' f = MTra
   { mtraLTrue :: forall p' t'. f (Term p' t')
+  , mtraLFalse :: forall p' t'. f (Term p' t')
   , mtraPredicate :: forall t'. p -> f (Term p' t')
   , mtraAnd :: forall p'. NonEmpty t -> f (Term p' t')
   , mtraOr :: forall p'. NonEmpty t -> f (Term p' t')
@@ -187,6 +194,7 @@ data MTra p t p' t' f = MTra
 mtra0 :: Applicative f => MTra p t p t f
 mtra0 = MTra
   { mtraLTrue = pure LTrue
+  , mtraLFalse = pure LFalse
   , mtraPredicate = pure . Predicate
   , mtraAnd = pure . And
   , mtraOr = pure . Or
@@ -194,8 +202,9 @@ mtra0 = MTra
   }
 
 appMTra :: MTra p t p' t' f -> Term p t -> f (Term p' t')
-appMTra MTra{mtraLTrue, mtraPredicate, mtraAnd, mtraOr, mtraNot} = \case
+appMTra MTra{mtraLTrue, mtraLFalse, mtraPredicate, mtraAnd, mtraOr, mtraNot} = \case
   LTrue -> mtraLTrue
+  LFalse -> mtraLFalse
   Predicate p -> mtraPredicate p
   And ts -> mtraAnd ts
   Or ts -> mtraOr ts
