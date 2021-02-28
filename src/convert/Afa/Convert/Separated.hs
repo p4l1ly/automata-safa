@@ -179,7 +179,7 @@ mixedToSeparated
   addQ (Or ts) = fmap Just$ lift$ hashCons'$ Or ts
 
 absurdPredicates :: Term Void q t -> Term p q t
-absurdPredicates = runIdentity . modChilds pureChildMod{lP = absurd}
+absurdPredicates = appMTFun mtfun0{mtfunP = absurd}
 
 -- Much more cleanly implemented via swallowed afa, see below
 separatedToMixed :: forall p. SepAfa.Afa p -> BoolAfaUnswallowed p

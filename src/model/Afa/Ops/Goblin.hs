@@ -35,8 +35,7 @@ goblinUntilFixpoint afa = afa'{terms = unmarked} where
   marked = markBack afa
   closure afa = maybe afa closure$ goblin2 afa
   afa' = closure$ afa{terms = marked}
-  unmarked = terms afa' <&> runIdentity . modChilds pureChildMod
-    { lQ = return . snd, lT = return . snd }
+  unmarked = terms afa' <&> appMTFun mtfun0{mtfunQ = snd, mtfunT = snd}
 
 data BackEdgeMark p
   = Unvisited
@@ -234,13 +233,12 @@ goblin2 (Afa terms states init) = do
     let qshift = length aterms
     let mappedStates = states <&> \i -> ixMap!i ^._2
     let qterms' :: [Term p (Bool, Int) (Bool, Int)]
-        qterms' = ($ qterms)$ map$ runIdentity . modChilds 
-          ChildMod
-          { lP = absurd
-          , lQ = absurd
-          , lT = \(b, i) -> case i of
-              Left (qb, q) -> return (b || qb, mappedStates!q)
-              Right t -> return (b, t + qshift)
+        qterms' = ($ qterms)$ map$ appMTFun MTFun
+          { mtfunP = absurd
+          , mtfunQ = absurd
+          , mtfunT = \(b, i) -> case i of
+              Left (qb, q) -> (b || qb, mappedStates!q)
+              Right t -> (b, t + qshift)
           }
 
     return$ case statesL of

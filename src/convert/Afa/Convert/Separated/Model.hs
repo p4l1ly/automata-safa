@@ -134,8 +134,7 @@ simplifyStatesAndQTerms ixMap mterms states init
   where
   states1 = states <&> mapped . _2 %~ nothingToTrue . fmap (ixMap!)
 
-  getQs = (`appEndo` []) . getConst .
-    MTerm.modChilds MTerm.pureChildMod{ MTerm.lQ = Const . Endo . (:) }
+  getQs = (`appEndo` []) . MTerm.appMTFol MTerm.mtfol0{ MTerm.mtfolQ = Endo . (:) }
   parented = accumArray (\_ _ -> True) False (bounds states)$
     (init, ()) : map (, ()) (concatMap getQs$ elems mterms)
   (lefts, rights) = partition (isLeft . snd)$ zipWith partFn [0..] (elems states1)

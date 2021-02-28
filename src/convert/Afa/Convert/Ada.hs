@@ -49,8 +49,7 @@ toAda (BoolAfa bterms (Afa mterms states init)) = T.unlines
   btexts = bterms' & cataScan mapped %~ fromBTerm
   mtexts = mterms & cataScan
     ( sets$ \rec ->
-        runIdentity . MTerm.modChilds
-          MTerm.pureChildMod{MTerm.lP = return . (btexts!), MTerm.lT = return . rec}
+        MTerm.appMTFun MTerm.mtfun0{MTerm.mtfunP = (btexts!), MTerm.mtfunT = rec}
     )
     %~ fromMTerm
 

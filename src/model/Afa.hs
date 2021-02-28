@@ -83,8 +83,8 @@ reorderStates afa@Afa{initState = 0} = afa
 reorderStates Afa{terms, states, initState} = Afa
   { initState = 0
   , states = states // [(0, states!initState), (initState, states!0)]
-  , terms = terms <&> runIdentity . MTerm.modChilds MTerm.pureChildMod
-      { MTerm.lQ = Identity . \case
+  , terms = terms <&> MTerm.appMTFun MTerm.mtfun0
+      { MTerm.mtfunQ = \case
           0 -> initState
           q | q == initState -> 0
             | otherwise -> q

@@ -132,7 +132,9 @@ simplifyInitMixAndBoolTs mgs ixMap bterms mterms = runST action where
   modPT lP lT = MTerm.modChilds MTerm.pureChildMod{ MTerm.lT = lT, MTerm.lP = lP }
 
   mhylogebra (!g, !i) = return
-    (runIdentity$ modPT (return . (g,)) (return . (g,)) (mterms!i), alg g)
+    ( MTerm.appMTFun MTerm.mtfun0{MTerm.mtfunT = (g,), MTerm.mtfunP = (g,)} (mterms!i)
+    , alg g
+    )
 
   alg (Any False) _ = return$ error "accessing element without parents"
   alg _ !t = case modPT id pure t of
@@ -332,4 +334,6 @@ swallow BoolAfa{boolTerms=bterms, afa=afa@Afa{terms=mterms, states=transitions}}
 
   bhylogebra (g, i) = return ((g,) <$> bterms!i, alg g)
   mhylogebra (g, i) = return
-    (runIdentity$ modPT (return . (g,)) (return . (g,)) (mterms!i), alg g)
+    ( MTerm.appMTFun MTerm.mtfun0{MTerm.mtfunT = (g,), MTerm.mtfunP = (g,)} (mterms!i)
+    , alg g
+    )

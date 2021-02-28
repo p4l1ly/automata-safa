@@ -190,11 +190,11 @@ toAfa (qcount, init, final, states) = unswallow BoolAfa
   asRight (Left x) = Free$ MTerm.Predicate x
   asRight (Right x) = x
 
-  init' = ($ (convertTransition init >>= Free . MTerm.State))$ (runIdentity .)$
-    (`freeModChilds` pure)$ \rec -> MTerm.modChilds MTerm.pureChildMod
-      { MTerm.lT = rec
-      , MTerm.lP = (`freeModChilds` pure)$ \rec2 -> BTerm.modChilds BTerm.ChildMod
-          { BTerm.lP = error "variable in init formula", BTerm.lT = rec2 }
+  init' = ($ (convertTransition init >>= Free . MTerm.State))$
+    (`freeAppMFun` id)$ \rec -> MTerm.appMTFun MTerm.mtfun0
+      { MTerm.mtfunT = rec
+      , MTerm.mtfunP = (`freeAppMFun` id)$ \rec2 -> BTerm.appMTFun BTerm.mtfun0
+          { BTerm.mtfunP = error "variable in init formula", BTerm.mtfunT = rec2 }
       }
 
   (init'', states''') = case nonsimpleFinal'' of

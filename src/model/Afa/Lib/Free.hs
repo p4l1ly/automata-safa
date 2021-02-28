@@ -1,5 +1,6 @@
 {-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE BangPatterns #-}
+{-# LANGUAGE RankNTypes #-}
 
 module Afa.Lib.Free where
 
@@ -14,6 +15,13 @@ freeModChilds :: Functor m
 freeModChilds !setter !lLeaf = rec where
   rec (Pure !i) = Pure <$> lLeaf i
   rec (Free !x) = Free <$> setter rec x
+
+freeAppMFun
+  :: ((Free f i -> Free g j) -> f (Free f i) -> g (Free g j))
+  -> (i -> j) -> Free f i -> Free g j
+freeAppMFun !setter !lLeaf = rec where
+  rec (Pure !i) = Pure$ lLeaf i
+  rec (Free !x) = Free$ setter rec x
 
 freeFor_ :: Functor m
   => LensLike m (f (Free f i)) () (Free f i) ()

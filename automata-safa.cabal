@@ -27,6 +27,7 @@ library
     Afa.Ops.Goblin
     Afa.Ops.QMinCut
     Afa.Ops.Compound
+    Afa.Ops.Randomize
   build-depends:
     base >=4.13.0.0 && <4.15,
     recursion-schemes ^>=5.2.1,
@@ -41,6 +42,7 @@ library
     ghc >=8.8.4 && < 8.11,
     transformers ^>=0.5.6.2,
     free ^>=5.1.4,
+    random ^>=1.2.0,
     lens-recursion-schemes,
   hs-source-dirs:      src/model
   default-language:    Haskell2010

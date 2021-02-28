@@ -62,13 +62,11 @@ serializeAfa (BoolAfa bterms (Afa mterms states 0)) = AfaC.BoolAfa
 -- TODO multifold, multitraverse, multimap
 varCount :: (Traversable f) => f (BTerm.Term Int t) -> (Int, f (BTerm.Term Int t))
 varCount arr = (count, arr') where
-  vars = arr & (`appEndo` HS.empty) . getConst .
-    traverse (BTerm.modChilds BTerm.pureChildMod{ BTerm.lP = Const . Endo . HS.insert })
+  vars = (`appEndo` HS.empty)$
+    arr & foldMap (BTerm.appMTFol BTerm.mtfol0{ BTerm.mtfolP = Endo . HS.insert })
   count = HS.size vars
   varMap = HM.fromList$ zip (HS.toList vars) [0..]
-  arr' = arr <&>
-    runIdentity . BTerm.modChilds BTerm.pureChildMod
-      { BTerm.lP = return . (varMap HM.!) }
+  arr' = arr <&> BTerm.appMTFun BTerm.mtfun0{BTerm.mtfunP = (varMap HM.!)}
 
 serializeBTerm :: BTerm.Term Int Int -> TermC.BoolTerm11
 serializeBTerm BTerm.LTrue = TermC.BoolTerm11'litTrue

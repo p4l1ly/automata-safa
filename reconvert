@@ -13,51 +13,52 @@
 # afa0 \
 # afaBasic \
 # afaCnf \
-# sepDelaying \
 # afaSimpGoblinMincut3 \
 # afaCnf3 \
-# sepDelaying3 \
-# smv \
-# smv3 \
-# aig \
-# aig3 \
-# smvReverse \
-# smv3Reverse \
-# aigReverse \
-# aig3Reverse \
 
-# for dir in \
-#   ada \
-#   ada3 \
-#   ;
-# do
-#   rm $1/$dir/*
-#   mkdir -p $1/$dir
-# done
 
-# # cat $1/ltls| cabal exec ltle-to-afa -- -i ltl -o afa:$1/afa0 > $1/afa0.csv
+for dir in \
+  sepDelaying \
+  sepDelaying3 \
+  smv \
+  smv3 \
+  aig \
+  aig3 \
+  smvReverse \
+  smv3Reverse \
+  aigReverse \
+  aig3Reverse \
+  ada \
+  ada3 \
+  ;
+do
+  rm $1/$dir/*
+  mkdir -p $1/$dir
+done
+
+# cat $1/ltls| cabal exec ltle-to-afa -- -i ltl -o afa:$1/afa0 > $1/afa0.csv
 # cabal exec ltle-to-afa -- -i stranger:$1/input -o afa:$1/afa0 +RTS -N8 > $1/afa0.csv
 
-# cabal exec ltle-to-afa -- -i afa:$1/afa0 -o cnfafa:$1/afaCnf0 > $1/afaCnf.csv
+# cabal exec ltle-to-afa -- -i afa:$1/afa0 -o cnfafa:$1/afaCnf0 > $1/afaCnf0.csv
 # cabal exec ltle-to-afa -- -i afa:$1/afa0 -o sepafaDelaying:$1/sepDelaying0 > $1/sepDelaying0.csv
 
 # cabal exec ltle-to-afa -- -i afa:$1/afa0 -o afaBasicSimp:$1/afaBasic +RTS -N8 > $1/afaBasic.csv
 # cabal exec ltle-to-afa -- -i afa:$1/afaBasic -o cnfafa:$1/afaCnf > $1/afaCnf.csv
-# cabal exec ltle-to-afa -- -i afa:$1/afaBasic -o sepafaDelaying:$1/sepDelaying > $1/sepDelaying.csv
-# cabal exec ltle-to-afa -- -i afa:$1/afaBasic -o smv:$1/smv > $1/smv.csv
-# cabal exec ltle-to-afa -- -i afa:$1/afaBasic -o smvReverse:$1/smvReverse > $1/smvReverse.csv
-# cabal exec ltle-to-afa -- -i afa:$1/afaBasic -o ada:$1/ada > $1/ada.csv
-# for f in $(ls $1/smv); do ../aiger/smvtoaig $1/smv/$f > $1/aig/$f; done
-# for f in $(ls $1/smvReverse); do ../aiger/smvtoaig $1/smvReverse/$f > $1/aigReverse/$f; done
+cabal exec ltle-to-afa -- -i afa:$1/afaBasic -o sepafaDelaying:$1/sepDelaying > $1/sepDelaying.csv
+cabal exec ltle-to-afa -- -i afa:$1/afaBasic -o ada:$1/ada > $1/ada.csv
+cabal exec ltle-to-afa -- -i afa:$1/afaBasic -o smv:$1/smv > $1/smv.csv
+cabal exec ltle-to-afa -- -i afa:$1/afaBasic -o smvReverse:$1/smvReverse > $1/smvReverse.csv
+for f in $(ls $1/smv); do ../aiger/smvtoaig $1/smv/$f > $1/aig/$f; done
+for f in $(ls $1/smvReverse); do ../aiger/smvtoaig $1/smvReverse/$f > $1/aigReverse/$f; done
 
 # cabal exec ltle-to-afa -- -i afa:$1/afaBasic -o afaSimpGoblinMincut:$1/afaSimpGoblinMincut3 +RTS -N8 > $1/afaSimpGoblinMincut3.csv
 # cabal exec ltle-to-afa -- -i afa:$1/afaSimpGoblinMincut3 -o cnfafa:$1/afaCnf3 +RTS -N8 > $1/afaCnf3.csv
-# cabal exec ltle-to-afa -- -i afa:$1/afaSimpGoblinMincut3 -o sepafaDelaying:$1/sepDelaying3 +RTS -N8 > $1/sepDelaying3.csv
-# cabal exec ltle-to-afa -- -i afa:$1/afaSimpGoblinMincut3 -o smv:$1/smv3 > $1/smv3.csv
-# cabal exec ltle-to-afa -- -i afa:$1/afaSimpGoblinMincut3 -o smvReverse:$1/smv3Reverse > $1/smv3Reverse.csv
-# cabal exec ltle-to-afa -- -i afa:$1/afaSimpGoblinMincut3 -o ada:$1/ada3 > $1/ada3.csv
-# for f in $(ls $1/smv3); do ../aiger/smvtoaig $1/smv3/$f > $1/aig3/$f; done
-# for f in $(ls $1/smv3Reverse); do ../aiger/smvtoaig $1/smv3Reverse/$f > $1/aig3Reverse/$f; done
+cabal exec ltle-to-afa -- -i afa:$1/afaSimpGoblinMincut3 -o sepafaDelaying:$1/sepDelaying3 +RTS -N8 > $1/sepDelaying3.csv
+cabal exec ltle-to-afa -- -i afa:$1/afaSimpGoblinMincut3 -o ada:$1/ada3 > $1/ada3.csv
+cabal exec ltle-to-afa -- -i afa:$1/afaSimpGoblinMincut3 -o smv:$1/smv3 > $1/smv3.csv
+cabal exec ltle-to-afa -- -i afa:$1/afaSimpGoblinMincut3 -o smvReverse:$1/smv3Reverse > $1/smv3Reverse.csv
+for f in $(ls $1/smv3); do ../aiger/smvtoaig $1/smv3/$f > $1/aig3/$f; done
+for f in $(ls $1/smv3Reverse); do ../aiger/smvtoaig $1/smv3Reverse/$f > $1/aig3Reverse/$f; done
 
 # cabal exec ltle-to-afa -- -i afa:$1/afaBasic -o afaSimpGoblin:$1/afaSimpGoblin4 > $1/afaSimpGoblin4.csv
 # cabal exec ltle-to-afa -- -i afa:$1/afaSimpGoblin4 -o cnfafa:$1/afaCnf4 > $1/afaCnf4.csv
@@ -66,8 +67,6 @@
 # cabal exec ltle-to-afa -- -i afa:$1/afaBasic -o afaSimpMincut:$1/afaSimpMincut5 > $1/afaSimpMincut5.csv
 # cabal exec ltle-to-afa -- -i afa:$1/afaSimpMincut5 -o cnfafa:$1/afaCnf5 > $1/afaCnf5.csv
 # cabal exec ltle-to-afa -- -i afa:$1/afaSimpMincut5 -o sepafaDelaying:$1/sepDelaying5 > $1/sepDelaying5.csv
-
-# ./abc/build/abc -c "read_aiger smv_example/0.aig; pdr -T 60"
 
 cd ../afapipe
 
@@ -81,78 +80,78 @@ cd ../afapipe
 # ./build/file-solver-3 $1/afaCnf4 > $1/afasatClausal4.csv
 # ./build/file-solver-3 $1/afaCnf5 > $1/afasatClausal5.csv
 # ./build/file-solver-1 $1/sepDelaying0 > $1/dantoni0.csv
-# ./build/file-solver-1 $1/sepDelaying > $1/dantoni.csv
-# ./build/file-solver-1 $1/sepDelaying3 > $1/dantoni3.csv
+./build/file-solver-1 $1/sepDelaying > $1/dantoni.csv
+./build/file-solver-1 $1/sepDelaying3 > $1/dantoni3.csv
 # ./build/file-solver-1 $1/sepDelaying4 > $1/dantoni4.csv
 # ./build/file-solver-1 $1/sepDelaying5 > $1/dantoni5.csv
 
-# rm -f $1/abc.csv
-# for f in $(ls -v $1/aig); do
-#   echo checking $f
-#   result=$(../abc/build/abc -c "read_aiger $1/aig/$f; pdr -T 60" | grep -E '^Property|^Output')
-#   {
-#     echo -n -e "$f\t"
-#     echo -n -e "$(($(echo $result | sed -r 's/.*Time =\s+([^ ]+).*/\1/')*1000))\t"
-#     if echo $result | grep Output > /dev/null; then
-#       echo 1
-#     elif echo $result | grep prove > /dev/null; then
-#       echo 0
-#     else
-#       echo -2
-#     fi
-#   } >> $1/abc.csv
-# done
+rm -f $1/abc.csv
+for f in $(ls -v $1/aig); do
+  echo checking $f
+  result=$(../abc/build/abc -c "read_aiger $1/aig/$f; pdr -T 60" | grep -E '^Property|^Output')
+  {
+    echo -n -e "$f\t"
+    echo -n -e "$(($(echo $result | sed -r 's/.*Time =\s+([^ ]+).*/\1/')*1000))\t"
+    if echo $result | grep Output > /dev/null; then
+      echo 1
+    elif echo $result | grep prove > /dev/null; then
+      echo 0
+    else
+      echo -2
+    fi
+  } >> $1/abc.csv
+done
 
-# rm -f $1/abc3.csv
-# for f in $(ls -v $1/aig3); do
-#   echo checking $f
-#   result=$(../abc/build/abc -c "read_aiger $1/aig3/$f; pdr -T 60" | grep -E '^Property|^Output')
-#   {
-#     echo -n -e "$f\t"
-#     echo -n -e "$(($(echo $result | sed -r 's/.*Time =\s+([^ ]+).*/\1/')*1000))\t"
-#     if echo $result | grep Output > /dev/null; then
-#       echo 1
-#     elif echo $result | grep prove > /dev/null; then
-#       echo 0
-#     else
-#       echo -2
-#     fi
-#   } >> $1/abc3.csv
-# done
+rm -f $1/abc3.csv
+for f in $(ls -v $1/aig3); do
+  echo checking $f
+  result=$(../abc/build/abc -c "read_aiger $1/aig3/$f; pdr -T 60" | grep -E '^Property|^Output')
+  {
+    echo -n -e "$f\t"
+    echo -n -e "$(($(echo $result | sed -r 's/.*Time =\s+([^ ]+).*/\1/')*1000))\t"
+    if echo $result | grep Output > /dev/null; then
+      echo 1
+    elif echo $result | grep prove > /dev/null; then
+      echo 0
+    else
+      echo -2
+    fi
+  } >> $1/abc3.csv
+done
 
-# rm -f $1/abcReverse.csv
-# for f in $(ls -v $1/aigReverse); do
-#   echo checking $f
-#   result=$(../abc/build/abc -c "read_aiger $1/aigReverse/$f; pdr -T 60" | grep -E '^Property|^Output')
-#   {
-#     echo -n -e "$f\t"
-#     echo -n -e "$(($(echo $result | sed -r 's/.*Time =\s+([^ ]+).*/\1/')*1000))\t"
-#     if echo $result | grep Output > /dev/null; then
-#       echo 1
-#     elif echo $result | grep prove > /dev/null; then
-#       echo 0
-#     else
-#       echo -2
-#     fi
-#   } >> $1/abcReverse.csv
-# done
-# 
-# rm -f $1/abc3Reverse.csv
-# for f in $(ls -v $1/aig3Reverse); do
-#   echo checking $f
-#   result=$(../abc/build/abc -c "read_aiger $1/aig3Reverse/$f; pdr -T 60" | grep -E '^Property|^Output')
-#   {
-#     echo -n -e "$f\t"
-#     echo -n -e "$(($(echo $result | sed -r 's/.*Time =\s+([^ ]+).*/\1/')*1000))\t"
-#     if echo $result | grep Output > /dev/null; then
-#       echo 1
-#     elif echo $result | grep prove > /dev/null; then
-#       echo 0
-#     else
-#       echo -2
-#     fi
-#   } >> $1/abc3Reverse.csv
-# done
+rm -f $1/abcReverse.csv
+for f in $(ls -v $1/aigReverse); do
+  echo checking $f
+  result=$(../abc/build/abc -c "read_aiger $1/aigReverse/$f; pdr -T 60" | grep -E '^Property|^Output')
+  {
+    echo -n -e "$f\t"
+    echo -n -e "$(($(echo $result | sed -r 's/.*Time =\s+([^ ]+).*/\1/')*1000))\t"
+    if echo $result | grep Output > /dev/null; then
+      echo 1
+    elif echo $result | grep prove > /dev/null; then
+      echo 0
+    else
+      echo -2
+    fi
+  } >> $1/abcReverse.csv
+done
+
+rm -f $1/abc3Reverse.csv
+for f in $(ls -v $1/aig3Reverse); do
+  echo checking $f
+  result=$(../abc/build/abc -c "read_aiger $1/aig3Reverse/$f; pdr -T 60" | grep -E '^Property|^Output')
+  {
+    echo -n -e "$f\t"
+    echo -n -e "$(($(echo $result | sed -r 's/.*Time =\s+([^ ]+).*/\1/')*1000))\t"
+    if echo $result | grep Output > /dev/null; then
+      echo 1
+    elif echo $result | grep prove > /dev/null; then
+      echo 0
+    else
+      echo -2
+    fi
+  } >> $1/abc3Reverse.csv
+done
 
 # rm -f $1/abc-again.csv
 # for f in $(ls -v $1/aig-again); do
@@ -197,7 +196,7 @@ cd ../afapipe
 
 # ./build/file-solver-2 $1/afaCnf > $1/afasat.csv
 # ./build/file-solver-2 $1/afaCnf3Part > $1/afasat3Part.csv
-# 
+
 # ./build/file-solver-3 $1/afaCnfPart > $1/afasatClausalPart.csv
 # ./build/file-solver-3 $1/afaCnf3Part > $1/afasatClausal3Part.csv
 
@@ -228,4 +227,28 @@ for f in $(ls -v $1/ada); do
       fi
     fi
   } >> $1/jimpact.csv
+done
+
+rm -f $1/jimpact3.csv
+for f in $(ls -v $1/ada3); do
+  echo checking $f
+  cp $1/ada3/$f /tmp/jimpact.ada
+  timeout 60 ant -Dmodel.path=/tmp/jimpact.ada > /tmp/jimpact.log
+  result=$?
+  {
+    echo -n -e "$f\t"
+    if [ $result = 124 ]; then
+      echo -e "60000\t-2"
+    else
+      if cat /tmp/jimpact.log | grep 'NOT EMPTY' > /dev/null; then
+        echo -n -e "$(cat /tmp/jimpact.log | grep 'Time Cost' | sed 's/.*: //')\t"
+        echo 1
+      elif cat /tmp/jimpact.log | grep 'EMPTY' > /dev/null; then
+        echo -n -e "$(cat /tmp/jimpact.log | grep 'Time Cost' | sed 's/.*: //')\t"
+        echo 0
+      else
+        echo "60000\t-3"
+      fi
+    fi
+  } >> $1/jimpact3.csv
 done
