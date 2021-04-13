@@ -101,7 +101,7 @@ absorb project getR = \case
         ts3 = flip NE.filter ts$ project >>> \case
           And ts2 -> not$ any (\t -> S.member (getR t) tsHash) ts2
           _ -> True
-    in maybe (Left True) (Right . Or)$ NE.nonEmpty ts3
+    in maybe (Left False) (Right . Or)$ NE.nonEmpty ts3
   bt -> Right bt
 
 -- PERF: use hashset

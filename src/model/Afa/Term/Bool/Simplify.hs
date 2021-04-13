@@ -5,6 +5,7 @@
 
 module Afa.Term.Bool.Simplify where
 
+import Control.Monad.Free
 import Control.Arrow
 import Control.RecursionSchemes.Lens
 import Control.Lens
@@ -124,32 +125,70 @@ complementLaws project getR x = case x of
     nots = S.fromList$
       mapMaybe (project >>> \case Not t -> Just$ getR t; _ -> Nothing) ts
 
+commonIdentities :: (Eq r, Hashable r)
+  => (t -> (DumbCount, Term p t))
+  -> (t -> r)
+  -> Term p t
+  -> Either Bool (Free (Term p) t)
+commonIdentities project getR = \case
+  And ts ->
+    let tsHash = foldl (flip S.insert) S.empty (getR <$> ts)
+        removeCommon x = case snd$ project x of
+          Not x' | getR x' `S.member` tsHash -> Nothing
+          _ -> Just x
+        ts' = ts <&> \x -> case project x of
+          (One, Or (NE.toList >>> map removeCommon -> cts))
+            | any isNothing cts ->
+                maybe (Left False) (Right . Free . Or)$ NE.nonEmpty$ map Pure cts'
+            | otherwise -> Right$ Pure x
+            where cts' = catMaybes cts
+          _ -> Right$ Pure x
+    in Free . And <$> sequence ts'
+  Or ts ->
+    let tsHash = foldl (flip S.insert) S.empty (getR <$> ts)
+        removeCommon x = case snd$ project x of
+          Not x' | getR x' `S.member` tsHash -> Nothing
+          _ -> Just x
+        ts' = ts <&> \x -> case project x of
+          (One, And (NE.toList >>> map removeCommon -> cts))
+            | any isNothing cts ->
+                maybe (Left True) (Right . Free . And)$ NE.nonEmpty$ map Pure cts'
+            | otherwise -> Right$ Pure x
+            where cts' = catMaybes cts
+          _ -> Right$ Pure x
+    in Free . Or <$> sequence ts'
+  x -> Right$ Free$ Pure <$> x
+
 canonicalize :: (Eq r, Ord r) => (t -> r) -> Term p t -> Term p t
 canonicalize getR (And ts) = And$ nonemptyCanonicalizeWith getR ts
 canonicalize getR (Or ts) = Or$ nonemptyCanonicalizeWith getR ts
 canonicalize _ x = x
 
-simplify :: (Eq r, Hashable r, Ord r)
+simplify :: forall p r t. (Eq r, Hashable r, Ord r)
   => (t -> (DumbCount, Term p t))
   -> (t -> r)
-  -> Term p (Either Bool t) -> Either Bool (Either t (Term p t))
-simplify project getR =
-  ( ( deLit
+  -> Term p (Either Bool t) -> Either Bool (Free (Term p) t)
+simplify project getR = stage1 >&> fmap pure >>> iter (either id Free . deUnary)
+  where
+  skipJoin (Right (Right (Left b))) = Left b
+  skipJoin (Right (Right (Right t))) = Right t
+  skipJoin (Left b) = Left b
+  skipJoin (Right (Left t)) = Right$ Pure t
+
+  stage1 :: Term p (Either Bool t) -> Either Bool (Free (Term p) t)
+  stage1 =
+    ( deLit
       >&> deUnary
       >=> ( deNotNot (snd . project)
             >&> flatten0 ((\case (Many, _) -> Nothing; (_, x) -> Just x) . project)
                 >>> canonicalize getR
                 >>> absorb (snd . project) getR
-                >>> complementLaws (snd . project) getR
+                >>> ( complementLaws (snd . project) getR
+                      >&> commonIdentities project getR
+                    )
+                >>> join
           )
     ) >>> skipJoin
-  )
-  >&> join . fmap deUnary
-  where
-  skipJoin (Right (Right (Left b))) = Left b
-  skipJoin (Right (Right (Right t))) = Right (Right t)
-  skipJoin (Left b) = Left b
-  skipJoin (Right (Left t)) = Right (Left t)
 
 
 simplifyDag :: forall p. (Eq p, Hashable p)
@@ -167,9 +206,10 @@ simplifyDag gs (ixMap, arr) = runST action where
   alg Zero _ = return$ error "accessing element without parents"
   alg g t = case simplify (\(_, Fix (Compose (Compose gt))) -> gt) fst t of
     Left b -> return$ Left b
-    Right (Left it) -> return$ Right it
-    Right (Right t) -> hashCons' (fmap fst t) <&> \i ->
-      Right (i, Fix$Compose$Compose (g, t))
+    Right x -> fmap Right$ flip iterM x$ \t -> do
+      t' <- sequence t
+      i <- hashCons' (fmap fst t')
+      return (i, Fix$Compose$Compose (g, t'))
 
   hylogebra (g, i) = return ((gchild,) <$> arr!i, alg g)
     where gchild = case g of Zero -> Zero; _ -> One

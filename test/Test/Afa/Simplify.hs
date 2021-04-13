@@ -23,6 +23,14 @@ tests =
             , initState = 0
             }
         }
+      assertEqual "commonIdentities" (simplifyAll afa1)$ Right BoolAfa
+        { boolTerms = listArray' [a, b]
+        , afa = Afa
+            { terms = listArray' [MixT.Predicate 0, MixT.Predicate 1, MixT.And$ 0 :| [1]]
+            , states = listArray' [2]
+            , initState = 0
+            }
+        }
   ]
 
 
@@ -66,4 +74,20 @@ afa0 = BoolAfa
           ]
       , initState = 0
       }
+  }
+
+afa1 :: BoolAfaUnswallowed Int
+afa1 = BoolAfa
+  { boolTerms = listArray'$ reverse
+      [ BoolT.And$ 0 :| [3]
+      , BoolT.Or$ 1 :| [2]
+      , BoolT.Not 0
+      , BoolT.Predicate 1
+      , BoolT.Predicate 0
+      ]
+  , afa = Afa
+    { terms = listArray' [ MixT.Predicate 4 ]
+    , states = listArray' [0]
+    , initState = 0
+    }
   }
