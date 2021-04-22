@@ -9,6 +9,8 @@ module Afa.Ops.Goblin where
 
 import Debug.Trace
 
+import GHC.Exts
+import Control.Monad.Free
 import Data.Traversable
 import Data.Array.ST
 import Data.Array.Unsafe
@@ -158,13 +160,13 @@ qac (And ts)
     PureQ qref -> Just qref
     AndMix qref _ -> Just qref
     _ -> Nothing
-  qs0 = map (\(b, QRef _ q _ b2) -> (b || b2, q)) qsBoth
-  qcs = map (\(b, QRef _ _ qc b2) -> (b || b2, qc)) qsBoth
   as = flip mapMaybe lts$ \(_, mix) -> case mix of
     (PureA aref, _) -> Just aref
     (OrMix _ _, cref) -> Just cref
     (AndMix _ aref, _) -> Just aref
     _ -> Nothing
+  qs0 = map (\(b, QRef _ q _ b2) -> (b || b2, q)) qsBoth
+  qcs = map (\(b, QRef _ _ qc b2) -> (b || b2, qc)) qsBoth
   back = all (\(b, QRef qb _ _ _) -> b || qb) qsBoth
 qac (Or ts)
   | null qs0 = do
@@ -207,14 +209,80 @@ qac (Or ts)
     PureQ qref -> Just qref
     OrMix qref _ -> Just qref
     _ -> Nothing
-  qs0 = map (\(b, QRef _ q _ b2) -> (b || b2, q)) qsBoth
-  qcs = map (\(b, QRef _ _ qc b2) -> (b || b2, qc)) qsBoth
   as = flip mapMaybe lts$ \(_, mix) -> case mix of
     (PureA aref, _) -> Just aref
     (AndMix _ _, cref) -> Just cref
     (OrMix _ aref, _) -> Just aref
     _ -> Nothing
+  qs0 = map (\(b, QRef _ q _ b2) -> (b || b2, q)) qsBoth
+  qcs = map (\(b, QRef _ _ qc b2) -> (b || b2, qc)) qsBoth
   back = all (\(b, QRef qb _ _ _) -> b || qb) qsBoth
+
+
+extract
+  :: Term p (Bool, Int) (Bool, (Mix, Int))
+  -> Free (Term p (Bool, Int)) (Bool, (Mix, Int))
+extract LTrue = Free LTrue
+extract (Predicate p) = Free (Predicate p)
+extract (State q) = Free (State q)
+extract (And ts) = case extracted of
+  [x] -> x
+  (x:xs) -> Free$ And$ x :| xs
+  where
+  lts = NE.toList ts
+  candidates = flip map lts$ \case
+    x@(_, (OrMix _ a, _)) -> (Just a, x)
+    x@(_, (PureA a, _)) -> (Just a, x)
+    x -> (Nothing, x)
+  grouped = groupWith fst$ sortWith fst candidates
+  extracted = flip map grouped$ \case
+    [x] -> Pure$ snd x
+    ((a, x):(map snd -> xs)) -> case a of
+      Nothing -> Free$ And$ NE.map Pure$ x:|xs
+      Just a -> case xs' of
+        Right xs' -> Free$ Or$
+          Pure (False, (PureA a, a))
+          :| [Free$ And$ NE.map Pure xs']
+        Left x -> Pure x
+        where
+        xs' = for (x:|xs)$ \case
+          (b, (OrMix q@(QRef _ _ qc _) _, _)) -> Right (b, (PureQ q, qc))
+          x -> Left x
+extract (Or ts) = case extracted of
+  [x] -> x
+  (x:xs) -> Free$ Or$ x :| xs
+  where
+  lts = NE.toList ts
+  candidates = flip map lts$ \case
+    x@(_, (AndMix _ a, _)) -> (Just a, x)
+    x@(_, (PureA a, _)) -> (Just a, x)
+    x -> (Nothing, x)
+  grouped = groupWith fst$ sortWith fst candidates
+  extracted = flip map grouped$ \case
+    [x] -> Pure$ snd x
+    ((a, x):(map snd -> xs)) -> case a of
+      Nothing -> Free$ Or$ NE.map Pure$ x:|xs
+      Just a -> case xs' of
+        Right xs' -> Free$ And$
+          Pure (False, (PureA a, a))
+          :| [Free$ Or$ NE.map Pure xs']
+        Left x -> Pure x
+        where
+        xs' = for (x:|xs)$ \case
+          (b, (AndMix q@(QRef _ _ qc _) _, _)) -> Right (b, (PureQ q, qc))
+          x -> Left x
+
+
+extractAndQac
+  :: Monad m
+  => Term p (Bool, Int) (Bool, (Mix, Int))
+  -> NoConsT Int
+       ( NoConsT (Term Void Void (Bool, Either (Bool, Int) Int))
+           (NoConsT (Term p (Bool, Int) (Bool, Int)) m)
+       )
+       (Mix, Int)
+extractAndQac (extract -> x) = fmap snd$ flip iterM x$
+  sequence >=> qac >=> return . (False,)
 
 
 goblin2 :: forall p.
@@ -228,7 +296,7 @@ goblin2 (Afa terms states init) = do
   action = do
     (((ixMap, statesL), qterms), aterms) <-
       runNoConsT$ runNoConsT$ runNoConsTFrom (succ$ snd$ bounds states)$
-        cataScanT' @(LLLSTArray s) (traversed._2) qac terms
+        cataScanT' @(LLLSTArray s) (traversed._2) extractAndQac terms
 
     let qshift = length aterms
     let mappedStates = states <&> \i -> ixMap!i ^._2

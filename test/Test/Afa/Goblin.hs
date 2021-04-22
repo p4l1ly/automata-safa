@@ -1,3 +1,5 @@
+{-# LANGUAGE LambdaCase #-}
+
 module Test.Afa.Goblin where
 
 import Test.HUnit hiding (State)
@@ -66,6 +68,20 @@ tests =
       print afa9'''
       let Right afa9'''' = simplifyAll afa9'''
       print afa9''''
+
+      let afa10' = simplifyAll$ goblinUntilFixpoint afa10
+      assertEqual "Goblin: afa10 (extract)" afa10'$ Right Afa
+        { terms = listArray'$ reverse
+            [ Or$ 3 :| [4]
+            , Predicate 2
+            , Predicate 1
+            , And$ 0 :| [1]
+            , State 1
+            , Predicate 0
+            ]
+        , states = listArray' [2, 5]
+        , initState = 0
+        }
   ]
 
 afa0 :: AfaUnswallowed Int
@@ -215,5 +231,21 @@ afa9 = Afa
       , {-  0 -} State 1
       ]
   , states = listArray' [6, 4, 5]
+  , initState = 0
+  }
+
+afa10 :: AfaUnswallowed Int
+afa10 = Afa
+  { terms = listArray'$ reverse
+      [ {-  7 -} Predicate 2
+      , {-  6 -} Predicate 1
+      , {-  5 -} Or$ 3 :| [4]
+      , {-  4 -} And$ 1 :| [2]
+      , {-  3 -} And$ 0 :| [2]
+      , {-  2 -} Predicate 0
+      , {-  1 -} State 2
+      , {-  0 -} State 1
+      ]
+  , states = listArray' [5, 6, 7]
   , initState = 0
   }
