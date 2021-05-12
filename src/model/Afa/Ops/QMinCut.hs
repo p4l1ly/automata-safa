@@ -29,7 +29,7 @@ qminCut (Afa terms states init) = Afa terms' states''' init''
     LTrue -> True
     _ -> False
   sources = map head$ group$ sort$ elems states
-  states' = minCut terms sources sinks
+  states' = minCut2Lowest terms sources sinks
 
   ((init', states''), listArray' -> terms') = runST topToBottom
   (init'', states''') = case terms'!init' of

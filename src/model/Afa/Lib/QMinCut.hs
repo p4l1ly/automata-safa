@@ -22,17 +22,6 @@ import Control.RecursionSchemes.Lens
 
 import Afa.Lib.LiftArray
 
-data Dfs = Unreachable | Recur | Reachable deriving Show
-instance Semigroup Dfs where
-  Unreachable <> x = x
-  _ <> _ = Reachable
-
-trueIndices :: [Bool] -> [Int]
-trueIndices xs = [i | (i, True) <- zip [0..] xs]
-
-isReachable Unreachable = False
-isReachable _ = True
-
 data Path
   = Unvisited
   | Visited (Endo [Int])
@@ -48,10 +37,15 @@ instance Semigroup Path where
   _ <> x = x
 
 
-maxFlow :: Foldable f => Array Int (f Int) -> [Int] -> [Int] -> Array Int Bool
-maxFlow nodes sources sinks = runST action
+maxFlow :: Foldable f
+  => Array Int (f Int)
+  -> [Int]
+  -> Array Int Bool
+  -> Array Int Bool
+  -> Array Int (Maybe (Maybe Int))
+maxFlow nodes sources sourceFlags sinkFlags = runST action
   where
-  action :: forall s. ST s (Array Int Bool)
+  action :: forall s. ST s (Array Int (Maybe (Maybe Int)))
   action = do
     residualGraphM <- newArray @(STArray s) (bounds nodes) Nothing
     let getPath = do
@@ -70,7 +64,7 @@ maxFlow nodes sources sinks = runST action
                 writeArray residualGraphM this Nothing
         rec = getPath >>= \case Left p -> subtractPath p >> rec; _ -> return ()
     rec
-    fmap isJust <$> unsafeFreeze residualGraphM
+    unsafeFreeze residualGraphM
 
   traversal residualGraphM arr rec = \case
     (Visited pp, i) -> do
@@ -87,15 +81,12 @@ maxFlow nodes sources sinks = runST action
         where rec'' = rec . (Visited$ pp <> Endo (\xs -> i:back:xs),)
     _ -> return ()
 
-  sinkFlags = accumArray (\_ _ -> True) False (bounds nodes)$ map (, ()) sinks
-  sourceFlags = accumArray (\_ _ -> True) False (bounds nodes)$ map (, ()) sources
-
 
 minCut :: Traversable f => Array Int (f Int) -> [Int] -> [Int] -> [Int]
 minCut nodes sources sinks = runST action where
   action :: forall s. ST s [Int]
   action = do
-    let marks = maxFlow nodes sources sinks
+    let marks = isJust <$> maxFlow nodes sources sourceFlags sinkFlags
     let marks1 = ixedNodes & cataScan (_2 . traversed) %~ \(i, fb) ->
           marks!i || or fb && not (sinkFlags!i)
 
@@ -141,3 +132,79 @@ minCut nodes sources sinks = runST action where
       unsafeFreeze marks2M
 
   area = listArray (bounds nodes)$ zipWith (&&) (elems aboveSinks) (elems underSources)
+
+data Path2
+  = Unvisited2
+  | Visited2
+  deriving (Eq, Show)
+
+instance Semigroup Path2 where
+  Visited2 <> _ = Visited2
+  _ <> x = x
+
+minCut2Lowest :: forall f. Traversable f => Array Int (f Int) -> [Int] -> [Int] -> [Int]
+minCut2Lowest nodes sources sinks =
+  [ revIx i
+  | (i, Visited2) <- assocs reachablePart
+  , revSinkFlags!i || any (\j -> reachablePart!j == Unvisited2) (revNodes!i)
+  ]
+  where
+  bnds = bounds nodes
+  maxIx = snd bnds
+  revIx = (maxIx -)
+  revNodes = ixmap bnds revIx$ runST action where
+    action :: forall s. ST s (Array Int [Int])
+    action = do
+      preds :: STArray s Int [Int] <- newArray bnds []
+      for_ (assocs nodes)$ \(i, node) ->
+        for_ node$ \j -> readArray preds j >>= writeArray preds j . (revIx i :)
+      unsafeFreeze preds
+  revSources = map revIx sinks
+  revSinks = map revIx sources
+  residualGraph = maxFlow revNodes revSources revSourceFlags revSinkFlags
+
+  revSinkFlags = accumArray (\_ _ -> True) False (bounds nodes)$ map (, ()) revSinks
+  revSourceFlags = accumArray (\_ _ -> True) False (bounds nodes)$ map (, ()) revSources
+
+  reachablePart = runST action where
+    action :: forall s. ST s (Array Int Path2)
+    action = do
+      arr <- newArray @(STArray s) (bounds nodes) Unvisited2
+      for_ revSources$
+        flip dfs arr$ \rec -> let rec' = rec . (Unvisited2,) in \case
+          (Unvisited2, i) -> do
+            writeArray arr i Visited2
+            case residualGraph!i of
+              Just (Just back) -> for_ (revNodes!back) rec' >> rec' back
+              Just _ -> return ()
+              _ -> for_ (revNodes!i) rec'
+          (_, i) -> return ()
+      unsafeFreeze arr
+
+minCut2Highest :: forall f. Traversable f => Array Int (f Int) -> [Int] -> [Int] -> [Int]
+minCut2Highest nodes sources sinks =
+  [ i
+  | (i, Visited2) <- assocs reachablePart
+  , sinkFlags!i || any (\j -> reachablePart!j == Unvisited2) (nodes!i)
+  ]
+  where
+  bnds = bounds nodes
+  residualGraph = maxFlow nodes sources sourceFlags sinkFlags
+
+  sinkFlags = accumArray (\_ _ -> True) False (bounds nodes)$ map (, ()) sinks
+  sourceFlags = accumArray (\_ _ -> True) False (bounds nodes)$ map (, ()) sources
+
+  reachablePart = runST action where
+    action :: forall s. ST s (Array Int Path2)
+    action = do
+      arr <- newArray @(STArray s) (bounds nodes) Unvisited2
+      for_ sources$
+        flip dfs arr$ \rec -> let rec' = rec . (Unvisited2,) in \case
+          (Unvisited2, i) -> do
+            writeArray arr i Visited2
+            case residualGraph!i of
+              Just (Just back) -> for_ (nodes!back) rec' >> rec' back
+              Just _ -> return ()
+              _ -> for_ (nodes!i) rec'
+          (_, i) -> return ()
+      unsafeFreeze arr

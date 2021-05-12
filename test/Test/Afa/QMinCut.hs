@@ -22,6 +22,18 @@ tests =
       assertEqual "dag5" [0, 4]$ sort$ minCut dag5 [5, 6] [0, 1, 2]
       assertEqual "dag6" [0, 2, 4]$ sort$ minCut dag6 [6, 7, 8] [0, 1, 2, 3]
       assertEqual "dag7" [4, 9]$ sort$ minCut dag7 [8, 9] [0, 1, 2, 3]
+
+      assertEqual "2Ldag0" [3, 4]$ sort$ minCut2Lowest dag0 [7, 8, 9] [0, 1, 2]
+      assertEqual "2Ldag1" [3, 4]$ sort$ minCut2Lowest dag1 [7, 8, 9] [0, 1, 2]
+      assertEqual "2Ldag2" [0, 1, 2]$ sort$ minCut2Lowest dag2 [7, 8, 9] [0, 1, 2]
+      assertEqual "2Ldag3" [3, 4]$ sort$ minCut2Lowest dag3 [10, 11, 9] [0, 1, 2]
+      assertEqual "2Ldag4" [5, 6, 7]$ sort$ minCut2Lowest dag4 [8, 9, 10, 11] [0, 1, 2, 3]
+      assertEqual "2Ldag5" [0, 4]$ sort$ minCut2Lowest dag5 [5, 6] [0, 1, 2]
+      assertEqual "2Ldag6" [0, 2, 4]$ sort$ minCut2Lowest dag6 [6, 7, 8] [0, 1, 2, 3]
+      assertEqual "2Ldag7" [4, 9]$ sort$ minCut2Lowest dag7 [8, 9] [0, 1, 2, 3]
+
+      assertEqual "2Hdag3" [4, 5]$ sort$ minCut2Highest dag3 [10, 11, 9] [0, 1, 2]
+      assertEqual "2Hdag7" [8, 9]$ sort$ minCut2Highest dag7 [8, 9] [0, 1, 2, 3]
   , "Afa.QMinCut" ~: do
       putStrLn ""
       print$ qminCut afa0
