@@ -8,6 +8,7 @@ import Debug.Trace
 
 import Control.Arrow
 import Control.RecursionSchemes.Lens
+import Control.RecursionSchemes.Utils.HashCons
 import Control.Lens
 import Data.Fix
 import Data.Functor.Compose

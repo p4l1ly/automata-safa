@@ -13,6 +13,8 @@ import Data.Traversable
 import Data.Fix
 import Data.Functor.Compose
 import Control.RecursionSchemes.Lens
+import Control.RecursionSchemes.Utils.NoCons
+import Control.RecursionSchemes.Utils.HashCons
 import Data.Array.ST
 import Control.Monad.ST
 import qualified Data.HashSet as HS

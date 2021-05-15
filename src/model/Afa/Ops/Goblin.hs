@@ -21,6 +21,7 @@ import Control.Monad.ST
 import Control.Lens
 import Control.Monad.Trans
 import Control.RecursionSchemes.Lens
+import Control.RecursionSchemes.Utils.NoCons
 import Data.List.NonEmpty (NonEmpty(..))
 import qualified Data.List.NonEmpty as NE
 import Data.Void

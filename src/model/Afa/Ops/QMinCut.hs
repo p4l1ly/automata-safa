@@ -13,6 +13,7 @@ import Control.Monad.ST
 import Data.List
 import Data.Array
 import Control.RecursionSchemes.Lens
+import Control.RecursionSchemes.Utils.NoCons
 
 import Afa
 import Afa.Term.Mix

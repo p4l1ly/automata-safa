@@ -28,6 +28,8 @@ import Afa.Lib (listArray')
 import Afa.Lib.LiftArray
 import Afa.Bool
 import Control.RecursionSchemes.Lens
+import Control.RecursionSchemes.Utils.NoCons
+import Control.RecursionSchemes.Utils.HashCons
 import Data.List.NonEmpty (NonEmpty(..))
 
 import Ltl (Ltl, preprocessCoRecursive, canonicalize)
@@ -36,28 +38,32 @@ import qualified Ltl
 
 newtype BuilderT m a = BuilderT
   { fromBuilderT ::
-      NoConsT Int
-        ( NoConsT (MTerm.Term Int Int Int)
-            (NoConsT (BTerm.Term Int Int) m)
+      StateT Int
+        ( WriterT (Endo [Int])
+            ( NoConsT (MTerm.Term Int Int Int)
+                (NoConsT (BTerm.Term Int Int) m)
+            )
         )
         a
   }
   deriving (Functor, Applicative, Monad)
 
 runBuilderT (BuilderT action) =
-  runNoConsT$ runNoConsT$ runNoConsT action
+  runNoConsT$ runNoConsT$ do
+    (a, w) <- runWriterT$ evalStateT action 0
+    return (a, w `appEndo` [])
 
 instance MonadTrans BuilderT where
-  lift = BuilderT . lift . lift . lift
+  lift = BuilderT . lift . lift . lift . lift
 
 addBTerm0 :: Monad m => BTerm.Term Int Int -> BuilderT m Int
-addBTerm0 = BuilderT . lift . lift . nocons
+addBTerm0 = BuilderT . lift . lift . lift . nocons
 
 addBTerm :: Monad m => BTerm.Term Int Int -> BuilderT m (Int, Bool)
 addBTerm = fmap (, False) . addBTerm0
 
 addMTerm0 :: Monad m => MTerm.Term Int Int Int -> BuilderT m Int
-addMTerm0 = BuilderT . lift . nocons
+addMTerm0 = BuilderT . lift . lift . nocons
 
 addMTerm :: Monad m => MTerm.Term Int Int Int -> BuilderT m (Int, Bool)
 addMTerm = fmap (, True) . addMTerm0
@@ -89,16 +95,16 @@ instance Monad m => AfaBuilder (BuilderT m) (Int, Bool) where
           addMTerm$ MTerm.Or$ t2 :| ts2
 
   withNewState fn = BuilderT$ do
-    nextIx <- NoConsT get
+    nextIx <- get
     mref <- fromBuilderT$ addMTerm0$ MTerm.State nextIx
-    let BuilderT (NoConsT (StateT action)) = fn (mref, True)
+    let BuilderT (StateT action) = fn (mref, True)
         WriterT getATSW = action (nextIx + 1)
-    (((a, t), nextIx'), w) <- lift getATSW
+    (((a, t), nextIx'), w) <- lift$ lift getATSW
     (ref, b) <- fromBuilderT$ addTerm t
     ref' <- if b then return ref else fromBuilderT$ addMTerm0$ MTerm.Predicate ref
-    nocons ref'
-    NoConsT$ put nextIx'
-    NoConsT$ lift$ tell w
+    lift$ tell$ Endo (ref':)
+    put nextIx'
+    lift$ tell w
     return a
 
 

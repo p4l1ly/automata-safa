@@ -23,6 +23,8 @@ import Afa
 import Afa.Lib (listArray')
 import Afa.Lib.LiftArray
 import Control.RecursionSchemes.Lens
+import Control.RecursionSchemes.Utils.NoCons
+import Control.RecursionSchemes.Utils.HashCons
 import Control.Monad
 import Data.Maybe
 import Control.Lens

@@ -42,6 +42,8 @@ import Data.Array
 import Afa.Term.Mix (Term(..), modChilds, pureChildMod, ChildMod(..))
 import qualified Afa.Term.Mix as MTerm
 import Control.RecursionSchemes.Lens
+import Control.RecursionSchemes.Utils.NoCons
+import Control.RecursionSchemes.Utils.HashCons
 import Control.Monad.Trans
 import Data.Traversable
 import Afa.Lib (listArray', DumbCount(..))

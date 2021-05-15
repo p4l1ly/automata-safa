@@ -24,6 +24,8 @@ import Data.Array.ST
 import Data.Array.Unsafe
 import Data.Monoid (Any(..), Sum(..))
 import Control.RecursionSchemes.Lens
+import Control.RecursionSchemes.Utils.NoCons
+import Control.RecursionSchemes.Utils.HashCons
 import Control.Lens
 import Control.Monad.ST
 import qualified Control.Monad.ST.Lazy as LST

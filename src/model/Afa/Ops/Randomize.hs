@@ -21,6 +21,7 @@ import System.Random.Shuffle
 import Data.Array
 import qualified Data.List.NonEmpty as NE
 import Control.RecursionSchemes.Lens
+import Control.RecursionSchemes.Utils.NoCons
 
 import Afa.Lib.LiftArray
 import Afa
