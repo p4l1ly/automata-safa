@@ -44,6 +44,7 @@ data Plate p t p' t' f = Plate
   , pNot :: forall p'. t -> f (Term p' t')
   }
 
+{-# INLINE plateBase #-}
 plateBase :: Applicative f => Plate p t p t f
 plateBase = Plate
   { pLTrue = pure LTrue
@@ -54,6 +55,7 @@ plateBase = Plate
   , pNot = pure . Not
   }
 
+{-# INLINE applyPlate #-}
 applyPlate :: Plate p t p' t' f -> Term p t -> f (Term p' t')
 applyPlate Plate{pLTrue, pLFalse, pPredicate, pAnd, pOr, pNot} = \case
   LTrue -> pLTrue
@@ -68,9 +70,11 @@ data ChildMod p t p' t' f = ChildMod
   , lT :: t -> f t'
   }
 
+{-# INLINE pureChildMod #-}
 pureChildMod :: Applicative f => ChildMod p t p t f
 pureChildMod = ChildMod{ lP = pure, lT = pure }
 
+{-# INLINE childModToPlate #-}
 childModToPlate :: Applicative f => ChildMod p t p' t' f -> Plate p t p' t' f
 childModToPlate ChildMod{lP, lT} = plateBase
   { pPredicate = fmap Predicate . lP
@@ -79,6 +83,7 @@ childModToPlate ChildMod{lP, lT} = plateBase
   , pNot = fmap Not . lT
   }
 
+{-# INLINE modChilds #-}
 modChilds :: Applicative f => ChildMod p t p' t' f -> Term p t -> f (Term p' t')
 modChilds = applyPlate . childModToPlate
 
@@ -93,6 +98,7 @@ data MFun p t p' t' = MFun
   , mfunNot :: forall p'. t -> Term p' t'
   }
 
+{-# INLINE mfun0 #-}
 mfun0 :: MFun p t p t
 mfun0 = MFun
   { mfunLTrue = LTrue
@@ -103,6 +109,7 @@ mfun0 = MFun
   , mfunNot = Not
   }
 
+{-# INLINE appMFun #-}
 appMFun :: MFun p t p' t' -> Term p t -> Term p' t'
 appMFun MFun{mfunLTrue, mfunLFalse, mfunPredicate, mfunAnd, mfunOr, mfunNot} = \case
   LTrue -> mfunLTrue
@@ -117,9 +124,11 @@ data MTFun p t p' t' = MTFun
   , mtfunT :: t -> t'
   }
 
+{-# INLINE mtfun0 #-}
 mtfun0 :: MTFun p t p t
 mtfun0 = MTFun id id
 
+{-# INLINE fromMTFun #-}
 fromMTFun :: MTFun p t p' t' -> MFun p t p' t'
 fromMTFun MTFun{mtfunP, mtfunT} = mfun0
   { mfunPredicate = Predicate . mtfunP
@@ -128,6 +137,7 @@ fromMTFun MTFun{mtfunP, mtfunT} = mfun0
   , mfunNot = Not . mtfunT
   }
 
+{-# INLINE appMTFun #-}
 appMTFun :: MTFun p t p' t' -> Term p t -> Term p' t'
 appMTFun = appMFun . fromMTFun
 
@@ -142,6 +152,7 @@ data MFol p t m = MFol
   , mfolNot :: t -> m
   }
 
+{-# INLINE mfol0 #-}
 mfol0 :: Monoid m => MFol p t m
 mfol0 = MFol
   { mfolLTrue = mempty
@@ -152,6 +163,7 @@ mfol0 = MFol
   , mfolNot = const mempty
   }
 
+{-# INLINE appMFol #-}
 appMFol :: MFol p t m -> Term p t -> m
 appMFol MFol{mfolLTrue, mfolLFalse, mfolPredicate, mfolAnd, mfolOr, mfolNot} = \case
   LTrue -> mfolLTrue
@@ -166,9 +178,11 @@ data MTFol p t m = MTFol
   , mtfolT :: t -> m
   }
 
+{-# INLINE mtfol0 #-}
 mtfol0 :: Monoid m => MTFol p t m
 mtfol0 = MTFol (const mempty) (const mempty)
 
+{-# INLINE fromMTFol #-}
 fromMTFol :: Monoid m => MTFol p t m -> MFol p t m
 fromMTFol MTFol{mtfolP, mtfolT} = mfol0
   { mfolPredicate = mtfolP
@@ -177,6 +191,7 @@ fromMTFol MTFol{mtfolP, mtfolT} = mfol0
   , mfolNot = mtfolT
   }
 
+{-# INLINE appMTFol #-}
 appMTFol :: Monoid m => MTFol p t m -> Term p t -> m
 appMTFol = appMFol . fromMTFol
 
@@ -191,6 +206,7 @@ data MTra p t p' t' f = MTra
   , mtraNot :: forall p'. t -> f (Term p' t')
   }
 
+{-# INLINE mtra0 #-}
 mtra0 :: Applicative f => MTra p t p t f
 mtra0 = MTra
   { mtraLTrue = pure LTrue
@@ -201,6 +217,7 @@ mtra0 = MTra
   , mtraNot = pure . Not
   }
 
+{-# INLINE appMTra #-}
 appMTra :: MTra p t p' t' f -> Term p t -> f (Term p' t')
 appMTra MTra{mtraLTrue, mtraLFalse, mtraPredicate, mtraAnd, mtraOr, mtraNot} = \case
   LTrue -> mtraLTrue
@@ -215,9 +232,11 @@ data MTTra p t p' t' f = MTTra
   , mttraT :: t -> f t'
   }
 
+{-# INLINE mttra0 #-}
 mttra0 :: forall f p t p' t'. Applicative f => MTTra p t p t f
 mttra0 = MTTra pure pure
 
+{-# INLINE fromMTTra #-}
 fromMTTra :: Applicative f => MTTra p t p' t' f -> MTra p t p' t' f
 fromMTTra MTTra{mttraP, mttraT} = mtra0
   { mtraPredicate = fmap Predicate . mttraP
@@ -226,6 +245,7 @@ fromMTTra MTTra{mttraP, mttraT} = mtra0
   , mtraNot = fmap Not . mttraT
   }
 
+{-# INLINE appMTTra #-}
 appMTTra :: forall f p t p' t'. Applicative f
   => MTTra p t p' t' f -> Term p t -> f (Term p' t')
 appMTTra = appMTra . fromMTTra

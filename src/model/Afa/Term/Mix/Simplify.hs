@@ -1,11 +1,16 @@
 {-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TupleSections #-}
+{-# LANGUAGE TypeApplications #-}
 
 module Afa.Term.Mix.Simplify where
 
 import Debug.Trace
 
+import Data.Array.Base (unsafeRead, unsafeWrite, unsafeNewArray_)
+import Control.Monad.Trans
+import Data.Foldable
+import Data.Traversable
 import Control.Arrow
 import Control.RecursionSchemes.Lens
 import Control.RecursionSchemes.Utils.HashCons
@@ -139,9 +144,23 @@ simplifyDag gs (ixMap, arr) = runST action where
   action :: forall s. ST s (Array Int (Either Bool Int), Array Int (Term p q Int))
   action = do
     (ixMap', tList) <- runHashConsT$ do
-      (gs'M :: LSTArray s Int DumbCount) <- unsafeThaw$ eixMappedGs2 arr ixMap gs
-      unsafeFreeze =<< hyloScanTTerminal' traversed hylogebra gs'M
+      gs'M :: STArray s Int DumbCount <- lift$ unsafeThaw$ eixMappedGs2 arr ixMap gs
+      for_ [iend, iend - 1 .. ibeg]$ \i -> do
+        g <- lift$ unsafeRead gs'M i
+        for (arr!i)$ \ichild -> do
+          gchild <- lift$ unsafeRead gs'M ichild
+          lift$ unsafeWrite gs'M ichild$ gchild <> case g of Zero -> Zero; _ -> One
+
+      ixMap'<- lift$ unsafeNewArray_ @(STArray s) bnds
+      for_ [ibeg .. iend]$ \i -> do
+        g <- lift$ unsafeRead gs'M i
+        t <- for (arr!i)$ lift . unsafeRead ixMap'
+        alg g t >>= lift . unsafeWrite ixMap' i
+
+      lift$ unsafeFreeze ixMap'
     return (fmap (>>= (ixMap'!) >&> fst) ixMap, listArray' tList)
+
+  bnds@(ibeg, iend) = bounds arr
 
   alg Zero _ = return$ error "accessing element without parents"
   alg g t = case simplify (\(_, Fix (Compose (Compose gt))) -> gt) fst t of
@@ -149,9 +168,6 @@ simplifyDag gs (ixMap, arr) = runST action where
     Right (Left it) -> return$ Right it
     Right (Right t) -> hashCons' (fmap fst t) <&> \i ->
       Right (i, Fix$Compose$Compose (g, t))
-
-  hylogebra (g, i) = return ((gchild,) <$> arr!i, alg g)
-    where gchild = case g of Zero -> Zero; _ -> One
 
 
 simplifyDagUntilFixpoint :: forall p q. (Eq p, Hashable p, Eq q, Hashable q)

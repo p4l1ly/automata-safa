@@ -42,6 +42,7 @@ data Plate p q t p' q' t' f = Plate
   , pOr :: forall p' q'. NonEmpty t -> f (Term p' q' t')
   }
 
+{-# INLINE plateBase #-}
 plateBase :: Applicative f => Plate p q t p q t f
 plateBase = Plate
   { pLTrue = pure LTrue
@@ -51,6 +52,7 @@ plateBase = Plate
   , pOr = pure . Or
   }
 
+{-# INLINE applyPlate #-}
 applyPlate :: Plate p q t p' q' t' f -> Term p q t -> f (Term p' q' t')
 applyPlate Plate{pLTrue, pPredicate, pState, pAnd, pOr} = \case
   LTrue -> pLTrue
@@ -65,9 +67,11 @@ data ChildMod p q t p' q' t' f = ChildMod
   , lT :: t -> f t'
   }
 
+{-# INLINE pureChildMod #-}
 pureChildMod :: forall f p q t p' q' t'. Applicative f => ChildMod p q t p q t f
 pureChildMod = ChildMod{ lP = pure, lQ = pure, lT = pure }
 
+{-# INLINE childModToPlate #-}
 childModToPlate :: Applicative f => ChildMod p q t p' q' t' f -> Plate p q t p' q' t' f
 childModToPlate ChildMod{lP, lQ, lT} = plateBase
   { pPredicate = fmap Predicate . lP
@@ -76,6 +80,7 @@ childModToPlate ChildMod{lP, lQ, lT} = plateBase
   , pOr = fmap Or . traverse lT
   }
 
+{-# INLINE modChilds #-}
 modChilds :: forall f p q t p' q' t'. Applicative f
   => ChildMod p q t p' q' t' f -> Term p q t -> f (Term p' q' t')
 modChilds = applyPlate . childModToPlate
@@ -90,6 +95,7 @@ data MFun p q t p' q' t' = MFun
   , mfunOr :: forall p' q'. NonEmpty t -> Term p' q' t'
   }
 
+{-# INLINE mfun0 #-}
 mfun0 :: MFun p q t p q t
 mfun0 = MFun
   { mfunLTrue = LTrue
@@ -99,6 +105,7 @@ mfun0 = MFun
   , mfunOr = Or
   }
 
+{-# INLINE appMFun #-}
 appMFun :: MFun p q t p' q' t' -> Term p q t -> Term p' q' t'
 appMFun MFun{mfunLTrue, mfunPredicate, mfunState, mfunAnd, mfunOr} = \case
   LTrue -> mfunLTrue
@@ -113,9 +120,11 @@ data MTFun p q t p' q' t' = MTFun
   , mtfunT :: t -> t'
   }
 
+{-# INLINE mtfun0 #-}
 mtfun0 :: MTFun p q t p q t
 mtfun0 = MTFun id id id
 
+{-# INLINE fromMTFun #-}
 fromMTFun :: MTFun p q t p' q' t' -> MFun p q t p' q' t'
 fromMTFun MTFun{mtfunP, mtfunQ, mtfunT} = mfun0
   { mfunPredicate = Predicate . mtfunP
@@ -124,6 +133,7 @@ fromMTFun MTFun{mtfunP, mtfunQ, mtfunT} = mfun0
   , mfunOr = Or . fmap mtfunT
   }
 
+{-# INLINE appMTFun #-}
 appMTFun :: MTFun p q t p' q' t' -> Term p q t -> Term p' q' t'
 appMTFun = appMFun . fromMTFun
 
@@ -137,6 +147,7 @@ data MFol p q t m = MFol
   , mfolOr :: NonEmpty t -> m
   }
 
+{-# INLINE mfol0 #-}
 mfol0 :: Monoid m => MFol p q t m
 mfol0 = MFol
   { mfolLTrue = mempty
@@ -146,6 +157,7 @@ mfol0 = MFol
   , mfolOr = const mempty
   }
 
+{-# INLINE appMFol #-}
 appMFol :: MFol p q t m -> Term p q t -> m
 appMFol MFol{mfolLTrue, mfolPredicate, mfolState, mfolAnd, mfolOr} = \case
   LTrue -> mfolLTrue
@@ -160,9 +172,11 @@ data MTFol p q t m = MTFol
   , mtfolT :: t -> m
   }
 
+{-# INLINE mtfol0 #-}
 mtfol0 :: Monoid m => MTFol p q t m
 mtfol0 = MTFol (const mempty) (const mempty) (const mempty)
 
+{-# INLINE fromMTFol #-}
 fromMTFol :: Monoid m => MTFol p q t m -> MFol p q t m
 fromMTFol MTFol{mtfolP, mtfolQ, mtfolT} = mfol0
   { mfolPredicate = mtfolP
@@ -171,6 +185,7 @@ fromMTFol MTFol{mtfolP, mtfolQ, mtfolT} = mfol0
   , mfolOr = foldMap mtfolT
   }
 
+{-# INLINE appMTFol #-}
 appMTFol :: Monoid m => MTFol p q t m -> Term p q t -> m
 appMTFol = appMFol . fromMTFol
 
@@ -184,6 +199,7 @@ data MTra p q t p' q' t' f = MTra
   , mtraOr :: forall p' q'. NonEmpty t -> f (Term p' q' t')
   }
 
+{-# INLINE mtra0 #-}
 mtra0 :: Applicative f => MTra p q t p q t f
 mtra0 = MTra
   { mtraLTrue = pure LTrue
@@ -193,6 +209,7 @@ mtra0 = MTra
   , mtraOr = pure . Or
   }
 
+{-# INLINE appMTra #-}
 appMTra :: MTra p q t p' q' t' f -> Term p q t -> f (Term p' q' t')
 appMTra MTra{mtraLTrue, mtraPredicate, mtraState, mtraAnd, mtraOr} = \case
   LTrue -> mtraLTrue
@@ -207,9 +224,11 @@ data MTTra p q t p' q' t' f = MTTra
   , mttraT :: t -> f t'
   }
 
+{-# INLINE mttra0 #-}
 mttra0 :: forall f p q t p' q' t'. Applicative f => MTTra p q t p q t f
 mttra0 = MTTra pure pure pure
 
+{-# INLINE fromMTTra #-}
 fromMTTra :: Applicative f => MTTra p q t p' q' t' f -> MTra p q t p' q' t' f
 fromMTTra MTTra{mttraP, mttraQ, mttraT} = mtra0
   { mtraPredicate = fmap Predicate . mttraP
@@ -218,6 +237,7 @@ fromMTTra MTTra{mttraP, mttraQ, mttraT} = mtra0
   , mtraOr = fmap Or . traverse mttraT
   }
 
+{-# INLINE appMTTra #-}
 appMTTra :: forall f p q t p' q' t'. Applicative f
   => MTTra p q t p' q' t' f -> Term p q t -> f (Term p' q' t')
 appMTTra = appMTra . fromMTTra

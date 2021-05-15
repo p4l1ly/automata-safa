@@ -228,22 +228,21 @@ unswallow BoolAfa{boolTerms=bterms, afa=afa@Afa{terms=mterms, states=transitions
     bgs <- newArray @(STArray s) (bounds bterms) mempty
     mgs <- newArray @(STArray s) (bounds mterms) mempty
 
-    ((transitions', mterms'), bterms') <- runNoConsT$ do
-      runNoConsT$ do
-        trs <- for transitions$ mhylogebra (Any True)
-        let encls = fmap (first$ uncurry$ MEncloser mgs bgs) trs
-        lift$ lift$ for_ encls$ actionBefore . fst
-        ixMaps <- traverseOf _2 unsafeFreeze =<< hyloScanT00'
-          ( lift$ unsafeFreeze . snd =<< hyloScanT00'
-              (return ()) const (bsetter1 (LiftArray bgs)) bhylogebra (LiftArray bgs)
-          )
-          (,)
-          (msetter1 (LiftArray$ LiftArray mgs) (LiftArray$ LiftArray bgs))
-          (\(g, i) -> mhylogebra g (mterms!i))
-          (LiftArray$ LiftArray mgs)
-        remappedTransitions <- lift$ lift$
-          runReaderT ((traversed . _1) actionAfter encls) (swap ixMaps)
-        traverse (\(t, alg) -> alg t) remappedTransitions
+    ((transitions', mterms'), bterms') <- runNoConsT$ runNoConsT$ do
+      trs <- for transitions$ mhylogebra (Any True)
+      let encls = fmap (first$ uncurry$ MEncloser mgs bgs) trs
+      lift$ lift$ for_ encls$ actionBefore . fst
+      ixMaps <- traverseOf _2 unsafeFreeze =<< hyloScanT00'
+        ( lift$ unsafeFreeze . snd =<< hyloScanT00'
+            (return ()) const (bsetter1 (LiftArray bgs)) bhylogebra (LiftArray bgs)
+        )
+        (,)
+        (msetter1 (LiftArray$ LiftArray mgs) (LiftArray$ LiftArray bgs))
+        (\(g, i) -> mhylogebra g (mterms!i))
+        (LiftArray$ LiftArray mgs)
+      remappedTransitions <- lift$ lift$
+        runReaderT ((traversed . _1) actionAfter encls) (swap ixMaps)
+      traverse (\(t, alg) -> alg t) remappedTransitions
 
     return$ BoolAfa (listArray' bterms')
       afa{ terms = listArray' mterms', states = transitions'}
