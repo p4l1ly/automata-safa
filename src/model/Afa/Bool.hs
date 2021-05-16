@@ -14,6 +14,7 @@ module Afa.Bool where
 
 import Debug.Trace
 
+import Data.Array.Base (unsafeRead, unsafeWrite)
 import Data.Foldable
 import Control.Monad.Free
 import Control.Arrow
@@ -289,9 +290,9 @@ instance (Monad m, MArray arr Any m) => Encloser
 
 {-# NOINLINE beforeP #-}
 beforeP !bgs !g !j = do
-  !g0 <- readArray bgs j
+  !g0 <- unsafeRead bgs j
   let !g1 = g0 <> g
-  writeArray bgs j g1
+  unsafeWrite bgs j g1
 
 {-# NOINLINE afterP2 #-}
 afterP2 !j = asks snd <&> (!j)
@@ -300,10 +301,10 @@ afterP2 !j = asks snd <&> (!j)
 afterP1 !j = asks fst <&> (!j)
 
 {-# NOINLINE afterP1M #-}
-afterP1M !j = asks fst >>= \bs -> lift$ readArray bs j
+afterP1M !j = asks fst >>= \bs -> lift$ unsafeRead bs j
 
 {-# NOINLINE afterPM #-}
-afterPM !j = ask >>= \bs -> lift$ readArray bs j
+afterPM !j = ask >>= \bs -> lift$ unsafeRead bs j
 
 swallow :: forall p. BoolAfaUnswallowed p -> BoolAfaSwallowed p
 swallow BoolAfa{boolTerms=bterms, afa=afa@Afa{terms=mterms, states=transitions}} =

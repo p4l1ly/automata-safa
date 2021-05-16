@@ -23,6 +23,7 @@ module Afa
 
 import Debug.Trace
 
+import Data.Array.Base (unsafeWrite)
 import Control.Monad.Free
 import Data.Foldable
 import Data.Maybe
@@ -121,13 +122,13 @@ markReachable (Afa terms states init) =
   getMarks = do
     marks <- newArray @(STArray s) (bounds terms) Unvisited
     for_ (states!init)$ \i -> do
-      writeArray marks i Recur
+      unsafeWrite marks i Recur
       dfs (traversal marks) marks i
     unsafeFreeze marks
 
   traversal arr rec (x, i) = case x of
     Recur -> do
-      writeArray arr i Visited
+      unsafeWrite arr i Visited
       void$ terms!i & modChilds pureChildMod
         { lQ = \q -> for_ (states!q)$ \i -> rec (Recur, i)
         , lT = \j -> rec (Recur, j)

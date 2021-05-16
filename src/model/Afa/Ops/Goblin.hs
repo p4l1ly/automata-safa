@@ -9,6 +9,7 @@ module Afa.Ops.Goblin where
 
 import Debug.Trace
 
+import Data.Array.Base (unsafeWrite)
 import GHC.Exts
 import Control.Monad.Free
 import Data.Traversable
@@ -60,7 +61,7 @@ markBack afa@(Afa terms states init) = runST getMarks &
   getMarks :: forall s. ST s (Array Int (BackEdgeMark p))
   getMarks = do
     marks <- newArray @(STArray s) (bounds terms) Unvisited
-    writeArray marks (states!init) Recur
+    unsafeWrite marks (states!init) Recur
     dfs (traversal marks) marks (states!init)
     unsafeFreeze marks
 
@@ -68,12 +69,12 @@ markBack afa@(Afa terms states init) = runST getMarks &
     -> LensLike (ST s) (BackEdgeMark p, Int) Bool (BackEdgeMark p, Int) Bool
   traversal arr rec (x, i) = case x of
     Recur -> do
-      writeArray arr i Recurring 
+      unsafeWrite arr i Recurring 
       term' <- terms!i & modChilds pureChildMod
         { lQ = \q -> (, q) <$> rec (Recur, states!q)
         , lT = \j -> (, j) <$> rec (Recur, j)
         }
-      writeArray arr i (Evaluated term')
+      unsafeWrite arr i (Evaluated term')
       return False
     Recurring -> return True
     Evaluated _ -> return False

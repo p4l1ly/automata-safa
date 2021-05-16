@@ -5,6 +5,7 @@
 
 module Afa.Ops.Randomize where
 
+import Data.Array.Base (unsafeWrite)
 import Data.Semigroup (First(..))
 import Data.Array.ST
 import Control.Monad.ST
@@ -62,7 +63,7 @@ randomize (BoolAfa bterms (Afa mterms states init)) = do
               bterm' <- BTerm.appMTTra BTerm.mttra0{BTerm.mttraT = rec . (Nothing,)}$
                 shuffledBTerms!i
               j <- nocons bterm'
-              writeArray gs i$ Just$ First j
+              unsafeWrite gs i$ Just$ First j
               return j
 
   statePermut <- listArray (bounds states) <$> shuffleM (range$ bounds states)
@@ -92,7 +93,7 @@ randomize (BoolAfa bterms (Afa mterms states init)) = do
               mterm' <- MTerm.appMTTra MTerm.mttra0{MTerm.mttraT = rec . (Nothing,)}$
                 shuffledMTerms!i
               j <- nocons mterm'
-              writeArray gs i$ Just$ First j
+              unsafeWrite gs i$ Just$ First j
               return j
 
     redirectedStates = states <&> (mtermPermut'!) . (mtermPermut!)

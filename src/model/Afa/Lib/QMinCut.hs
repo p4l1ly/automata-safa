@@ -6,6 +6,7 @@
 
 module Afa.Lib.QMinCut where
 
+import Data.Array.Base (unsafeRead, unsafeWrite)
 import Data.List
 import Data.Maybe
 import Control.Monad
@@ -50,26 +51,26 @@ maxFlow nodes sources sourceFlags sinkFlags = runST action
     residualGraphM <- newArray @(STArray s) (bounds nodes) Nothing
     let getPath = do
           arr <- newArray @(STArray s) (bounds nodes) Unvisited
-          for_ sources$ \src -> writeArray arr src$ Visited$ Endo id
+          for_ sources$ \src -> unsafeWrite arr src$ Visited$ Endo id
           runExceptT$ for_ sources$
             dfs (traversal residualGraphM arr)$ LiftArray arr
         subtractPath ixs = do
-          writeArray residualGraphM (head ixs)$ Just Nothing
+          unsafeWrite residualGraphM (head ixs)$ Just Nothing
           for_ (zip (tail ixs) ixs)$ \(next, this) ->
             if next < this
-            then writeArray residualGraphM next (Just$ Just this)
+            then unsafeWrite residualGraphM next (Just$ Just this)
             else do
-              old <- readArray residualGraphM this
+              old <- unsafeRead residualGraphM this
               when (old == Just (Just next))$
-                writeArray residualGraphM this Nothing
+                unsafeWrite residualGraphM this Nothing
         rec = getPath >>= \case Left p -> subtractPath p >> rec; _ -> return ()
     rec
     unsafeFreeze residualGraphM
 
   traversal residualGraphM arr rec = \case
     (Visited pp, i) -> do
-      lift$ writeArray arr i Blind
-      lift (readArray residualGraphM i) >>= \case
+      lift$ unsafeWrite arr i Blind
+      lift (unsafeRead residualGraphM i) >>= \case
         Just (Just back) -> for_ (nodes!back) (recBackDown back) >> rec' back
         Just _ -> return ()
         _ | sinkFlags!i -> throwE$ pp `appEndo` [i]
@@ -157,7 +158,7 @@ minCut2Lowest nodes sources sinks =
     action = do
       preds :: STArray s Int [Int] <- newArray bnds []
       for_ (assocs nodes)$ \(i, node) ->
-        for_ node$ \j -> readArray preds j >>= writeArray preds j . (revIx i :)
+        for_ node$ \j -> unsafeRead preds j >>= unsafeWrite preds j . (revIx i :)
       unsafeFreeze preds
   revSources = map revIx sinks
   revSinks = map revIx sources
@@ -173,7 +174,7 @@ minCut2Lowest nodes sources sinks =
       for_ revSources$
         flip dfs arr$ \rec -> let rec' = rec . (Unvisited2,) in \case
           (Unvisited2, i) -> do
-            writeArray arr i Visited2
+            unsafeWrite arr i Visited2
             case residualGraph!i of
               Just (Just back) -> for_ (revNodes!back) rec' >> rec' back
               Just _ -> return ()
@@ -201,7 +202,7 @@ minCut2Highest nodes sources sinks =
       for_ sources$
         flip dfs arr$ \rec -> let rec' = rec . (Unvisited2,) in \case
           (Unvisited2, i) -> do
-            writeArray arr i Visited2
+            unsafeWrite arr i Visited2
             case residualGraph!i of
               Just (Just back) -> for_ (nodes!back) rec' >> rec' back
               Just _ -> return ()
