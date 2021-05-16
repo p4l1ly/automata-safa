@@ -14,6 +14,7 @@ module Afa.Bool where
 
 import Debug.Trace
 
+import Data.Monoid
 import Data.Array.Base (unsafeRead, unsafeWrite)
 import Data.Foldable
 import Control.Monad.Free
@@ -120,11 +121,18 @@ simplifyInitMixAndBoolTs mgs ixMap bterms mterms = runST action where
     (((_, bterms'), ixMap'), tList) <- runHashConsT$ do
       bgs'M <- newArray @(LSTArray s) (bounds bterms) mempty
       (mgs'M :: LSTArray s Int Any) <- unsafeThaw$ eixMappedGs mterms ixMap mgs
-      runKleisli (second$ Kleisli unsafeFreeze) =<< hyloScanT00'
+      runKleisli (second$ Kleisli unsafeFreeze) =<< hyloScanTFast @(LSTArray s)
         (atBottom <$> unsafeFreeze bgs'M)
-        (\t (bIxMap, _) -> (t, bIxMap))
-        (modPT (arrayEncloser' bgs'M snd) (arrayEncloser mgs'M fst))
-        mhylogebra
+        (\g i -> void$ getAp$ MTerm.appMTFol MTerm.mtfol0
+          { MTerm.mtfolT = \j -> Ap$ unsafeRead mgs'M j >>= unsafeWrite mgs'M j . (<> g)
+          , MTerm.mtfolP = \j -> Ap$ unsafeRead bgs'M j >>= unsafeWrite bgs'M j . (<> g)
+          } (mterms!i)
+        )
+        (\ixMap' (bterms', _) g i -> alg g =<< MTerm.appMTTra MTerm.mttra0
+          { MTerm.mttraT = unsafeRead ixMap'
+          , MTerm.mttraP = \j -> return$ bterms'!j
+          } (mterms!i)
+        )
         mgs'M
 
     return (fmap (>>= (ixMap'!) >&> fst) ixMap, bterms', listArray' tList)
@@ -132,12 +140,8 @@ simplifyInitMixAndBoolTs mgs ixMap bterms mterms = runST action where
   atBottom = flip BTerm.simplifyDagUntilFixpoint (bInitIxMap, bterms)
     where bInitIxMap = listArray (bounds bterms)$ map Right [0..]
 
+  {-# INLINE modPT #-}
   modPT lP lT = MTerm.modChilds MTerm.pureChildMod{ MTerm.lT = lT, MTerm.lP = lP }
-
-  mhylogebra (!g, !i) = return
-    ( MTerm.appMTFun MTerm.mtfun0{MTerm.mtfunT = (g,), MTerm.mtfunP = (g,)} (mterms!i)
-    , alg g
-    )
 
   alg (Any False) _ = return$ error "accessing element without parents"
   alg _ !t = case modPT id pure t of
