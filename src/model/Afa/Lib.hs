@@ -8,6 +8,7 @@ import Data.Hashable.Lifted
 import Data.List.NonEmpty (NonEmpty(..), toList)
 import qualified Data.List.NonEmpty as NE
 import Data.Array
+import Data.Array.Base (unsafeAccumArray)
 
 instance Hashable1 NonEmpty where
   liftHashWithSalt h salt (a :| as) = liftHashWithSalt h (h salt a) as
@@ -31,7 +32,7 @@ nonemptyCanonicalizeWith f = NE.map NE.head . NE.groupWith1 f . NE.sortWith f
 -- ixMap!i0.
 eixMappedGs
   :: Array Int a -> Array Int (Either Bool Int) -> Array Int Any -> Array Int Any
-eixMappedGs arr ixMap gs = accumArray (\_ _ -> Any True) mempty (bounds arr)
+eixMappedGs arr ixMap gs = unsafeAccumArray (\_ _ -> Any True) mempty (bounds arr)
   [ (i, ())
   | (i0, Any True) <- assocs gs
   , let ei = ixMap!i0
@@ -41,7 +42,7 @@ eixMappedGs arr ixMap gs = accumArray (\_ _ -> Any True) mempty (bounds arr)
 
 eixMappedGs2
   :: Array Int a -> Array Int (Either Bool Int) -> Array Int Any -> Array Int DumbCount
-eixMappedGs2 arr ixMap gs = accumArray (\_ _ -> Many) mempty (bounds arr)
+eixMappedGs2 arr ixMap gs = unsafeAccumArray (\_ _ -> Many) mempty (bounds arr)
   [ (i, ())
   | (i0, Any True) <- assocs gs
   , let ei = ixMap!i0

@@ -2,6 +2,7 @@
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TupleSections #-}
 {-# LANGUAGE TypeApplications #-}
+{-# LANGUAGE FlexibleContexts #-}
 
 module Afa.Term.Mix.Simplify where
 
@@ -158,6 +159,37 @@ simplifyDag gs (ixMap, arr) = runST action where
         alg g t >>= lift . unsafeWrite ixMap' i
 
       lift$ unsafeFreeze ixMap'
+    return (fmap (>>= (ixMap'!) >&> fst) ixMap, listArray' tList)
+
+  bnds@(ibeg, iend) = bounds arr
+
+  alg Zero _ = return$ error "accessing element without parents"
+  alg g t = case simplify (\(_, Fix (Compose (Compose gt))) -> gt) fst t of
+    Left b -> return$ Left b
+    Right (Left it) -> return$ Right it
+    Right (Right t) -> hashCons' (fmap fst t) <&> \i ->
+      Right (i, Fix$Compose$Compose (g, t))
+
+
+-- more elegant but slower, don't know exactly why (probably some inlining + specialization issues)
+simplifyDag2 :: forall p q. (Eq p, Hashable p, Eq q, Hashable q)
+  => Array Int Any
+  -> (Array Int (Either Bool Int), Array Int (Term p q Int))
+  -> (Array Int (Either Bool Int), Array Int (Term p q Int))
+simplifyDag2 gs (ixMap, arr) = runST action where
+  action :: forall s. ST s (Array Int (Either Bool Int), Array Int (Term p q Int))
+  action = do
+    (ixMap', tList) <- runHashConsT$ do
+      gs'M :: LSTArray s Int DumbCount <- unsafeThaw$ eixMappedGs2 arr ixMap gs
+      (_, ixMap') <- hyloScanTFast @(LSTArray s) (return ())
+        (\g i -> for_ (arr!i)$ \ichild -> do
+          gchild <- unsafeRead gs'M ichild
+          unsafeWrite gs'M ichild$ gchild <> case g of Zero -> Zero; _ -> One
+        )
+        (\ixMap' _ g i -> for (arr!i) (unsafeRead ixMap') >>= alg g)
+        gs'M
+
+      unsafeFreeze ixMap'
     return (fmap (>>= (ixMap'!) >&> fst) ixMap, listArray' tList)
 
   bnds@(ibeg, iend) = bounds arr

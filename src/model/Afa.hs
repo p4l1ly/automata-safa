@@ -23,7 +23,7 @@ module Afa
 
 import Debug.Trace
 
-import Data.Array.Base (unsafeWrite)
+import Data.Array.Base (unsafeWrite, unsafeAccumArray)
 import Control.Monad.Free
 import Data.Foldable
 import Data.Maybe
@@ -111,7 +111,7 @@ instance Semigroup ReachableMark where
 markReachable :: Foldable f => Afa (Array Int (Term p Int Int)) (Array Int (f Int)) Int
   -> Array Int Bool
 markReachable (Afa terms states init) =
-  accumArray (\_ _ -> True) False (bounds states)$ (init, ()) :
+  unsafeAccumArray (\_ _ -> True) False (bounds states)$ (init, ()) :
     [ (q, ())
     | (i@((terms!) -> State q), True)<- zip [0..] (elems termMarks)
     ]
@@ -172,7 +172,7 @@ simplifyStatesAndMixTs ixMap mterms states init = case sequence states1 of
     action = runHashConsT$
       fmap (fmap fst) <$> cataScanT' @(LSTArray s) traversed alg mterms
 
-  mgs = accumArray (\_ x -> x) mempty (bounds mterms)$ map (, Any True) (elems states2)
+  mgs = unsafeAccumArray (\_ x -> x) mempty (bounds mterms)$ map (, Any True) (elems states2)
   (ixMap3, mterms3) = MTerm.simplifyDagUntilFixpoint mgs (ixMap2, mterms2)
 
   alg t = case MTerm.modChilds MTerm.pureChildMod{ MTerm.lQ = (qMap!) } t of

@@ -3,10 +3,18 @@
 {-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE TupleSections #-}
+{-# LANGUAGE ForeignFunctionInterface #-}
 
 module Afa.Lib.QMinCut where
 
-import Data.Array.Base (unsafeRead, unsafeWrite)
+import System.IO.Unsafe
+import Foreign.Ptr
+import Foreign.Storable
+import Foreign.ForeignPtr
+import Data.Word
+import qualified Data.Array.CArray as CA
+import Data.Traversable
+import Data.Array.Base (unsafeRead, unsafeWrite, unsafeAccumArray, numElements)
 import Data.List
 import Data.Maybe
 import Control.Monad
@@ -20,6 +28,7 @@ import Control.Monad.ST
 import Data.Array
 import Data.Array.ST
 import Control.RecursionSchemes.Lens
+import Control.RecursionSchemes.Utils.NoCons
 
 import Afa.Lib.LiftArray
 
@@ -119,8 +128,8 @@ minCut nodes sources sinks = runST action where
 
   ixedNodes = listArray (bounds nodes)$ zip [0..] (elems nodes)
 
-  sinkFlags = accumArray (\_ _ -> True) False (bounds nodes)$ map (, ()) sinks
-  sourceFlags = accumArray (\_ _ -> True) False (bounds nodes)$ map (, ()) sources
+  sinkFlags = unsafeAccumArray (\_ _ -> True) False (bounds nodes)$ map (, ()) sinks
+  sourceFlags = unsafeAccumArray (\_ _ -> True) False (bounds nodes)$ map (, ()) sources
 
   aboveSinks = ixedNodes & cataScan (_2 . traversed) %~ \(i, fb) -> sinkFlags!i || or fb
   underSources = runST action where
@@ -143,12 +152,9 @@ instance Semigroup Path2 where
   Visited2 <> _ = Visited2
   _ <> x = x
 
-minCut2Lowest :: forall f. Traversable f => Array Int (f Int) -> [Int] -> [Int] -> [Int]
+minCut2Lowest :: Foldable f => Array Int (f Int) -> [Int] -> [Int] -> [Int]
 minCut2Lowest nodes sources sinks =
-  [ revIx i
-  | (i, Visited2) <- assocs reachablePart
-  , revSinkFlags!i || any (\j -> reachablePart!j == Unvisited2) (revNodes!i)
-  ]
+  map revIx$ minCut2HighestFFI revNodes revSources revSinks
   where
   bnds = bounds nodes
   maxIx = snd bnds
@@ -162,27 +168,8 @@ minCut2Lowest nodes sources sinks =
       unsafeFreeze preds
   revSources = map revIx sinks
   revSinks = map revIx sources
-  residualGraph = maxFlow revNodes revSources revSourceFlags revSinkFlags
 
-  revSinkFlags = accumArray (\_ _ -> True) False (bounds nodes)$ map (, ()) revSinks
-  revSourceFlags = accumArray (\_ _ -> True) False (bounds nodes)$ map (, ()) revSources
-
-  reachablePart = runST action where
-    action :: forall s. ST s (Array Int Path2)
-    action = do
-      arr <- newArray @(STArray s) (bounds nodes) Unvisited2
-      for_ revSources$
-        flip dfs arr$ \rec -> let rec' = rec . (Unvisited2,) in \case
-          (Unvisited2, i) -> do
-            unsafeWrite arr i Visited2
-            case residualGraph!i of
-              Just (Just back) -> for_ (revNodes!back) rec' >> rec' back
-              Just _ -> return ()
-              _ -> for_ (revNodes!i) rec'
-          (_, i) -> return ()
-      unsafeFreeze arr
-
-minCut2Highest :: forall f. Traversable f => Array Int (f Int) -> [Int] -> [Int] -> [Int]
+minCut2Highest :: Foldable f => Array Int (f Int) -> [Int] -> [Int] -> [Int]
 minCut2Highest nodes sources sinks =
   [ i
   | (i, Visited2) <- assocs reachablePart
@@ -192,8 +179,8 @@ minCut2Highest nodes sources sinks =
   bnds = bounds nodes
   residualGraph = maxFlow nodes sources sourceFlags sinkFlags
 
-  sinkFlags = accumArray (\_ _ -> True) False (bounds nodes)$ map (, ()) sinks
-  sourceFlags = accumArray (\_ _ -> True) False (bounds nodes)$ map (, ()) sources
+  sinkFlags = unsafeAccumArray (\_ _ -> True) False (bounds nodes)$ map (, ()) sinks
+  sourceFlags = unsafeAccumArray (\_ _ -> True) False (bounds nodes)$ map (, ()) sources
 
   reachablePart = runST action where
     action :: forall s. ST s (Array Int Path2)
@@ -209,3 +196,53 @@ minCut2Highest nodes sources sinks =
               _ -> for_ (nodes!i) rec'
           (_, i) -> return ()
       unsafeFreeze arr
+
+enumerateEdges :: Foldable f => Array Int (f Int) -> ([Int], [Word])
+enumerateEdges arr = runIdentity$ runNoConsT$ do
+  arr' <- for arr$ \edges ->
+    case toList edges of
+      [] -> nocons maxBound
+      xs -> head <$> for xs (nocons . fromIntegral)
+  backstop <- nocons maxBound
+  return$ elems arr' ++ [backstop]
+
+-- FFI is somehow badly set up. Comment the following and use minCut2Highest for profiling...
+
+foreign import ccall "automata_safa.h min_cut_highest" min_cut_highest_ffi
+  :: Word -> Ptr Word
+  -> Word -> Ptr Word
+  -> Word -> Ptr Word
+  -> Word -> Ptr Word
+  -> Ptr (Ptr Word)
+  -> IO Word
+
+foreign import ccall "automata_safa.h &free_min_cut_highest" free_min_cut_highest_ffi
+  :: FunPtr (Ptr Word -> IO ())
+
+minCut2HighestFFI :: Foldable f => Array Int (f Int) -> [Int] -> [Int] -> [Int]
+minCut2HighestFFI nodes sources sinks = unsafePerformIO$ do
+  if False
+    then error$ show (sourcesC, sinksC)
+    else do
+      cutPtr <- mallocForeignPtr
+      withForeignPtr cutPtr$ \cutPtr ->
+        CA.withCArray nodesC$ \nodesPtr ->
+        CA.withCArray edgesC$ \edgesPtr ->
+        CA.withCArray sourcesC$ \sourcesPtr ->
+        CA.withCArray sinksC$ \sinksPtr -> do
+          cutSize <- min_cut_highest_ffi
+            (fromIntegral$ CA.size nodesC) nodesPtr
+            (fromIntegral$ CA.size edgesC) edgesPtr
+            (fromIntegral$ CA.size sourcesC) sourcesPtr
+            (fromIntegral$ CA.size sinksC) sinksPtr
+            cutPtr
+          cutPtr' <- peek cutPtr
+          cutPtr'' <- newForeignPtr free_min_cut_highest_ffi cutPtr'
+          cutC <- CA.unsafeForeignPtrToCArray cutPtr'' (0, cutSize - 1)
+          return$ map fromIntegral$ CA.elems cutC
+  where
+  (nodes', edges) = enumerateEdges nodes
+  nodesC = CA.listArray (0, numElements nodes + 1)$ map fromIntegral nodes'
+  edgesC = CA.listArray (0, length edges - 1) edges
+  sourcesC = CA.listArray (0, length sources - 1)$ map fromIntegral sources
+  sinksC = CA.listArray (0, length sinks - 1)$ map fromIntegral sinks

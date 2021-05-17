@@ -14,8 +14,7 @@ module Afa.Bool where
 
 import Debug.Trace
 
-import Data.Monoid
-import Data.Array.Base (unsafeRead, unsafeWrite)
+import Data.Array.Base (unsafeRead, unsafeWrite, unsafeAccumArray)
 import Data.Foldable
 import Control.Monad.Free
 import Control.Arrow
@@ -24,7 +23,7 @@ import Control.Monad.Reader
 import Data.Array
 import Data.Array.ST
 import Data.Array.Unsafe
-import Data.Monoid (Any(..), Sum(..))
+import Data.Monoid (Any(..), Sum(..), Ap(..))
 import Control.RecursionSchemes.Lens
 import Control.RecursionSchemes.Utils.NoCons
 import Control.RecursionSchemes.Utils.HashCons
@@ -77,7 +76,7 @@ simplifyAll bafa = do
   else simplifyAll bafa'
   where
   BoolAfa bterms (Afa mterms states init) = separateStatelessBottoms bafa
-  mgs = accumArray (\_ x -> x) mempty (bounds mterms)$ map (, Any True) (elems states)
+  mgs = unsafeAccumArray (\_ x -> x) mempty (bounds mterms)$ map (, Any True) (elems states)
   (ixMap1, bterms1, mterms1) = simplifyMixAndBoolTs mgs bterms mterms
 
 
