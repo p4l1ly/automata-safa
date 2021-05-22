@@ -23,7 +23,7 @@ module Afa
 
 import Debug.Trace
 
-import Data.Array.Base (unsafeWrite, unsafeAccumArray)
+import Data.Array.Base (unsafeWrite, unsafeAccumArray, unsafeAt)
 import Control.Monad.Free
 import Data.Foldable
 import Data.Maybe
@@ -85,7 +85,7 @@ reorderStates :: Functor f
 reorderStates afa@Afa{initState = 0} = afa
 reorderStates Afa{terms, states, initState} = Afa
   { initState = 0
-  , states = states // [(0, states!initState), (initState, states!0)]
+  , states = states // [(0, states!initState), (initState, states `unsafeAt` 0)]
   , terms = terms <&> MTerm.appMTFun MTerm.mtfun0
       { MTerm.mtfunQ = \case
           0 -> initState
@@ -113,7 +113,7 @@ markReachable :: Foldable f => Afa (Array Int (Term p Int Int)) (Array Int (f In
 markReachable (Afa terms states init) =
   unsafeAccumArray (\_ _ -> True) False (bounds states)$ (init, ()) :
     [ (q, ())
-    | (i@((terms!) -> State q), True)<- zip [0..] (elems termMarks)
+    | (i@(unsafeAt terms -> State q), True)<- zip [0..] (elems termMarks)
     ]
   where
   termMarks = runST getMarks <&> \case Unvisited -> False; _ -> True
@@ -121,7 +121,7 @@ markReachable (Afa terms states init) =
   getMarks :: forall s. ST s (Array Int ReachableMark)
   getMarks = do
     marks <- newArray @(STArray s) (bounds terms) Unvisited
-    for_ (states!init)$ \i -> do
+    for_ (states `unsafeAt` init)$ \i -> do
       unsafeWrite marks i Recur
       dfs (traversal marks) marks i
     unsafeFreeze marks
@@ -129,8 +129,8 @@ markReachable (Afa terms states init) =
   traversal arr rec (x, i) = case x of
     Recur -> do
       unsafeWrite arr i Visited
-      void$ terms!i & modChilds pureChildMod
-        { lQ = \q -> for_ (states!q)$ \i -> rec (Recur, i)
+      void$ terms `unsafeAt` i & modChilds pureChildMod
+        { lQ = \q -> for_ (states `unsafeAt` q)$ \i -> rec (Recur, i)
         , lT = \j -> rec (Recur, j)
         }
     Visited -> return ()
@@ -145,15 +145,15 @@ simplifyStatesAndMixTs :: forall p. (Eq p, Hashable p, Show p)
   -> Either Bool (Array Int (MTerm.Term p Int Int), Array Int Int, Int)
 simplifyStatesAndMixTs ixMap mterms states init = case sequence states1 of
   Right states' | cost mterms <= cost mterms3 -> Right (mterms3, states2, init2)
-  _ -> states1!init >> simplifyStatesAndMixTs ixMap3 mterms3 states2 init2
+  _ -> states1 `unsafeAt` init >> simplifyStatesAndMixTs ixMap3 mterms3 states2 init2
   where
   cost ts = (rangeSize$ bounds ts, sum$ fmap length ts)
-  states1 = fmap (ixMap!) states
+  states1 = fmap (ixMap `unsafeAt` ) states
 
   parented = markReachable$ Afa mterms states1 init
   (lefts, rights) = partition (isLeft . snd)$
     zipWith noparentLeft [0..] (elems states1)
-    where noparentLeft i x = if parented!i then (i, x) else (i, Left False)
+    where noparentLeft i x = if parented `unsafeAt` i then (i, x) else (i, Left False)
 
   lefts' = lefts <&> \case (i, Left x) -> (i, x)
   rights' = rights <&> \case (i, Right x) -> (i, x)
@@ -165,7 +165,7 @@ simplifyStatesAndMixTs ixMap mterms states init = case sequence states1 of
   qMap :: Array Int (Either Bool Int)
   qMap = array (bounds states)$ map (second Left) lefts' ++ map (second Right) oldToNew
 
-  init2 = qMap!init & \case Right x -> x
+  init2 = qMap `unsafeAt` init & \case Right x -> x
 
   (ixMap2, listArray' -> mterms2) = runST action where
     action :: forall s. ST s (Array Int (Either Bool Int), [MTerm.Term p Int Int])
@@ -175,7 +175,7 @@ simplifyStatesAndMixTs ixMap mterms states init = case sequence states1 of
   mgs = unsafeAccumArray (\_ x -> x) mempty (bounds mterms)$ map (, Any True) (elems states2)
   (ixMap3, mterms3) = MTerm.simplifyDagUntilFixpoint mgs (ixMap2, mterms2)
 
-  alg t = case MTerm.modChilds MTerm.pureChildMod{ MTerm.lQ = (qMap!) } t of
+  alg t = case MTerm.modChilds MTerm.pureChildMod{ MTerm.lQ = (qMap `unsafeAt`) } t of
     Left b -> return$ Left b
     Right t -> case MTerm.simplify ((Many,) . getCompose . unFix . snd) fst t of
       Left b -> return$ Left b

@@ -42,7 +42,7 @@ eixMappedGs arr ixMap gs = unsafeAccumArray (\_ _ -> Any True) mempty (bounds ar
 
 eixMappedGs2
   :: Array Int a -> Array Int (Either Bool Int) -> Array Int Any -> Array Int DumbCount
-eixMappedGs2 arr ixMap gs = unsafeAccumArray (\_ _ -> Many) mempty (bounds arr)
+eixMappedGs2 arr ixMap gs = unsafeAccumArray (\_ _ -> Many) Zero (bounds arr)
   [ (i, ())
   | (i0, Any True) <- assocs gs
   , let ei = ixMap!i0

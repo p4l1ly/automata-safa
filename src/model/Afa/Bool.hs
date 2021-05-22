@@ -14,7 +14,7 @@ module Afa.Bool where
 
 import Debug.Trace
 
-import Data.Array.Base (unsafeRead, unsafeWrite, unsafeAccumArray)
+import Data.Array.Base (unsafeRead, unsafeWrite, unsafeAccumArray, unsafeAt)
 import Data.Foldable
 import Control.Monad.Free
 import Control.Arrow
@@ -98,7 +98,7 @@ simplifyMixAndBoolTs mgs bterms mterms = closure ixMap bterms mterms
     where
     (ixMap1, bterms1, mterms1) = simplifyInitMixAndBoolTs mgs ixMap bterms mterms
     (ixMap2, bterms2, mterms2) = separatePositiveTops bterms1 mterms1
-    ixMap2' = fmap (fmap (ixMap2!)) ixMap1
+    ixMap2' = fmap (fmap (ixMap2 `unsafeAt`)) ixMap1
     (ixMap3, mterms3) = MTerm.simplifyDagUntilFixpoint mgs (ixMap2', mterms2)
 
 simplifyInitMixAndBoolTs :: forall p q. (Eq p, Hashable p, Eq q, Hashable q)
@@ -125,16 +125,16 @@ simplifyInitMixAndBoolTs mgs ixMap bterms mterms = runST action where
         (\g i -> void$ getAp$ MTerm.appMTFol MTerm.mtfol0
           { MTerm.mtfolT = \j -> Ap$ unsafeRead mgs'M j >>= unsafeWrite mgs'M j . (<> g)
           , MTerm.mtfolP = \j -> Ap$ unsafeRead bgs'M j >>= unsafeWrite bgs'M j . (<> g)
-          } (mterms!i)
+          } (mterms `unsafeAt` i)
         )
         (\ixMap' (bterms', _) g i -> alg g =<< MTerm.appMTTra MTerm.mttra0
           { MTerm.mttraT = unsafeRead ixMap'
-          , MTerm.mttraP = \j -> return$ bterms'!j
-          } (mterms!i)
+          , MTerm.mttraP = \j -> return$ bterms' `unsafeAt` j
+          } (mterms `unsafeAt` i)
         )
         mgs'M
 
-    return (fmap (>>= (ixMap'!) >&> fst) ixMap, bterms', listArray' tList)
+    return (fmap (>>= unsafeAt @Array ixMap' >&> fst) ixMap, bterms', listArray' tList)
 
   atBottom = flip BTerm.simplifyDagUntilFixpoint (bInitIxMap, bterms)
     where bInitIxMap = listArray (bounds bterms)$ map Right [0..]
@@ -162,7 +162,7 @@ separateStatelessBottoms (BoolAfa bterms afa@Afa{terms=mterms, states=states}) =
         bixMap <- ($bterms)$ cataScanT' @(LSTArray s) traversed `traverseOf` hashCons'
         runNoConsT$ mterms & cataScanT' @(LLSTArray s) traversed `traverseOf` \case
           MTerm.State q -> (Nothing,) <$> nocons (MTerm.State q)
-          MTerm.Predicate ((bixMap!) -> b) -> (Just b,) <$> nocons (MTerm.Predicate b)
+          MTerm.Predicate (unsafeAt bixMap -> b) -> (Just b,) <$> nocons (MTerm.Predicate b)
           MTerm.LTrue -> handleStateless BTerm.LTrue
           MTerm.And bts -> case mapM fst bts of
             Nothing -> (Nothing,) <$> nocons (MTerm.And$ snd <$> bts)
@@ -173,7 +173,7 @@ separateStatelessBottoms (BoolAfa bterms afa@Afa{terms=mterms, states=states}) =
 
     return$ BoolAfa
       (listArray' bList)
-      afa{ terms = listArray' mList, states = fmap (snd . (ixMap!)) states }
+      afa{ terms = listArray' mList, states = fmap (snd . unsafeAt ixMap) states }
 
   handleStateless bt = do
     ref <- lift$ hashCons' bt
@@ -194,7 +194,7 @@ separatePositiveTops bterms mterms =
       bgs <- newArray @(LLSTArray s) (bounds bterms) mempty
       bixMap <- unsafeFreeze =<< hyloScanTTerminal' traversed bhylogebra bgs
       ($mterms)$ traverseOf (cataScanT' @(LLSTArray s) traversed)$ \case
-        MTerm.Predicate p -> either return (hashCons' . MTerm.Predicate)$ bixMap!p
+        MTerm.Predicate p -> either return (hashCons' . MTerm.Predicate)$ unsafeAt @Array bixMap p
         x -> hashCons' x
 
     return (ixMap, listArray' bList, listArray' mList)
@@ -215,7 +215,7 @@ separatePositiveTops bterms mterms =
           _ -> error "cannot be positive"
     )
     where
-    bterm = bterms!i
+    bterm = bterms `unsafeAt` i
     g' = case bterm of
       BTerm.Not _ -> Any True
       BTerm.LFalse -> Any True
@@ -242,7 +242,7 @@ unswallow BoolAfa{boolTerms=bterms, afa=afa@Afa{terms=mterms, states=transitions
         )
         (,)
         (msetter1 (LiftArray$ LiftArray mgs) (LiftArray$ LiftArray bgs))
-        (\(g, i) -> mhylogebra g (mterms!i))
+        (\(g, i) -> mhylogebra g (mterms `unsafeAt` i))
         (LiftArray$ LiftArray mgs)
       remappedTransitions <- lift$ lift$
         runReaderT ((traversed . _1) actionAfter encls) (swap ixMaps)
@@ -255,7 +255,7 @@ unswallow BoolAfa{boolTerms=bterms, afa=afa@Afa{terms=mterms, states=transitions
   ifG _ _ _ = return$ error "accessing element without parents"
 
   unfree !t = cataT (freeTraversal traversed) (either return nocons) t
-  bhylogebra (!g, !i) = return ((g, bterms!i), ifG g unfree)
+  bhylogebra (!g, !i) = return ((g, bterms `unsafeAt` i), ifG g unfree)
 
   bsetter1 bgs = \(!g, !t) -> ($t)$ traverse$ \j ->
     Enclosing (beforeP bgs g j) (afterPM j)
@@ -337,8 +337,8 @@ swallow BoolAfa{boolTerms=bterms, afa=afa@Afa{terms=mterms, states=transitions}}
 
   modPT lP lT = MTerm.modChilds MTerm.pureChildMod{ MTerm.lT = lT, MTerm.lP = lP }
 
-  bhylogebra (g, i) = return ((g,) <$> bterms!i, alg g)
+  bhylogebra (g, i) = return ((g,) <$> bterms `unsafeAt` i, alg g)
   mhylogebra (g, i) = return
-    ( MTerm.appMTFun MTerm.mtfun0{MTerm.mtfunT = (g,), MTerm.mtfunP = (g,)} (mterms!i)
+    ( MTerm.appMTFun MTerm.mtfun0{MTerm.mtfunT = (g,), MTerm.mtfunP = (g,)} (mterms `unsafeAt` i)
     , alg g
     )

@@ -14,7 +14,7 @@ import Foreign.ForeignPtr
 import Data.Word
 import qualified Data.Array.CArray as CA
 import Data.Traversable
-import Data.Array.Base (unsafeRead, unsafeWrite, unsafeAccumArray, numElements)
+import Data.Array.Base (unsafeRead, unsafeWrite, unsafeAccumArray, numElements, unsafeAt)
 import Data.List
 import Data.Maybe
 import Control.Monad
@@ -80,14 +80,14 @@ maxFlow nodes sources sourceFlags sinkFlags = runST action
     (Visited pp, i) -> do
       lift$ unsafeWrite arr i Blind
       lift (unsafeRead residualGraphM i) >>= \case
-        Just (Just back) -> for_ (nodes!back) (recBackDown back) >> rec' back
+        Just (Just back) -> for_ (nodes `unsafeAt` back) (recBackDown back) >> rec' back
         Just _ -> return ()
-        _ | sinkFlags!i -> throwE$ pp `appEndo` [i]
-          | otherwise -> for_ (nodes!i) recDown
+        _ | sinkFlags `unsafeAt` i -> throwE$ pp `appEndo` [i]
+          | otherwise -> for_ (nodes `unsafeAt` i) recDown
       where
       rec' = rec . (Visited$ pp <> Endo (i:),)
-      recDown j = unless (sourceFlags!j)$ rec' j
-      recBackDown back j = unless (sourceFlags!j)$ rec'' j
+      recDown j = unless (sourceFlags `unsafeAt` j)$ rec' j
+      recBackDown back j = unless (sourceFlags `unsafeAt` j)$ rec'' j
         where rec'' = rec . (Visited$ pp <> Endo (\xs -> i:back:xs),)
     _ -> return ()
 
@@ -98,32 +98,32 @@ minCut nodes sources sinks = runST action where
   action = do
     let marks = isJust <$> maxFlow nodes sources sourceFlags sinkFlags
     let marks1 = ixedNodes & cataScan (_2 . traversed) %~ \(i, fb) ->
-          marks!i || or fb && not (sinkFlags!i)
+          marks `unsafeAt` i || or fb && not (sinkFlags `unsafeAt` i)
 
-    let setter rec = \(g, i) -> let overmined = marks!i || getAny g in
-          overmined <$ for_ (nodes!i) (rec . (Any overmined,))
+    let setter rec = \(g, i) -> let overmined = marks `unsafeAt` i || getAny g in
+          overmined <$ for_ (nodes `unsafeAt` i) (rec . (Any overmined,))
     marks2Init :: STArray s Int Any <- newArray (bounds nodes) (Any False)
     marks2M :: STArray s Int Bool <- marks2Init & anaScanT2 setter return
     marks2 <- unsafeFreeze marks2M
 
-    if all (marks1!) sinks  -- topmost min cut: all (marks2!) sources
+    if all (marks1 `unsafeAt`) sinks  -- topmost min cut: all (marks2 `unsafeAt`) sources
       then return sinks  -- topmost min cut: return sources
       else do
         let newSources = map head$ group$ sort
               [ j
               | (i, node) <- elems ixedNodes
-              , area!i && not (marks2!i)
+              , area `unsafeAt` i && not (marks2 `unsafeAt` i)
               , j <- toList node
-              , marks2!j && not (sourceFlags!j)
+              , marks2 `unsafeAt` j && not (sourceFlags `unsafeAt` j)
               ]
         let newSinks = map head$ group$ sort
               [ i
               | (i, node) <- elems ixedNodes
-              , marks1!i && not (sinkFlags!i)
-              , any (\j -> area!j && not (marks1!j)) node
+              , marks1 `unsafeAt` i && not (sinkFlags `unsafeAt` i)
+              , any (\j -> area `unsafeAt` j && not (marks1 `unsafeAt` j)) node
               ]
-        let sources' = filter (marks2!) sources ++ newSources
-        let sinks' = filter (marks1!) sinks ++ newSinks
+        let sources' = filter (unsafeAt @Array marks2) sources ++ newSources
+        let sinks' = filter (marks1 `unsafeAt` ) sinks ++ newSinks
         return$ minCut nodes sources' sinks'
 
   ixedNodes = listArray (bounds nodes)$ zip [0..] (elems nodes)
@@ -131,12 +131,12 @@ minCut nodes sources sinks = runST action where
   sinkFlags = unsafeAccumArray (\_ _ -> True) False (bounds nodes)$ map (, ()) sinks
   sourceFlags = unsafeAccumArray (\_ _ -> True) False (bounds nodes)$ map (, ()) sources
 
-  aboveSinks = ixedNodes & cataScan (_2 . traversed) %~ \(i, fb) -> sinkFlags!i || or fb
+  aboveSinks = ixedNodes & cataScan (_2 . traversed) %~ \(i, fb) -> sinkFlags `unsafeAt` i || or fb
   underSources = runST action where
     action :: forall s. ST s (Array Int Bool)
     action = do
-      let setter rec = \(g, i) -> let overmined = sourceFlags!i || getAny g in
-            overmined <$ for_ (nodes!i) (rec . (Any overmined,))
+      let setter rec = \(g, i) -> let overmined = sourceFlags `unsafeAt` i || getAny g in
+            overmined <$ for_ (nodes `unsafeAt` i) (rec . (Any overmined,))
       marks2Init :: STArray s Int Any <- newArray (bounds nodes) (Any False)
       marks2M :: STArray s Int Bool <- marks2Init & anaScanT2 setter return
       unsafeFreeze marks2M
@@ -173,7 +173,7 @@ minCut2Highest :: Foldable f => Array Int (f Int) -> [Int] -> [Int] -> [Int]
 minCut2Highest nodes sources sinks =
   [ i
   | (i, Visited2) <- assocs reachablePart
-  , sinkFlags!i || any (\j -> reachablePart!j == Unvisited2) (nodes!i)
+  , sinkFlags `unsafeAt` i || any (\j -> reachablePart `unsafeAt` j == Unvisited2) (nodes `unsafeAt` i)
   ]
   where
   bnds = bounds nodes
@@ -190,10 +190,10 @@ minCut2Highest nodes sources sinks =
         flip dfs arr$ \rec -> let rec' = rec . (Unvisited2,) in \case
           (Unvisited2, i) -> do
             unsafeWrite arr i Visited2
-            case residualGraph!i of
-              Just (Just back) -> for_ (nodes!back) rec' >> rec' back
+            case residualGraph `unsafeAt` i of
+              Just (Just back) -> for_ (nodes `unsafeAt` back) rec' >> rec' back
               Just _ -> return ()
-              _ -> for_ (nodes!i) rec'
+              _ -> for_ (nodes `unsafeAt` i) rec'
           (_, i) -> return ()
       unsafeFreeze arr
 

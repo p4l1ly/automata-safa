@@ -8,7 +8,7 @@ module Afa.Term.Mix.Simplify where
 
 import Debug.Trace
 
-import Data.Array.Base (unsafeRead, unsafeWrite, unsafeNewArray_)
+import Data.Array.Base (unsafeRead, unsafeWrite, unsafeNewArray_, unsafeAt)
 import Control.Monad.Trans
 import Data.Foldable
 import Data.Traversable
@@ -148,18 +148,18 @@ simplifyDag gs (ixMap, arr) = runST action where
       gs'M :: STArray s Int DumbCount <- lift$ unsafeThaw$ eixMappedGs2 arr ixMap gs
       for_ [iend, iend - 1 .. ibeg]$ \i -> do
         g <- lift$ unsafeRead gs'M i
-        for (arr!i)$ \ichild -> do
+        for (arr `unsafeAt` i)$ \ichild -> do
           gchild <- lift$ unsafeRead gs'M ichild
           lift$ unsafeWrite gs'M ichild$ gchild <> case g of Zero -> Zero; _ -> One
 
       ixMap'<- lift$ unsafeNewArray_ @(STArray s) bnds
       for_ [ibeg .. iend]$ \i -> do
         g <- lift$ unsafeRead gs'M i
-        t <- for (arr!i)$ lift . unsafeRead ixMap'
+        t <- for (arr `unsafeAt` i)$ lift . unsafeRead ixMap'
         alg g t >>= lift . unsafeWrite ixMap' i
 
       lift$ unsafeFreeze ixMap'
-    return (fmap (>>= (ixMap'!) >&> fst) ixMap, listArray' tList)
+    return (fmap (>>= unsafeAt @Array ixMap' >&> fst) ixMap, listArray' tList)
 
   bnds@(ibeg, iend) = bounds arr
 
@@ -182,15 +182,15 @@ simplifyDag2 gs (ixMap, arr) = runST action where
     (ixMap', tList) <- runHashConsT$ do
       gs'M :: LSTArray s Int DumbCount <- unsafeThaw$ eixMappedGs2 arr ixMap gs
       (_, ixMap') <- hyloScanTFast @(LSTArray s) (return ())
-        (\g i -> for_ (arr!i)$ \ichild -> do
+        (\g i -> for_ (arr `unsafeAt` i)$ \ichild -> do
           gchild <- unsafeRead gs'M ichild
           unsafeWrite gs'M ichild$ gchild <> case g of Zero -> Zero; _ -> One
         )
-        (\ixMap' _ g i -> for (arr!i) (unsafeRead ixMap') >>= alg g)
+        (\ixMap' _ g i -> for (arr `unsafeAt` i) (unsafeRead ixMap') >>= alg g)
         gs'M
 
       unsafeFreeze ixMap'
-    return (fmap (>>= (ixMap'!) >&> fst) ixMap, listArray' tList)
+    return (fmap (>>= unsafeAt @Array ixMap' >&> fst) ixMap, listArray' tList)
 
   bnds@(ibeg, iend) = bounds arr
 

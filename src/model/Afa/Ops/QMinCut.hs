@@ -6,6 +6,7 @@
 
 module Afa.Ops.QMinCut where
 
+import Data.Array.Base (unsafeAt)
 import Control.Monad.Trans
 import Data.Maybe
 import Control.Lens
@@ -33,7 +34,7 @@ qminCut (Afa terms states init) = Afa terms' states''' init''
   states' = minCut2Lowest terms sources sinks
 
   ((init', states''), listArray' -> terms') = runST topToBottom
-  (init'', states''') = case terms'!init' of
+  (init'', states''') = case terms' `unsafeAt` init' of
     State q -> (q, listArray' states'')
     _ -> let qs = listArray'$ states'' ++ [init'] in (snd$ bounds qs, qs)
 
@@ -41,11 +42,11 @@ qminCut (Afa terms states init) = Afa terms' states''' init''
   topToBottom = runNoConsT$ do
     (ixMap, listArray' -> below) <- runNoConsT$ partitionByCut terms states'
     ixMapNewTop <- ($ below)$ cataScanT' @(LSTArray s) traversed$ \case
-      State q -> return$ fromJust$ snd$ ixMap!(states!q)
+      State q -> return$ fromJust$ snd$ ixMap `unsafeAt` (states `unsafeAt` q)
       x -> nocons x
     return
-      ( fromJust$ snd$ ixMap!(states!init)
-      , map (ixMapNewTop!) states'
+      ( fromJust$ snd$ ixMap `unsafeAt` (states `unsafeAt` init)
+      , map (ixMapNewTop `unsafeAt`) states'
       )
 
 partitionByCut :: forall s p.

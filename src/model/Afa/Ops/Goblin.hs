@@ -9,7 +9,7 @@ module Afa.Ops.Goblin where
 
 import Debug.Trace
 
-import Data.Array.Base (unsafeWrite)
+import Data.Array.Base (unsafeWrite, unsafeAt)
 import GHC.Exts
 import Control.Monad.Free
 import Data.Traversable
@@ -61,8 +61,8 @@ markBack afa@(Afa terms states init) = runST getMarks &
   getMarks :: forall s. ST s (Array Int (BackEdgeMark p))
   getMarks = do
     marks <- newArray @(STArray s) (bounds terms) Unvisited
-    unsafeWrite marks (states!init) Recur
-    dfs (traversal marks) marks (states!init)
+    unsafeWrite marks (states `unsafeAt` init) Recur
+    dfs (traversal marks) marks (states `unsafeAt` init)
     unsafeFreeze marks
 
   traversal :: STArray s Int (BackEdgeMark p)
@@ -70,8 +70,8 @@ markBack afa@(Afa terms states init) = runST getMarks &
   traversal arr rec (x, i) = case x of
     Recur -> do
       unsafeWrite arr i Recurring 
-      term' <- terms!i & modChilds pureChildMod
-        { lQ = \q -> (, q) <$> rec (Recur, states!q)
+      term' <- terms `unsafeAt` i & modChilds pureChildMod
+        { lQ = \q -> (, q) <$> rec (Recur, states `unsafeAt` q)
         , lT = \j -> (, j) <$> rec (Recur, j)
         }
       unsafeWrite arr i (Evaluated term')
@@ -301,13 +301,13 @@ goblin2 (Afa terms states init) = do
         cataScanT' @(LLLSTArray s) (traversed._2) extractAndQac terms
 
     let qshift = length aterms
-    let mappedStates = states <&> \i -> ixMap!i ^._2
+    let mappedStates = states <&> \i -> ixMap `unsafeAt` i ^._2
     let qterms' :: [Term p (Bool, Int) (Bool, Int)]
         qterms' = ($ qterms)$ map$ appMTFun MTFun
           { mtfunP = absurd
           , mtfunQ = absurd
           , mtfunT = \(b, i) -> case i of
-              Left (qb, q) -> (b || qb, mappedStates!q)
+              Left (qb, q) -> (b || qb, mappedStates `unsafeAt` q)
               Right t -> (b, t + qshift)
           }
 

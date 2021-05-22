@@ -7,7 +7,7 @@
 module Afa.Term.Bool.Simplify where
 
 import Data.Array.ST
-import Data.Array.Base (unsafeRead, unsafeWrite, unsafeNewArray_)
+import Data.Array.Base (unsafeRead, unsafeWrite, unsafeNewArray_, unsafeAt)
 import Control.Monad.Trans
 import Data.Foldable
 import Data.Traversable
@@ -28,6 +28,7 @@ import Data.List.NonEmpty (NonEmpty(..))
 import qualified Data.List.NonEmpty as NE
 import Data.Hashable
 import qualified Data.HashSet as S
+import qualified Data.HashMap.Strict as HM
 
 import Afa.Lib
   ( nonEmptyConcatMap
@@ -198,6 +199,22 @@ simplify project getR = stage1 >&> fmap pure >>> iter (either id Free . deUnary)
     ) >>> skipJoin
 
 
+data RefSign = NoRefSign | Neg | Pos | NegPos deriving (Eq, Show)
+instance Semigroup RefSign where
+  NoRefSign <> x = x
+  Neg <> Pos = NegPos
+  Pos <> Neg = NegPos
+  NegPos <> _ = NegPos
+  _ <> NegPos = NegPos
+  Neg <> Neg = Neg
+  Pos <> Pos = Pos
+  x <> NoRefSign = x
+
+negRefSign Neg = Pos
+negRefSign Pos = Neg
+negRefSign x = x
+
+
 simplifyDag :: forall p. (Eq p, Hashable p)
   => Array Int Any
   -> (Array Int (Either Bool Int), Array Int (Term p Int))
@@ -206,31 +223,50 @@ simplifyDag gs (ixMap, arr) = runST action where
   action :: forall s. ST s (Array Int (Either Bool Int), Array Int (Term p Int))
   action = do
     (ixMap', tList) <- runHashConsT$ do
-      gs'M :: STArray s Int DumbCount <- lift$ unsafeThaw$ eixMappedGs2 arr ixMap gs
+      gs'M :: STArray s Int (DumbCount, RefSign) <- lift$ unsafeThaw gs''
       for_ [iend, iend - 1 .. ibeg]$ \i -> do
-        g <- lift$ unsafeRead gs'M i
-        for (arr!i)$ \ichild -> do
+        (count, sgn) <- lift$ unsafeRead gs'M i
+        let node = arr `unsafeAt` i
+        let count' = case count of Zero -> Zero; _ -> One
+        let sgn' = case node of Not _ -> negRefSign sgn; _ -> sgn
+        for (arr `unsafeAt` i)$ \ichild -> do
           gchild <- lift$ unsafeRead gs'M ichild
-          lift$ unsafeWrite gs'M ichild$ gchild <> case g of Zero -> Zero; _ -> One
+          lift$ unsafeWrite gs'M ichild$ gchild <> (count', sgn')
+
+      gs3 :: Array Int (DumbCount, RefSign) <- lift$ unsafeFreeze gs'M
+      -- WARNING, TODO: this can be applied only for variable predicates
+      let predicateSigns =
+            HM.fromListWith (<>)
+            $ catMaybes
+            $ zipWith (\(_, sgn) -> \case Predicate i -> Just (i, sgn); _ -> Nothing)
+                (elems gs3) (elems arr)
+          arr' = arr <&> \case
+            x@(Predicate i) -> case predicateSigns HM.! i of
+              Neg -> LFalse
+              Pos -> LTrue
+              _ -> x
+            x -> x
 
       ixMap'<- lift$ unsafeNewArray_ @(STArray s) bnds
       for_ [ibeg .. iend]$ \i -> do
-        g <- lift$ unsafeRead gs'M i
-        t <- for (arr!i)$ lift . unsafeRead ixMap'
-        alg g t >>= lift . unsafeWrite ixMap' i
+        t <- for (arr' `unsafeAt` i)$ lift . unsafeRead ixMap'
+        alg (fst$ gs3 `unsafeAt` i) t >>= lift . unsafeWrite ixMap' i
 
       lift$ unsafeFreeze ixMap'
-    return (fmap (>>= (ixMap'!) >&> fst) ixMap, listArray' tList)
+    return (fmap (>>= unsafeAt @Array ixMap' >&> fst) ixMap, listArray' tList)
 
+  gs' = eixMappedGs2 arr ixMap gs
+  gs'' = gs' <&> \case Zero -> (Zero, NoRefSign); x -> (x, Pos)
   bnds@(ibeg, iend) = bounds arr
 
   alg Zero _ = return$ error "accessing element without parents"
-  alg g t = case simplify (\(_, Fix (Compose (Compose gt))) -> gt) fst t of
+  alg count t = case simplify descend fst t of
     Left b -> return$ Left b
     Right x -> fmap Right$ flip iterM x$ \t -> do
       t' <- sequence t
       i <- hashCons' (fmap fst t')
-      return (i, Fix$Compose$Compose (g, t'))
+      return (i, Fix$Compose$Compose (count, t'))
+    where descend (_, Fix (Compose (Compose gt))) = gt
 
 
 simplifyDagUntilFixpoint :: forall p. (Eq p, Hashable p)
