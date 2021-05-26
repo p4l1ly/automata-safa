@@ -27,25 +27,25 @@ hReadNfa :: Handle -> IO (BoolAfaUnswallowed Int)
 hReadNfa h = deserializeNfa <$> Capnp.hGetValue h maxBound
 
 deserializeNfa :: AfaC.Range16Nfa -> BoolAfaUnswallowed Int
-deserializeNfa (AfaC.Range16Nfa states initial finals) = unswallow BoolAfa
+deserializeNfa (AfaC.Range16Nfa states (fromIntegral -> initial) finals) =
+  unswallow BoolAfa
   { boolTerms = listArray (0, 35)$
       map (Free . BTerm.Predicate) [1..16]
       ++ map (Free . BTerm.Not . Pure) [0..15]
       ++ [Free$ BTerm.Predicate 0, Free$ BTerm.Not$ Pure 32, Free BTerm.LFalse, Free BTerm.LTrue]
   , afa = Afa
-      { initState = fromIntegral initial
+      { initState = qcount
       , terms = listArray (0, -1) []
-      , states = listArray (0, qmax)$ toList states <&> \(toList -> transitions) ->
-          mkOr$ transitions <&>
-            \(AfaC.ConjunctR16Q (toList -> ranges) (fromIntegral -> state)) ->
-              Free$ MTerm.And$
-                let
-                  state' = Free (MTerm.State state)
-                  guard = Free$ MTerm.Predicate$ mkOrB$ map convertRange ranges
-                in
-                if finalMask!state
-                  then guard :| [Free$ MTerm.Or$ finalSym :| [state']]
-                  else state' :| [nonfinalSym, guard]
+      , states = listArray (0, qcount)$
+          (++ [initState'])$
+          toList states <&> \(toList -> transitions) ->
+            mkOr$ transitions <&>
+              \(AfaC.ConjunctR16Q (toList -> ranges) (fromIntegral -> state)) ->
+                Free$ MTerm.And$
+                  let guard = Free$ MTerm.Predicate$ mkOrB$ map convertRange ranges in
+                  if finalMask!state
+                    then guard :| [Free$ MTerm.Or$ finalSym :| [mkState state]]
+                    else guard :| [nonfinalSym, mkState state]
       }
   }
   where
@@ -55,9 +55,13 @@ deserializeNfa (AfaC.Range16Nfa states initial finals) = unswallow BoolAfa
   falseSym = sym 34
   mkOr = maybe falseSym (Free . MTerm.Or) . nonEmpty
   mkOrB = maybe (Pure 34) (Free . BTerm.Or) . nonEmpty
-  qmax = V.length states - 1
-  finalMask = accumArray (\_ _ -> True) False (0, qmax)$
+  mkState = Free . MTerm.State
+  qcount = V.length states
+  finalMask = accumArray (\_ _ -> True) False (0, qcount - 1)$
     map (\i -> (fromIntegral i, ()))$ toList finals
+  initState' = if finalMask!initial
+    then Free$ MTerm.Or$ finalSym :| [mkState initial]
+    else Free$ MTerm.And$ nonfinalSym :| [mkState initial]
 
 
 convertRange :: AfaC.Range16 -> BoolTermIFree Int
