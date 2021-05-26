@@ -7,6 +7,7 @@ import Afa.Bool
 import Afa.Ops.Goblin
 import Afa.Ops.QMinCut
 
+{-# INLINABLE simpGoblinMincut #-}
 simpGoblinMincut :: (Eq p, Hashable p, Show p)
   => BoolAfaUnswallowed p -> Either Bool (BoolAfaUnswallowed p)
 simpGoblinMincut bafa = do
@@ -14,12 +15,14 @@ simpGoblinMincut bafa = do
   bafa@(BoolAfa _ afa) <- simplifyAll bafa{afa = goblinUntilFixpoint afa}
   simplifyAll bafa{afa = qminCut afa}
 
+{-# INLINABLE simpGoblin #-}
 simpGoblin :: (Eq p, Hashable p, Show p)
   => BoolAfaUnswallowed p -> Either Bool (BoolAfaUnswallowed p)
 simpGoblin bafa = do
   bafa@(BoolAfa _ afa) <- simplifyAll bafa
   simplifyAll bafa{afa = goblinUntilFixpoint afa}
 
+{-# INLINABLE simpMincut #-}
 simpMincut :: (Eq p, Hashable p, Show p)
   => BoolAfaUnswallowed p -> Either Bool (BoolAfaUnswallowed p)
 simpMincut bafa = do

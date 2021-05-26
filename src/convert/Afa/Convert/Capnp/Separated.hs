@@ -1,3 +1,5 @@
+{-# LANGUAGE DisambiguateRecordFields #-}
+
 module Afa.Convert.Capnp.Separated where
 
 import Data.Functor

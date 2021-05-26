@@ -30,9 +30,11 @@ import Afa.Bool
 import qualified Afa.Term.Bool as BTerm
 import qualified Afa.Term.Mix as MTerm
 
+{-# INLINABLE randomizeIO #-}
 randomizeIO :: BoolAfaUnswallowed Int -> IO (BoolAfaUnswallowed Int)
 randomizeIO bafa = getStdRandom$ runRand$ randomize bafa
 
+{-# INLINABLE randomize #-}
 randomize :: MonadRandom m => BoolAfaUnswallowed Int -> m (BoolAfaUnswallowed Int)
 randomize (BoolAfa bterms (Afa mterms states init)) = do
   let vars = (`appEndo` HS.empty)$

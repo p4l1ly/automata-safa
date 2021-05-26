@@ -34,6 +34,7 @@ import Afa
 import Afa.Term.Mix
 import Afa.Term.Mix.Simplify (deUnary)
 
+{-# INLINABLE goblinUntilFixpoint #-}
 goblinUntilFixpoint :: forall p. Show p => AfaUnswallowed p -> AfaUnswallowed p
 goblinUntilFixpoint afa = afa'{terms = unmarked} where
   marked = markBack afa
@@ -52,6 +53,7 @@ instance Semigroup (BackEdgeMark p) where
   Unvisited <> x = x
   x <> _ = x
 
+{-# INLINABLE markBack #-}
 markBack :: forall p. Show p => AfaUnswallowed p
   -> Array Int (Term p (Bool, Int) (Bool, Int))
 markBack afa@(Afa terms states init) = runST getMarks &
@@ -80,13 +82,16 @@ markBack afa@(Afa terms states init) = runST getMarks &
     Evaluated _ -> return False
     Unvisited -> error "visiting unvisited"
 
+{-# INLINABLE newState #-}
 newState :: Monad m => Int -> NoConsT Int m Int
 newState = nocons
 
+{-# INLINABLE newCombined #-}
 newCombined :: (MonadTrans mt2, Monad (mt (NoConsT x m)), MonadTrans mt, Monad m)
   => x -> mt2 (mt (NoConsT x m)) Int
 newCombined = lift . lift . nocons
 
+{-# INLINABLE newQDep #-}
 newQDep :: (MonadTrans mt, Monad m) => x -> mt (NoConsT x m) Int
 newQDep = lift . nocons
 
@@ -103,6 +108,7 @@ data Mix
   | OrMix QRef Int
   | AndMix QRef Int
 
+{-# INLINABLE qac #-}
 qac
   :: Monad m
   => Term p (Bool, Int) (Bool, (Mix, Int))
@@ -221,6 +227,7 @@ qac (Or ts)
   back = all (\(b, QRef qb _ _ _) -> b || qb) qsBoth
 
 
+{-# INLINABLE extract #-}
 extract
   :: Term p (Bool, Int) (Bool, (Mix, Int))
   -> Free (Term p (Bool, Int)) (Bool, (Mix, Int))
@@ -275,6 +282,7 @@ extract (Or ts) = case extracted of
           x -> Left x
 
 
+{-# INLINABLE extractAndQac #-}
 extractAndQac
   :: Monad m
   => Term p (Bool, Int) (Bool, (Mix, Int))
@@ -287,6 +295,7 @@ extractAndQac (extract -> x) = fmap snd$ flip iterM x$
   sequence >=> qac >=> return . (False,)
 
 
+{-# INLINABLE goblin2 #-}
 goblin2 :: forall p.
      Afa (Array Int (Term p (Bool, Int) (Bool, Int))) (Array Int Int) Int
   -> Maybe (Afa (Array Int (Term p (Bool, Int) (Bool, Int))) (Array Int Int) Int)

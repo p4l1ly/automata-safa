@@ -64,6 +64,7 @@ type AfaSwallowed p = Afa (Array Int (MixTermIFree p)) (Array Int (MixTermIFree 
 type AfaUnswallowed p = Afa (Array Int (Term p Int Int)) (Array Int Int) Int
 
 
+{-# INLINABLE delayPredicates #-}
 delayPredicates :: (Show p) => AfaUnswallowed p -> AfaUnswallowed p
 delayPredicates afa@Afa{terms, states} = afa
   { terms = listArray'$ elems terms1 ++ terms2
@@ -79,6 +80,7 @@ delayPredicates afa@Afa{terms, states} = afa
         x -> return x
 
 
+{-# INLINABLE reorderStates #-}
 reorderStates :: Functor f
   => Afa (f (Term p' Int t')) (Array Int a) Int
   -> Afa (f (Term p' Int t')) (Array Int a) Int
@@ -95,6 +97,7 @@ reorderStates Afa{terms, states, initState} = Afa
   }
 
 
+{-# INLINABLE simplifyAll #-}
 simplifyAll :: (Eq p, Hashable p, Show p) => AfaUnswallowed p -> Either Bool (AfaUnswallowed p)
 simplifyAll (Afa terms states initState) = do
   (terms', states', initState') <-
@@ -108,6 +111,7 @@ instance Semigroup ReachableMark where
   Unvisited <> x = x
   x <> _ = x
 
+{-# INLINABLE markReachable #-}
 markReachable :: Foldable f => Afa (Array Int (Term p Int Int)) (Array Int (f Int)) Int
   -> Array Int Bool
 markReachable (Afa terms states init) =
@@ -137,6 +141,7 @@ markReachable (Afa terms states init) =
     Unvisited -> error "visiting unvisited"
 
 
+{-# INLINABLE simplifyStatesAndMixTs #-}
 simplifyStatesAndMixTs :: forall p. (Eq p, Hashable p, Show p)
   => Array Int (Either Bool Int)
   -> Array Int (MTerm.Term p Int Int)

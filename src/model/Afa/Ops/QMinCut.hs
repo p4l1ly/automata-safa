@@ -22,6 +22,7 @@ import Afa.Lib.QMinCut
 import Afa.Lib
 import Afa.Lib.LiftArray
 
+{-# INLINABLE qminCut #-}
 qminCut :: forall p. AfaUnswallowed p -> AfaUnswallowed p
 qminCut (Afa terms states init) = Afa terms' states''' init''
   where
@@ -49,6 +50,7 @@ qminCut (Afa terms states init) = Afa terms' states''' init''
       , map (ixMapNewTop `unsafeAt`) states'
       )
 
+{-# INLINABLE partitionByCut #-}
 partitionByCut :: forall s p.
      Array Int (Term p Int Int)
   -> [Int]

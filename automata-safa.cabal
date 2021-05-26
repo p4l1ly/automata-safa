@@ -28,6 +28,7 @@ library
     Afa.Ops.QMinCut
     Afa.Ops.Compound
     Afa.Ops.Randomize
+    Afa.Ops.Boolean
   build-depends:
     base >=4.13.0.0 && <4.15,
     recursion-schemes ^>=5.2.1,
@@ -84,6 +85,7 @@ library convert
     Afa.Convert.Capnp.Afa
     Afa.Convert.Capnp.CnfAfa
     Afa.Convert.Capnp.Separated
+    Afa.Convert.Capnp.Range16Nfa
   build-depends:
     base >=4.13.0.0 && <4.15,
     free ^>=5.1.4,

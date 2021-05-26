@@ -42,6 +42,7 @@ import System.Directory
 import qualified Afa.Term.Mix as MTerm
 import qualified Afa.Term.Bool as BTerm
 import qualified Afa.Convert.Stranger as Stranger
+import qualified Afa.Convert.Capnp.Range16Nfa as Range16Nfa
 import qualified Data.Text.IO as TIO
 
 data Opts = Opts
@@ -60,9 +61,6 @@ dirReaders fileReader indir = Fix$ Compose$ do
   reader (Cons file a) = do
     afa <- withFile (indir ++ "/" ++ show file) ReadMode fileReader
     return$ Cons (show file, afa) a
-
-afaReaders :: String -> Fix (Compose IO (ListF (String, BoolAfaUnswallowed Int)))
-afaReaders = dirReaders hReadAfa
 
 strangerReaders :: String -> Fix (Compose IO (ListF (String, BoolAfaUnswallowed Int)))
 strangerReaders = dirReaders$ \h -> TIO.hGetContents h <&> Stranger.parseAfa
@@ -99,7 +97,12 @@ sepAfaCosts sepafa = (qCount, nCount, eCount)
 
 afaWriter outdir i (reorderStates' -> bafa) = 
   ( afaCosts bafa
-  , withFile (outdir ++ "/" ++ i) WriteMode$ hWriteAfa bafa
+  , withFile (outdir ++ "/" ++ i) WriteMode$ hWriteAfa True bafa
+  )
+
+afaWriter0 outdir i (reorderStates' -> bafa) = 
+  ( afaCosts bafa
+  , withFile (outdir ++ "/" ++ i) WriteMode$ hWriteAfa False bafa
   )
 
 sepAfaWriter outdir i (Sep.reorderStates' -> sepafa) =
@@ -116,8 +119,10 @@ optParser = Opts
           <&> (show i,) <&> flip Cons (i+1)
         )
         `catch` \(SomeException _) -> return Nil
-      (break (== ':') -> ("afa", ':':indir)) -> Right$ afaReaders indir
+      (break (== ':') -> ("afa", ':':indir)) -> Right$ dirReaders hReadAfa indir
       (break (== ':') -> ("stranger", ':':indir)) -> Right$ strangerReaders indir
+      (break (== ':') -> ("range16nfa", ':':indir)) -> Right$
+        dirReaders Range16Nfa.hReadNfa indir
       x -> Left$ "expected one of: ltl, afa:<path>; got " ++ x
     )
     ( long "input"
@@ -129,13 +134,19 @@ optParser = Opts
       (break (== ':') -> ("afa", ':':outdir)) ->
         Right$ repeat$ \i bafa ->
           Right$ afaWriter outdir i bafa
+      (break (== ':') -> ("afa0", ':':outdir)) ->
+        Right$ repeat$ \i bafa ->
+          Right$ afaWriter0 outdir i bafa
       (break (== ':') -> ("afaRandomized", ':':outdir)) ->
         Right$ repeat$ \i bafa -> Right$ (afaCosts bafa,)$ do
           bafa' <- randomizeIO bafa
-          withFile (outdir ++ "/" ++ i) WriteMode$ hWriteAfa (reorderStates' bafa')
+          withFile (outdir ++ "/" ++ i) WriteMode$ hWriteAfa True (reorderStates' bafa')
       (break (== ':') -> ("afaBasicSimp", ':':outdir)) ->
         Right$ repeat$ \i bafa ->
           simplifyAll bafa <&> afaWriter outdir i
+      (break (== ':') -> ("afaBasicSimp0", ':':outdir)) ->
+        Right$ repeat$ \i bafa ->
+          simplifyAll bafa <&> afaWriter0 outdir i
       (break (== ':') -> ("afaSimpGoblinMincut", ':':outdir)) ->
         Right$ repeat$ \i bafa ->
           simpGoblinMincut bafa <&> afaWriter outdir i

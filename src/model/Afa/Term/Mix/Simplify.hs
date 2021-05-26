@@ -41,6 +41,7 @@ import Afa.Lib
 import Afa.Lib.LiftArray
 import Afa.Term.Mix
 
+{-# INLINABLE deLit #-}
 deLit :: Term p q (Either Bool a) -> Either Bool (Term p q a)
 deLit LTrue = Left True
 deLit (Predicate p) = Right$ Predicate p
@@ -64,12 +65,14 @@ deLit (Or xs) = case xs' of
     Left True -> Endo (const Nothing)
     Right a -> Endo ((a:) <$>)
 
+{-# INLINABLE deUnary #-}
 deUnary :: Term p q t -> Either t (Term p q t)
 deUnary = \case
   And (t :| []) -> Left t
   Or (t :| []) -> Left t
   bt -> Right bt
 
+{-# INLINABLE flatten #-}
 flatten :: (t -> Term p q t) -> Term p q t -> Term p q t
 flatten project = \case
   And ts -> And$ flip nonEmptyConcatMap ts$ \t ->
@@ -82,6 +85,7 @@ flatten project = \case
       _ -> t :| []
   bt -> bt
 
+{-# INLINABLE flatten0 #-}
 flatten0 :: (t -> Maybe (Term p q t)) -> Term p q t -> Term p q t
 flatten0 project = \case
   And ts -> And$ flip nonEmptyConcatMap ts$ \t ->
@@ -94,6 +98,7 @@ flatten0 project = \case
       _ -> t :| []
   bt -> bt
 
+{-# INLINABLE absorb #-}
 absorb :: (Eq r, Hashable r) => (t -> Term p q t) -> (t -> r)
   -> Term p q t -> Either Bool (Term p q t)
 absorb project getR = \case
@@ -112,11 +117,13 @@ absorb project getR = \case
   bt -> Right bt
 
 -- PERF: use hashset
+{-# INLINABLE canonicalizeWith #-}
 canonicalizeWith :: (Eq r, Ord r) => (t -> r) -> Term p q t -> Term p q t
 canonicalizeWith getR (And ts) = And$ nonemptyCanonicalizeWith getR ts
 canonicalizeWith getR (Or ts) = Or$ nonemptyCanonicalizeWith getR ts
 canonicalizeWith _ x = x
 
+{-# INLINABLE simplify #-}
 simplify :: (Eq r, Hashable r, Ord r)
   => (t -> (DumbCount, Term p q t))
   -> (t -> r)
@@ -137,6 +144,7 @@ simplify project getR =
   skipJoin (Right (Left t)) = Right (Left t)
 
 
+{-# INLINABLE simplifyDag #-}
 simplifyDag :: forall p q. (Eq p, Hashable p, Eq q, Hashable q)
   => Array Int Any
   -> (Array Int (Either Bool Int), Array Int (Term p q Int))
@@ -172,6 +180,7 @@ simplifyDag gs (ixMap, arr) = runST action where
 
 
 -- more elegant but slower, don't know exactly why (probably some inlining + specialization issues)
+{-# INLINABLE simplifyDag2 #-}
 simplifyDag2 :: forall p q. (Eq p, Hashable p, Eq q, Hashable q)
   => Array Int Any
   -> (Array Int (Either Bool Int), Array Int (Term p q Int))
@@ -202,6 +211,7 @@ simplifyDag2 gs (ixMap, arr) = runST action where
       Right (i, Fix$Compose$Compose (g, t))
 
 
+{-# INLINABLE simplifyDagUntilFixpoint #-}
 simplifyDagUntilFixpoint :: forall p q. (Eq p, Hashable p, Eq q, Hashable q)
   => Array Int Any
   -> (Array Int (Either Bool Int), Array Int (Term p q Int))

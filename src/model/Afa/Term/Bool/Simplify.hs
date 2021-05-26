@@ -42,6 +42,7 @@ import Afa.Lib.LiftArray
 import Afa.Term.Bool
 
 
+{-# INLINABLE deLit #-}
 deLit :: Term p (Either Bool a) -> Either Bool (Term p a)
 deLit LTrue = Left True
 deLit LFalse = Left False
@@ -67,12 +68,14 @@ deLit (Or xs) = case xs' of
     Left True -> Endo (const Nothing)
     Right a -> Endo ((a:) <$>)
 
+{-# INLINABLE deUnary #-}
 deUnary :: Term p t -> Either t (Term p t)
 deUnary = \case
   And (t :| []) -> Left t
   Or (t :| []) -> Left t
   bt -> Right bt
 
+{-# INLINABLE deNotNot #-}
 deNotNot :: (t' -> Term p t) -> Term p t' -> Either t (Term p t')
 deNotNot project = \case
   bt@(Not t) -> case project t of
@@ -80,6 +83,7 @@ deNotNot project = \case
     _ -> Right bt
   bt -> Right bt
 
+{-# INLINABLE flatten #-}
 flatten :: (t -> Term p t) -> Term p t -> Term p t
 flatten project = \case
   And ts -> And$ flip nonEmptyConcatMap ts$ \t ->
@@ -92,6 +96,7 @@ flatten project = \case
       _ -> t :| []
   bt -> bt
 
+{-# INLINABLE flatten0 #-}
 flatten0 :: (t -> Maybe (Term p t)) -> Term p t -> Term p t
 flatten0 project = \case
   And ts -> And$ flip nonEmptyConcatMap ts$ \t ->
@@ -105,6 +110,7 @@ flatten0 project = \case
   bt -> bt
 
 -- PERF: use list? radix grouping?
+{-# INLINABLE absorb #-}
 absorb :: (Eq r, Hashable r) => (t -> Term p t) -> (t -> r) -> Term p t -> Term p t
 absorb project getR = \case
   And ts ->
@@ -122,6 +128,7 @@ absorb project getR = \case
   bt -> bt
 
 -- PERF: use list? radix grouping?
+{-# INLINABLE complementLaws #-}
 complementLaws :: (Eq r, Hashable r)
   => (t -> Term p t) -> (t -> r) -> Term p t -> Either Bool (Term p t)
 complementLaws project getR x = case x of
@@ -133,6 +140,7 @@ complementLaws project getR x = case x of
     nots = S.fromList$
       mapMaybe (project >>> \case Not t -> Just$ getR t; _ -> Nothing) ts
 
+{-# INLINABLE commonIdentities #-}
 commonIdentities :: (Eq r, Hashable r)
   => (t -> (DumbCount, Term p t))
   -> (t -> r)
@@ -167,11 +175,13 @@ commonIdentities project getR = \case
     in Free . Or <$> sequence ts'
   x -> Right$ Free$ Pure <$> x
 
+{-# INLINABLE canonicalize #-}
 canonicalize :: (Eq r, Ord r) => (t -> r) -> Term p t -> Term p t
 canonicalize getR (And ts) = And$ nonemptyCanonicalizeWith getR ts
 canonicalize getR (Or ts) = Or$ nonemptyCanonicalizeWith getR ts
 canonicalize _ x = x
 
+{-# INLINABLE simplify #-}
 simplify :: forall p r t. (Eq r, Hashable r, Ord r)
   => (t -> (DumbCount, Term p t))
   -> (t -> r)
@@ -215,6 +225,7 @@ negRefSign Pos = Neg
 negRefSign x = x
 
 
+{-# INLINABLE simplifyDag #-}
 simplifyDag :: forall p. (Eq p, Hashable p)
   => Array Int Any
   -> (Array Int (Either Bool Int), Array Int (Term p Int))
@@ -269,6 +280,7 @@ simplifyDag gs (ixMap, arr) = runST action where
     where descend (_, Fix (Compose (Compose gt))) = gt
 
 
+{-# INLINABLE simplifyDagUntilFixpoint #-}
 simplifyDagUntilFixpoint :: forall p. (Eq p, Hashable p)
   => Array Int Any
   -> (Array Int (Either Bool Int), Array Int (Term p Int))

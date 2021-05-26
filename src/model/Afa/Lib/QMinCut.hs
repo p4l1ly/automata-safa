@@ -47,6 +47,7 @@ instance Semigroup Path where
   _ <> x = x
 
 
+{-# INLINABLE maxFlow #-}
 maxFlow :: Foldable f
   => Array Int (f Int)
   -> [Int]
@@ -92,6 +93,7 @@ maxFlow nodes sources sourceFlags sinkFlags = runST action
     _ -> return ()
 
 
+{-# INLINABLE minCut #-}
 minCut :: Traversable f => Array Int (f Int) -> [Int] -> [Int] -> [Int]
 minCut nodes sources sinks = runST action where
   action :: forall s. ST s [Int]
@@ -152,6 +154,7 @@ instance Semigroup Path2 where
   Visited2 <> _ = Visited2
   _ <> x = x
 
+{-# INLINABLE minCut2Lowest #-}
 minCut2Lowest :: Foldable f => Array Int (f Int) -> [Int] -> [Int] -> [Int]
 minCut2Lowest nodes sources sinks =
   map revIx$ minCut2HighestFFI revNodes revSources revSinks
@@ -169,6 +172,7 @@ minCut2Lowest nodes sources sinks =
   revSources = map revIx sinks
   revSinks = map revIx sources
 
+{-# INLINABLE minCut2Highest #-}
 minCut2Highest :: Foldable f => Array Int (f Int) -> [Int] -> [Int] -> [Int]
 minCut2Highest nodes sources sinks =
   [ i
@@ -197,6 +201,7 @@ minCut2Highest nodes sources sinks =
           (_, i) -> return ()
       unsafeFreeze arr
 
+{-# INLINABLE enumerateEdges #-}
 enumerateEdges :: Foldable f => Array Int (f Int) -> ([Int], [Word])
 enumerateEdges arr = runIdentity$ runNoConsT$ do
   arr' <- for arr$ \edges ->
@@ -219,6 +224,7 @@ foreign import ccall "automata_safa.h min_cut_highest" min_cut_highest_ffi
 foreign import ccall "automata_safa.h &free_min_cut_highest" free_min_cut_highest_ffi
   :: FunPtr (Ptr Word -> IO ())
 
+{-# INLINABLE minCut2HighestFFI #-}
 minCut2HighestFFI :: Foldable f => Array Int (f Int) -> [Int] -> [Int] -> [Int]
 minCut2HighestFFI nodes sources sinks = unsafePerformIO$ do
   if False

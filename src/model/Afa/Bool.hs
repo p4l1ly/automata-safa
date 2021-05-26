@@ -62,10 +62,12 @@ type BoolAfaUnswallowed p = BoolAfa
   (AfaUnswallowed Int)
 
 
+{-# INLINABLE reorderStates' #-}
 reorderStates' :: BoolAfaUnswallowed p -> BoolAfaUnswallowed p
 reorderStates' bafa = bafa{afa = reorderStates$ afa bafa}
 
 
+{-# INLINABLE simplifyAll #-}
 simplifyAll :: forall p. (Eq p, Hashable p, Show p)
   => BoolAfaUnswallowed p -> Either Bool (BoolAfaUnswallowed p)
 simplifyAll bafa = do
@@ -80,6 +82,7 @@ simplifyAll bafa = do
   (ixMap1, bterms1, mterms1) = simplifyMixAndBoolTs mgs bterms mterms
 
 
+{-# INLINABLE simplifyMixAndBoolTs #-}
 simplifyMixAndBoolTs :: forall p q. (Eq p, Hashable p, Eq q, Hashable q)
   => Array Int Any
   -> Array Int (BTerm.Term p Int)
@@ -101,6 +104,7 @@ simplifyMixAndBoolTs mgs bterms mterms = closure ixMap bterms mterms
     ixMap2' = fmap (fmap (ixMap2 `unsafeAt`)) ixMap1
     (ixMap3, mterms3) = MTerm.simplifyDagUntilFixpoint mgs (ixMap2', mterms2)
 
+{-# INLINABLE simplifyInitMixAndBoolTs #-}
 simplifyInitMixAndBoolTs :: forall p q. (Eq p, Hashable p, Eq q, Hashable q)
   => Array Int Any
   -> Array Int (Either Bool Int)
@@ -151,6 +155,7 @@ simplifyInitMixAndBoolTs mgs ixMap bterms mterms = runST action where
       Right (Right !t) -> Right . (, Fix$ Compose t) <$> hashCons' (fmap fst t)
 
 -- to be able to cons them with boolterms
+{-# INLINABLE separateStatelessBottoms #-}
 separateStatelessBottoms :: forall p. (Eq p, Hashable p)
   => BoolAfaUnswallowed p -> BoolAfaUnswallowed p
 separateStatelessBottoms (BoolAfa bterms afa@Afa{terms=mterms, states=states}) =
@@ -224,6 +229,7 @@ separatePositiveTops bterms mterms =
 
 
 -- TODO the frees are traversed thrice, we need a setter generator for frees
+{-# INLINABLE unswallow #-}
 unswallow :: forall p. (Show p, Hashable p, Eq p) => BoolAfaSwallowed p -> BoolAfaUnswallowed p
 unswallow BoolAfa{boolTerms=bterms, afa=afa@Afa{terms=mterms, states=transitions}} =
   runST action where
@@ -309,6 +315,7 @@ afterP1M !j = asks fst >>= \bs -> lift$ unsafeRead bs j
 {-# NOINLINE afterPM #-}
 afterPM !j = ask >>= \bs -> lift$ unsafeRead bs j
 
+{-# INLINABLE swallow #-}
 swallow :: forall p. BoolAfaUnswallowed p -> BoolAfaSwallowed p
 swallow BoolAfa{boolTerms=bterms, afa=afa@Afa{terms=mterms, states=transitions}} =
   runST action where
