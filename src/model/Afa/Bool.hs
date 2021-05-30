@@ -14,7 +14,9 @@ module Afa.Bool where
 
 import Debug.Trace
 
-import Data.Array.Base (unsafeRead, unsafeWrite, unsafeAccumArray, unsafeAt)
+import Control.Applicative ((<|>))
+import Data.List (find)
+import Data.Array.Base (unsafeRead, unsafeWrite, unsafeAccumArray, unsafeAt, numElements)
 import Data.Foldable
 import Control.Monad.Free
 import Control.Arrow
@@ -62,9 +64,35 @@ type BoolAfaUnswallowed p = BoolAfa
   (AfaUnswallowed Int)
 
 
+isValid :: Show p => BoolAfaUnswallowed p -> Maybe String
+isValid (BoolAfa bterms (Afa mterms states init)) = foldr1 (<|>)
+  [ ("bterms " ++) . show <$> find (\(i, t) -> any (>= i) t) (assocs bterms)
+  , fmap (("mterms " ++) . show)$ flip find (assocs mterms)$ \(i, t) ->
+      any (>= i) t || case t of
+        MTerm.Predicate p -> not$ inRange (bounds bterms) p
+        _ -> False
+  , fmap (("states " ++) . show)$ flip find (assocs states)$ \(i, t) ->
+      not$ inRange (bounds mterms) t
+  , if not$ inRange (bounds states) init then Just$ "init " ++ show init else Nothing
+  ]
+
+
 {-# INLINABLE reorderStates' #-}
 reorderStates' :: BoolAfaUnswallowed p -> BoolAfaUnswallowed p
 reorderStates' bafa = bafa{afa = reorderStates$ afa bafa}
+
+
+hashConsBoolAfa :: forall p. (Eq p, Hashable p, Show p)
+  => BoolAfaUnswallowed p -> BoolAfaUnswallowed p
+hashConsBoolAfa (BoolAfa bterms (Afa mterms states init)) = runST action
+  where
+  action :: forall s. ST s (BoolAfaUnswallowed p)
+  action = do
+    (bIxMap, bterms') <- runHashConsT$ cataScanT' @(LSTArray s) traversed hashCons' bterms
+    let mtraversed rec = MTerm.modChilds MTerm.pureChildMod{ MTerm.lT = rec, MTerm.lP = return . (bIxMap!) }
+    (mIxMap, mterms') <- runHashConsT$ cataScanT' @(LSTArray s) mtraversed hashCons' mterms
+    return$ BoolAfa (listArray' bterms')$
+      Afa (listArray' mterms') ((mIxMap!) <$> states) init
 
 
 {-# INLINABLE simplifyAll #-}

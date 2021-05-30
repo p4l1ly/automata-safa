@@ -7,6 +7,9 @@ module Main where
 
 import Debug.Trace
 
+import qualified Afa.Ops.Boolean as Ops
+import Data.Traversable
+import Data.List.Split
 import Options.Applicative
 import Control.Monad
 import Control.Concurrent.STM
@@ -50,20 +53,21 @@ data Opts = Opts
   , writers :: [String -> BoolAfaUnswallowed Int -> Either Bool ((Int, Int, Int), IO ())]
   }
 
-dirReaders :: (Handle -> IO a) -> String -> Fix (Compose IO (ListF (String, a)))
-dirReaders fileReader indir = Fix$ Compose$ do
+dirReaders :: Int -> (Handle -> IO a) -> String -> Fix (Compose IO (ListF (String, a)))
+dirReaders count fileReader indir = Fix$ Compose$ do
   (sort . map read -> files0 :: [Int]) <- listDirectory indir
-  reader (project files0) <&> \case
+  reader (project$ zip [0..] files0) <&> \case
     Nil -> Nil
     Cons afa a -> Cons afa$ hoist (Compose . reader) a
   where
   reader Nil = return Nil
-  reader (Cons file a) = do
+  reader (Cons (i, _) _) | i == count = return Nil
+  reader (Cons (_, file) a) = do
     afa <- withFile (indir ++ "/" ++ show file) ReadMode fileReader
     return$ Cons (show file, afa) a
 
 strangerReaders :: String -> Fix (Compose IO (ListF (String, BoolAfaUnswallowed Int)))
-strangerReaders = dirReaders$ \h -> TIO.hGetContents h <&> Stranger.parseAfa
+strangerReaders = dirReaders maxBound$ \h -> TIO.hGetContents h <&> Stranger.parseAfa
 
 arrSize :: Array Int a -> Int
 arrSize = rangeSize . bounds
@@ -110,6 +114,15 @@ sepAfaWriter outdir i (Sep.reorderStates' -> sepafa) =
   , withFile (outdir ++ "/" ++ i) WriteMode$ SepCap.hWrite sepafa
   )
 
+parseIxList :: String -> [Int]
+parseIxList = map read . splitOn ","
+
+equality afa1 afa2 = Ops.union
+  (Ops.intersection afa1 (Ops.complementUnsafeShallow afa2))
+  (Ops.intersection afa2 (Ops.complementUnsafeShallow afa1))
+
+inclusion afa1 afa2 = Ops.intersection afa1 (Ops.complementUnsafeShallow afa2)
+
 optParser :: Parser Opts
 optParser = Opts
   <$> option
@@ -119,10 +132,51 @@ optParser = Opts
           <&> (show i,) <&> flip Cons (i+1)
         )
         `catch` \(SomeException _) -> return Nil
-      (break (== ':') -> ("afa", ':':indir)) -> Right$ dirReaders hReadAfa indir
+      (splitOn ":" -> ["afai", read -> i, indir]) -> Right$ dirReaders i hReadAfa indir
+      (break (== ':') -> ("afa", ':':indir)) -> Right$ dirReaders maxBound hReadAfa indir
       (break (== ':') -> ("stranger", ':':indir)) -> Right$ strangerReaders indir
       (break (== ':') -> ("range16nfa", ':':indir)) -> Right$
-        dirReaders Range16Nfa.hReadNfa indir
+        dirReaders maxBound Range16Nfa.hReadNfa indir
+      ( splitOn ":" ->
+        [ "conjunctEq"
+        , parseIxList -> conjunct1
+        , parseIxList -> conjunct2
+        , indir
+        ]) -> Right$ flip ana 0$ \i -> Compose$
+        do
+          files <- words <$> getLine
+          [afa1, afa2] <- for [conjunct1, conjunct2]$ \ixs -> do
+            afas <- for (map (files!!) ixs)$ \file ->
+              withFile (indir ++ "/" ++ file) ReadMode hReadAfa
+            return$ foldr1 Ops.intersection afas
+          return$ Cons (show i, equality afa1 afa2) (i + 1)
+        `catch` \(SomeException exc) -> do
+          hPrint stderr exc
+          return Nil
+      ( splitOn ":" ->
+        [ "inclusion"
+        , indir1
+        , indir2
+        ]) -> Right$ flip ana 1$ \i -> Compose$
+        do
+          [afa1, afa2] <- for [indir1, indir2]$ \indir ->
+            withFile (indir ++ "/" ++ show i) ReadMode hReadAfa
+          return$ Cons (show i, inclusion afa1 afa2) (i + 1)
+        `catch` \(SomeException exc) -> do
+          hPrint stderr exc
+          return Nil
+      ( splitOn ":" ->
+        [ "intersection"
+        , indir1
+        , indir2
+        ]) -> Right$ flip ana 1$ \i -> Compose$
+        do
+          [afa1, afa2] <- for [indir1, indir2]$ \indir ->
+            withFile (indir ++ "/" ++ show i) ReadMode hReadAfa
+          return$ Cons (show i, Ops.intersection afa1 afa2) (i + 1)
+        `catch` \(SomeException exc) -> do
+          hPrint stderr exc
+          return Nil
       x -> Left$ "expected one of: ltl, afa:<path>; got " ++ x
     )
     ( long "input"
@@ -131,12 +185,17 @@ optParser = Opts
     )
   <*> option
     ( eitherReader$ \case
+      "isValid" ->
+        Right$ repeat$ \i bafa -> Right ((0, 0, 0), hPrint stderr$ isValid bafa)
       (break (== ':') -> ("afa", ':':outdir)) ->
         Right$ repeat$ \i bafa ->
           Right$ afaWriter outdir i bafa
       (break (== ':') -> ("afa0", ':':outdir)) ->
         Right$ repeat$ \i bafa ->
           Right$ afaWriter0 outdir i bafa
+      (break (== ':') -> ("afaHashCons", ':':outdir)) ->
+        Right$ repeat$ \i bafa ->
+          Right$ afaWriter0 outdir i$ hashConsBoolAfa bafa
       (break (== ':') -> ("afaRandomized", ':':outdir)) ->
         Right$ repeat$ \i bafa -> Right$ (afaCosts bafa,)$ do
           bafa' <- randomizeIO bafa
@@ -148,6 +207,9 @@ optParser = Opts
         Right$ repeat$ \i bafa ->
           simplifyAll bafa <&> afaWriter0 outdir i
       (break (== ':') -> ("afaSimpGoblinMincut", ':':outdir)) ->
+        Right$ repeat$ \i bafa ->
+          simpGoblinMincutUntilFixpoint bafa <&> afaWriter outdir i
+      (break (== ':') -> ("afaSimpGoblinMincut1", ':':outdir)) ->
         Right$ repeat$ \i bafa ->
           simpGoblinMincut bafa <&> afaWriter outdir i
       (break (== ':') -> ("afaSimpGoblin", ':':outdir)) ->

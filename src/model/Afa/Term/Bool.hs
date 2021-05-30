@@ -102,7 +102,7 @@ data MFun p t p' t' = MFun
 mfun0 :: MFun p t p t
 mfun0 = MFun
   { mfunLTrue = LTrue
-  , mfunLFalse = LTrue
+  , mfunLFalse = LFalse
   , mfunPredicate = Predicate
   , mfunAnd = And
   , mfunOr = Or

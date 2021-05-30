@@ -4,12 +4,15 @@
 {-# LANGUAGE PartialTypeSignatures #-}
 {-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE ViewPatterns #-}
+{-# LANGUAGE FlexibleContexts #-}
 
 module Afa.Ops.Goblin where
 
 import Debug.Trace
 
-import Data.Array.Base (unsafeWrite, unsafeAt)
+import Data.Bifunctor
+import Data.Foldable
+import Data.Array.Base (unsafeWrite, unsafeAt, unsafeAccumArray)
 import GHC.Exts
 import Control.Monad.Free
 import Data.Traversable
@@ -38,7 +41,7 @@ import Afa.Term.Mix.Simplify (deUnary)
 goblinUntilFixpoint :: forall p. Show p => AfaUnswallowed p -> AfaUnswallowed p
 goblinUntilFixpoint afa = afa'{terms = unmarked} where
   marked = markBack afa
-  closure afa = maybe afa closure$ goblin2 afa
+  closure afa = maybe afa (closure . removeUnused)$ goblin2 afa
   afa' = closure$ afa{terms = marked}
   unmarked = terms afa' <&> appMTFun mtfun0{mtfunQ = snd, mtfunT = snd}
 
@@ -322,4 +325,64 @@ goblin2 (Afa terms states init) = do
 
     return$ case statesL of
       [] -> Nothing
-      _ -> Just (aterms ++ qterms', elems mappedStates ++ map (+ qshift) statesL)
+      _ -> traceShow (length statesL)$ Just (aterms ++ qterms', elems mappedStates ++ map (+ qshift) statesL)
+
+
+{-# INLINABLE removeUnused #-}
+removeUnused :: forall p.
+  Afa (Array Int (Term p (Bool, Int) (Bool, Int))) (Array Int Int) Int
+  -> Afa (Array Int (Term p (Bool, Int) (Bool, Int))) (Array Int Int) Int
+removeUnused afa@(Afa terms states init) =
+  Afa (listArray' terms'') (listArray' states') (qIxMap!init)
+  where
+  (qmarks, tmarks) = markReachable afa
+  termsWithReachability = listArray (bounds tmarks)$ zip (elems tmarks) (elems terms)
+
+  (tIxMap, terms') = runST action
+  action :: forall s. ST s (Array Int Int, [Term p (Bool, Int) (Bool, Int)])
+  action = runNoConsT$ ($termsWithReachability)$ cataScanT' @(LSTArray s)
+    (_2.traversed._2)$ \case
+    (False, _) -> return$ error "reaching unreachable child"
+    (True, x) -> nocons x
+
+  states' = map ((tIxMap!) . snd)$ filter fst$ zip (elems qmarks) (elems states)
+  qIxMap = listArray (bounds states)$
+    scanl (\c b -> if b then c + 1 else c) 0 (elems qmarks)
+  terms'' = map (appMTFun mtfun0{mtfunQ = second (qIxMap!)}) terms'
+
+
+data ReachableMark = UnvisitedR | RecurR | VisitedR
+instance Semigroup ReachableMark where
+  UnvisitedR <> x = x
+  x <> _ = x
+
+{-# INLINABLE markReachable #-}
+markReachable
+  :: Afa (Array Int (Term p (Bool, Int) (Bool, Int))) (Array Int Int) Int
+  -> (Array Int Bool, Array Int Bool)
+markReachable (Afa terms states init) = (qmarks, termMarks)
+  where
+  termMarks = runST getMarks <&> \case UnvisitedR -> False; _ -> True
+
+  getMarks :: forall s. ST s (Array Int ReachableMark)
+  getMarks = do
+    marks <- newArray @(STArray s) (bounds terms) UnvisitedR
+    let i = states `unsafeAt` init
+    unsafeWrite marks i RecurR
+    dfs (traversal marks) marks i
+    unsafeFreeze marks
+
+  traversal arr rec (x, i) = case x of
+    RecurR -> do
+      unsafeWrite arr i VisitedR
+      void$ terms `unsafeAt` i & modChilds pureChildMod
+        { lQ = \(_, q) -> rec (RecurR, states `unsafeAt` q)
+        , lT = \(_, j) -> rec (RecurR, j)
+        }
+    VisitedR -> return ()
+    UnvisitedR -> error "visiting unvisited"
+
+  qmarks = unsafeAccumArray (\_ _ -> True) False (bounds states)$ (init, ()) :
+    [ (q, ())
+    | (i@(unsafeAt terms -> State (_, q)), True) <- zip [0..] (elems termMarks)
+    ]

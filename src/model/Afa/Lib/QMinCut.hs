@@ -248,7 +248,7 @@ minCut2HighestFFI nodes sources sinks = unsafePerformIO$ do
           return$ map fromIntegral$ CA.elems cutC
   where
   (nodes', edges) = enumerateEdges nodes
-  nodesC = CA.listArray (0, numElements nodes + 1)$ map fromIntegral nodes'
+  nodesC = CA.listArray (0, numElements nodes)$ map fromIntegral nodes'
   edgesC = CA.listArray (0, length edges - 1) edges
   sourcesC = CA.listArray (0, length sources - 1)$ map fromIntegral sources
   sinksC = CA.listArray (0, length sinks - 1)$ map fromIntegral sinks

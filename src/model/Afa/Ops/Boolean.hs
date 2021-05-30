@@ -1,7 +1,12 @@
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TypeApplications #-}
 
-module Afa.Ops.Boolean (intersection, union) where
+module Afa.Ops.Boolean
+  ( intersection
+  , union
+  , complementUnsafeShallow
+  , complementUnsafeDeep
+  ) where
 
 import Data.Array.Unsafe
 import Control.Lens
@@ -34,8 +39,9 @@ positiveOp op
   mterms2Count = numElements mterms2
   mterms = listArray (0, mterms1Count + mterms2Count)$
     elems mterms1 ++ map
-      ( MTerm.appMTFun MTerm.mtfun0
+      ( MTerm.appMTFun MTerm.MTFun
         { MTerm.mtfunP = (+ bterms1Count)
+        , MTerm.mtfunQ = (+ states1Count)
         , MTerm.mtfunT = (+ mterms1Count)
         }
       )
@@ -63,7 +69,7 @@ complementUnsafeShallow (BoolAfa bterms1 (Afa mterms1 states1 init1)) =
   bterms = listArray (0, 2 * bterms1Count - 1)$
     elems bterms1 ++ map BTerm.Not [0 .. bterms1Count - 1]
 
-  mterms = fmap (dualize . fmap (+ bterms1Count)) mterms1
+  mterms = fmap (dualize . MTerm.appMTFun MTerm.mtfun0{MTerm.mtfunP = (+ bterms1Count)}) mterms1
 
   dualize (MTerm.And xs) = MTerm.Or xs
   dualize (MTerm.Or xs) = MTerm.And xs
@@ -79,7 +85,7 @@ complementUnsafeDeep (BoolAfa bterms1 (Afa mterms1 states1 init1)) =
       alg x@(BTerm.Predicate p) = nocons x >>= nocons . BTerm.Not
       alg x = nocons$ bdualize x
 
-  mterms = fmap (mdualize . fmap (ixMap!)) mterms1
+  mterms = fmap (mdualize . MTerm.appMTFun MTerm.mtfun0{MTerm.mtfunP = (ixMap!)}) mterms1
 
   mdualize (MTerm.And xs) = MTerm.Or xs
   mdualize (MTerm.Or xs) = MTerm.And xs

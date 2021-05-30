@@ -20,18 +20,18 @@ toDot cyclic (BoolAfa bterms (Afa mterms states init)) = T.unlines
   [ "digraph afa {"
   , "  graph [nodesep=0.2];"
   , "  node [fontsize=20];"
-  -- , T.unlines [[i|  b#{j} -> #{c};|] | (j, t) <- assocs bterms, c <- bchilds t]
+  , T.unlines [[i|  b#{j} -> #{c};|] | (j, t) <- assocs bterms, c <- bchilds t]
   , T.unlines [[i|  m#{j} -> #{c};|] | (j, t) <- assocs mterms, c <- mchilds t]
   , T.unlines [[i|  q#{j} -> m#{q}|] | (j, q) <- assocs states]
   , T.unlines [[i|  q#{j} [style=filled, fillcolor=pink]|] | (j, _) <- assocs states]
-  -- , T.unlines [[i|  b#{j} [style=filled, #{bstyle j t}]|] | (j, t) <- assocs bterms]
+  , T.unlines [[i|  b#{j} [style=filled, #{bstyle j t}]|] | (j, t) <- assocs bterms]
   , T.unlines [[i|  m#{j} [style=filled, #{mstyle j t}]|] | (j, t) <- assocs mterms]
   , "}"
   ]
   where
     bchilds t = [[i|b#{c}|] | c <- toList t]
     mchilds t = case t of
-      -- MTerm.Predicate p -> [[i|b#{p}|]]
+      MTerm.Predicate p -> [[i|b#{p}|]]
       MTerm.State q -> if cyclic then [[i|q#{q}|]] else [[i|Q#{q}|]]
       _ -> [[i|m#{c}|] | c <- toList t]
 
