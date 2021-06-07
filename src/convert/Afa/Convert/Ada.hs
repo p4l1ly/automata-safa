@@ -32,7 +32,7 @@ toAda (BoolAfa bterms (Afa mterms states init)) = T.unlines
   , "a"
   , ""
   , "VARIABLES"
-  , T.unwords$ map (\j -> [i|v#{j}v|]) [0..varCnt - 1]
+  , T.unwords$ map (\j -> [i|v#{j}v|]) [0..max 0 (varCnt - 1)]
   , ""
   , "TRANSITIONS"
   , T.intercalate "\n"$ flip map (assocs states)$ \(q, t) -> T.intercalate "\n"

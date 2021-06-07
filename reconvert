@@ -11,25 +11,26 @@
 # afaCnf0 \
 # sepDelaying0 \
 
-READAFA="afai:100"
+READAFA="afa"
 GENERATE=true
-MODELCHECK=false
+MODELCHECK=true
 
-FROM_LTL=false
+FROM_LTL=true
 FROM_STRANGER=false
 BASIC=true
 GOBLIN3=true
+GOBLIN4=true
 NRAND=true
 RAND=false
 ZERO=false
 
 SUCCINCT=true
-AFASAT=false
-AFASAT_CLAUSAL=false
-DANTONI=false
-JIMPACT=false
+AFASAT=true
+AFASAT_CLAUSAL=true
+DANTONI=true
+JIMPACT=true
 ABC=true
-ABC_REV=false
+ABC_REV=true
 
 ROOT=$1
 
@@ -46,50 +47,69 @@ $GENERATE && {
   {$FROM_LTL || $FROM_STRANGER} && resetDir afa0
 
   $NRAND && $BASIC   && $SUCCINCT   && resetDir afaBasic
-  $NRAND && $GOBLIN3 && $SUCCINCT   && resetDir afaSimpGoblinMincut3
   $NRAND && $BASIC   && $AFASAT_ANY && resetDir afaCnf
-  $NRAND && $GOBLIN3 && $AFASAT_ANY && resetDir afaCnf3
   $NRAND && $BASIC   && $DANTONI    && resetDir sepDelaying
-  $NRAND && $GOBLIN3 && $DANTONI    && resetDir sepDelaying3
   $NRAND && $BASIC   && $JIMPACT    && resetDir ada
-  $NRAND && $GOBLIN3 && $JIMPACT    && resetDir ada3
   $NRAND && $BASIC   && $ABC        && resetDir smv
-  $NRAND && $GOBLIN3 && $ABC        && resetDir smv3
   $NRAND && $BASIC   && $ABC_REV    && resetDir smvReverse
-  $NRAND && $GOBLIN3 && $ABC_REV    && resetDir smvReverse3
   $NRAND && $BASIC   && $ABC        && resetDir aig
-  $NRAND && $GOBLIN3 && $ABC        && resetDir aig3
   $NRAND && $BASIC   && $ABC_REV    && resetDir aigReverse
+
+  $NRAND && $GOBLIN3 && $SUCCINCT   && resetDir afaSimpGoblinMincut3
+  $NRAND && $GOBLIN3 && $AFASAT_ANY && resetDir afaCnf3
+  $NRAND && $GOBLIN3 && $DANTONI    && resetDir sepDelaying3
+  $NRAND && $GOBLIN3 && $JIMPACT    && resetDir ada3
+  $NRAND && $GOBLIN3 && $ABC        && resetDir smv3
+  $NRAND && $GOBLIN3 && $ABC_REV    && resetDir smvReverse3
+  $NRAND && $GOBLIN3 && $ABC        && resetDir aig3
   $NRAND && $GOBLIN3 && $ABC_REV    && resetDir aigReverse3
 
-  $ZERO && resetDir smv0
-  $ZERO && resetDir aig0
+  $NRAND && $GOBLIN4 && $SUCCINCT   && resetDir afaSimpGoblin4
+  $NRAND && $GOBLIN4 && $AFASAT_ANY && resetDir afaCnf4
+  $NRAND && $GOBLIN4 && $DANTONI    && resetDir sepDelaying4
+  $NRAND && $GOBLIN4 && $JIMPACT    && resetDir ada4
+  $NRAND && $GOBLIN4 && $ABC        && resetDir smv4
+  $NRAND && $GOBLIN4 && $ABC_REV    && resetDir smvReverse4
+  $NRAND && $GOBLIN4 && $ABC        && resetDir aig4
+  $NRAND && $GOBLIN4 && $ABC_REV    && resetDir aigReverse4
+
+  $ZERO && $AFASAT_ANY && resetDir afaCnf0
+  $ZERO && $DANTONI    && resetDir sepDelaying0
+  $ZERO && $JIMPACT    && resetDir ada0
+  $ZERO && $ABC        && resetDir smv0
+  $ZERO && $ABC        && resetDir aig0
+  $ZERO && $ABC_REV    && resetDir smvReverse0
+  $ZERO && $ABC_REV    && resetDir aigReverse0
 
   $RAND && $BASIC   && $SUCCINCT   && resetDir afaRand
-  $RAND && $GOBLIN3 && $SUCCINCT   && resetDir afaRand3
   $RAND && $BASIC   && $AFASAT_ANY && resetDir afaCnfRand
-  $RAND && $GOBLIN3 && $AFASAT_ANY && resetDir afaCnfRand3
   $RAND && $BASIC   && $DANTONI    && resetDir sepDelayingRand
-  $RAND && $GOBLIN3 && $DANTONI    && resetDir sepDelayingRand3
   $RAND && $BASIC   && $JIMPACT    && resetDir adaRand
-  $RAND && $GOBLIN3 && $JIMPACT    && resetDir adaRand3
   $RAND && $BASIC   && $ABC        && resetDir smvRand
-  $RAND && $GOBLIN3 && $ABC        && resetDir smvRand3
   $RAND && $BASIC   && $ABC_REV    && resetDir smvReverseRand
-  $RAND && $GOBLIN3 && $ABC_REV    && resetDir smvReverseRand3
   $RAND && $BASIC   && $ABC        && resetDir aigRand
-  $RAND && $GOBLIN3 && $ABC        && resetDir aigRand3
   $RAND && $BASIC   && $ABC_REV    && resetDir aigReverseRand
+
+  $RAND && $GOBLIN3 && $SUCCINCT   && resetDir afaRand3
+  $RAND && $GOBLIN3 && $AFASAT_ANY && resetDir afaCnfRand3
+  $RAND && $GOBLIN3 && $DANTONI    && resetDir sepDelayingRand3
+  $RAND && $GOBLIN3 && $JIMPACT    && resetDir adaRand3
+  $RAND && $GOBLIN3 && $ABC        && resetDir smvRand3
+  $RAND && $GOBLIN3 && $ABC_REV    && resetDir smvReverseRand3
+  $RAND && $GOBLIN3 && $ABC        && resetDir aigRand3
   $RAND && $GOBLIN3 && $ABC_REV    && resetDir aigReverseRand3
 
   $FROM_LTL && { cat $1/ltls| cabal exec ltle-to-afa -- -i ltl -o afa:$1/afa0 > $1/afa0.csv }
   $FROM_STRANGER && { cabal exec ltle-to-afa -- -i stranger:$1/input -o afa:$1/afa0 > $1/afa0.csv }
 
   $ZERO && {
-    # cabal exec ltle-to-afa -- -i $READAFA:$1/afa0 -o cnfafa:$1/afaCnf0 > $1/afaCnf0.csv
-    # cabal exec ltle-to-afa -- -i $READAFA:$1/afa0 -o sepafaDelaying:$1/sepDelaying0 > $1/sepDelaying0.csv
-    $ABC && cabal exec ltle-to-afa -- -i $READAFA:$1/afa0 -o smv:$1/smv0 > $1/smv0.csv
-    $ABC && for f in $(ls $1/smv0); do ../aiger/smvtoaig $1/smv0/$f > $1/aig0/$f; done
+    $AFASAT_ANY && cabal exec ltle-to-afa -- -i $READAFA:$1/afa0 -o cnfafa:$1/afaCnf0 > $1/afaCnf0.csv
+    $DANTONI    && cabal exec ltle-to-afa -- -i $READAFA:$1/afa0 -o sepafaDelaying:$1/sepDelaying0 > $1/sepDelaying0.csv
+    $JIMPACT    && cabal exec ltle-to-afa -- -i $READAFA:$1/afa0 -o ada:$1/ada0 > $1/ada0.csv
+    $ABC        && cabal exec ltle-to-afa -- -i $READAFA:$1/afa0 -o smv:$1/smv0 > $1/smv0.csv
+    $ABC_REV    && cabal exec ltle-to-afa -- -i $READAFA:$1/afa0 -o smvReverse:$1/smvReverse0 > $1/smvReverse0.csv
+    $ABC        && for f in $(ls $1/smv0); do ../aiger/smvtoaig $1/smv0/$f > $1/aig0/$f; done
+    $ABC_REV    && for f in $(ls $1/smvReverse0); do ../aiger/smvtoaig $1/smvReverse0/$f > $1/aigReverse0/$f; done
   }
 
   $NRAND && $BASIC && {
@@ -136,6 +156,17 @@ $GENERATE && {
     $ABC_REV    && for f in $(ls $1/smvReverseRand3); do ../aiger/smvtoaig $1/smvReverseRand3/$f > $1/aigReverseRand3/$f; done
   }
 
+  $NRAND && $GOBLIN4 && {
+    $SUCCINCT   && cabal exec ltle-to-afa -- -i $READAFA:$1/afaBasic -o afaSimpGoblin:$1/afaSimpGoblin4 > $1/afaSimpGoblin4.csv
+    $AFASAT_ANY && cabal exec ltle-to-afa -- -i $READAFA:$1/afaSimpGoblin4 -o cnfafa:$1/afaCnf4 > $1/afaCnf4.csv
+    $DANTONI    && cabal exec ltle-to-afa -- -i $READAFA:$1/afaSimpGoblin4 -o sepafaDelaying:$1/sepDelaying4 > $1/sepDelaying4.csv
+    $JIMPACT    && cabal exec ltle-to-afa -- -i $READAFA:$1/afaSimpGoblin4 -o ada:$1/ada4 > $1/ada4.csv
+    $ABC        && cabal exec ltle-to-afa -- -i $READAFA:$1/afaSimpGoblin4 -o smv:$1/smv4 > $1/smv4.csv
+    $ABC_REV    && cabal exec ltle-to-afa -- -i $READAFA:$1/afaSimpGoblin4 -o smvReverse:$1/smvReverse4 > $1/smvReverse4.csv
+    $ABC        && for f in $(ls $1/smv4); do ../aiger/smvtoaig $1/smv4/$f > $1/aig4/$f; done
+    $ABC_REV    && for f in $(ls $1/smvReverse4); do ../aiger/smvtoaig $1/smvReverse4/$f > $1/aigReverse4/$f; done
+  }
+
   # cabal exec ltle-to-afa -- -i $READAFA:$1/afaBasic -o afaSimpGoblin:$1/afaSimpGoblin4 > $1/afaSimpGoblin4.csv
   # cabal exec ltle-to-afa -- -i $READAFA:$1/afaSimpGoblin4 -o cnfafa:$1/afaCnf4 > $1/afaCnf4.csv
   # cabal exec ltle-to-afa -- -i $READAFA:$1/afaSimpGoblin4 -o sepafaDelaying:$1/sepDelaying4 > $1/sepDelaying4.csv
@@ -151,10 +182,15 @@ cd ../afapipe
 
 $NRAND && $BASIC   && $AFASAT         && ./build/file-solver-2 $1/afaCnf > $1/afasat.csv
 $NRAND && $GOBLIN3 && $AFASAT         && ./build/file-solver-2 $1/afaCnf3 > $1/afasat3.csv
+$NRAND && $GOBLIN4 && $AFASAT         && ./build/file-solver-2 $1/afaCnf4 > $1/afasat4.csv
 $NRAND && $BASIC   && $AFASAT_CLAUSAL && ./build/file-solver-3 $1/afaCnf > $1/afasatClausal.csv
 $NRAND && $GOBLIN3 && $AFASAT_CLAUSAL && ./build/file-solver-3 $1/afaCnf3 > $1/afasatClausal3.csv
+$NRAND && $GOBLIN4 && $AFASAT_CLAUSAL && ./build/file-solver-3 $1/afaCnf4 > $1/afasatClausal4.csv
 $NRAND && $BASIC   && $DANTONI        && ./build/file-solver-1 $1/sepDelaying > $1/dantoni.csv
 $NRAND && $GOBLIN3 && $DANTONI        && ./build/file-solver-1 $1/sepDelaying3 > $1/dantoni3.csv
+$NRAND && $GOBLIN4 && $DANTONI        && ./build/file-solver-1 $1/sepDelaying4 > $1/dantoni4.csv
+
+$ZERO && $AFASAT         && ./build/file-solver-2 $1/afaCnf0 > $1/afasat0.csv
 
 # ./build/file-solver-2 $1/afaCnf0 > $1/afasat0.csv
 # ./build/file-solver-2 $1/afaCnf4 > $1/afasat4.csv
@@ -172,8 +208,7 @@ $RAND && $GOBLIN3 && $AFASAT_CLAUSAL && ./build/file-solver-3 $1/afaCnfRand3 > $
 $RAND && $BASIC   && $DANTONI        && ./build/file-solver-1 $1/sepDelayingRand > $1/dantoniRand.csv
 $RAND && $GOBLIN3 && $DANTONI        && ./build/file-solver-1 $1/sepDelayingRand3 > $1/dantoniRand3.csv
 
-echo foo
-$ZERO && {
+$ZERO && $ABC && {
   echo bar
   rm -f $1/abc0.csv
   for f in $(ls -v $1/aig0); do
@@ -231,6 +266,25 @@ $NRAND && $GOBLIN3 && $ABC && {
   done
 }
 
+$NRAND && $GOBLIN4 && $ABC && {
+  rm -f $1/abc4.csv
+  for f in $(ls -v $1/aig4); do
+    echo checking $f
+    result=$(../abc/build/abc -c "read_aiger $1/aig4/$f; pdr -T 60" | grep -E '^Property|^Output')
+    {
+      echo -n -e "$f\t"
+      echo -n -e "$(($(echo $result | sed -r 's/.*Time =\s+([^ ]+).*/\1/')*1000))\t"
+      if echo $result | grep Output > /dev/null; then
+        echo 1
+      elif echo $result | grep prove > /dev/null; then
+        echo 0
+      else
+        echo -2
+      fi
+    } >> $1/abc4.csv
+  done
+}
+
 $NRAND && $BASIC && $ABC_REV && {
   rm -f $1/abcReverse.csv
   for f in $(ls -v $1/aigReverse); do
@@ -266,6 +320,25 @@ $NRAND && $GOBLIN3 && $ABC_REV && {
         echo -2
       fi
     } >> $1/abcReverse3.csv
+  done
+}
+
+$NRAND && $GOBLIN4 && $ABC_REV && {
+  rm -f $1/abcReverse4.csv
+  for f in $(ls -v $1/aigReverse4); do
+    echo checking $f
+    result=$(../abc/build/abc -c "read_aiger $1/aigReverse4/$f; pdr -T 60" | grep -E '^Property|^Output')
+    {
+      echo -n -e "$f\t"
+      echo -n -e "$(($(echo $result | sed -r 's/.*Time =\s+([^ ]+).*/\1/')*1000))\t"
+      if echo $result | grep Output > /dev/null; then
+        echo 1
+      elif echo $result | grep prove > /dev/null; then
+        echo 0
+      else
+        echo -2
+      fi
+    } >> $1/abcReverse4.csv
   done
 }
 
@@ -408,6 +481,32 @@ $NRAND && $GOBLIN3 && $JIMPACT && {
         fi
       fi
     } >> $1/jimpact3.csv
+  done
+}
+
+$NRAND && $GOBLIN4 && $JIMPACT && {
+  rm -f $1/jimpact4.csv
+  for f in $(ls -v $1/ada4); do
+    echo checking $f
+    cp $1/ada4/$f /tmp/jimpact.ada
+    timeout 60 ant -Dmodel.path=/tmp/jimpact.ada > /tmp/jimpact.log
+    result=$?
+    {
+      echo -n -e "$f\t"
+      if [ $result = 124 ]; then
+        echo -e "60000\t-2"
+      else
+        if cat /tmp/jimpact.log | grep 'NOT EMPTY' > /dev/null; then
+          echo -n -e "$(cat /tmp/jimpact.log | grep 'Time Cost' | sed 's/.*: //')\t"
+          echo 1
+        elif cat /tmp/jimpact.log | grep 'EMPTY' > /dev/null; then
+          echo -n -e "$(cat /tmp/jimpact.log | grep 'Time Cost' | sed 's/.*: //')\t"
+          echo 0
+        else
+          echo "60000\t-3"
+        fi
+      fi
+    } >> $1/jimpact4.csv
   done
 }
 

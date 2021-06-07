@@ -1,3 +1,6 @@
+{-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE QuasiQuotes #-}
+
 {-# LANGUAGE TupleSections #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TypeApplications #-}
@@ -9,11 +12,12 @@
 module Afa.Ops.Goblin where
 
 import Debug.Trace
+import Data.String.Interpolate
 
 import Data.Bifunctor
 import Data.Foldable
 import Data.Array.Base (unsafeWrite, unsafeAt, unsafeAccumArray)
-import GHC.Exts
+import GHC.Exts hiding (toList)
 import Control.Monad.Free
 import Data.Traversable
 import Data.Array.ST
@@ -35,10 +39,10 @@ import Afa.Lib (listArray')
 import Afa.Lib.LiftArray
 import Afa
 import Afa.Term.Mix
-import Afa.Term.Mix.Simplify (deUnary)
+import Afa.Term.Mix.Simplify (deUnary, canonicalizeWith)
 
 {-# INLINABLE goblinUntilFixpoint #-}
-goblinUntilFixpoint :: forall p. Show p => AfaUnswallowed p -> AfaUnswallowed p
+goblinUntilFixpoint :: forall p. (Show p, Eq p) => AfaUnswallowed p -> AfaUnswallowed p
 goblinUntilFixpoint afa = afa'{terms = unmarked} where
   marked = markBack afa
   closure afa = maybe afa (closure . removeUnused)$ goblin2 afa
@@ -99,17 +103,23 @@ newQDep :: (MonadTrans mt, Monad m) => x -> mt (NoConsT x m) Int
 newQDep = lift . nocons
 
 data QRef = QRef
-  { allBackUnderneath :: Bool
-  , qref :: Either (Bool, Int) Int  -- Left points to the transition of a state
-  , qcref :: Int
-  , unappliedBack :: Bool
-  }
+  Bool
+  (Either (Bool, Int) Int)  -- Left points to the transition of a state
+  Int
+  Bool
+  deriving (Eq, Show)
 
 data Mix
-  = PureA Int
+  = PureA (Bool, Int)
   | PureQ QRef
-  | OrMix QRef Int
-  | AndMix QRef Int
+  | OrMix QRef (Bool, Int)
+  | AndMix QRef (Bool, Int)
+  deriving (Eq, Show)
+
+getUnresolvedBack :: Mix -> Bool
+getUnresolvedBack (PureA (b, _)) = b
+getUnresolvedBack (PureQ (QRef _ _ _ b)) = b
+getUnresolvedBack _ = False
 
 {-# INLINABLE qac #-}
 qac
@@ -126,18 +136,18 @@ qac LTrue = do
   return (PureQ (QRef False (Right q) c False), c)
 qac (Predicate p) = do
   c <- newCombined$ Predicate p
-  return (PureA c, c)
+  return (PureA (False, c), c)
 qac (State bq@(back, q)) = do
   c <- newCombined$ State bq
   return (PureQ (QRef back (Left (back, q)) c False), c)
 qac (And ts)
   | null qs0 = do
-      c <- newCombined$ And$ fmap (\(b, (_, t)) -> (b, t)) ts
-      return (PureA c, c)
+      c <- newCombined$ And$ fmap (\(b, (m, t)) -> (b || getUnresolvedBack m, t)) ts
+      return (PureA (False, c), c)
   | null as =
       if back
       then do
-        c <- newCombined$ And$ fmap (\(b, (_, t)) -> (b, t)) ts
+        c <- newCombined$ And$ fmap (\(b, (m, t)) -> (b || getUnresolvedBack m, t)) ts
         q <- newQDep$ And$ NE.fromList qs0
         return (PureQ (QRef True (Right q) c False), c)
       else do
@@ -148,22 +158,22 @@ qac (And ts)
   | otherwise = do
       a <- case as of
         [a] -> return a
-        _:_:_ -> newCombined$ And$ NE.fromList$ map (False,) as
+        _:_:_ -> fmap (False,)$ newCombined$ And$ NE.fromList as
       case qsBoth of
         [(b, QRef _ q qc b2)] -> do
-          c <- newCombined$ And$ (b || b2, qc) :| [(False, a)]
+          c <- newCombined$ And$ (b || b2, qc) :| [a]
           return (AndMix (QRef back q qc (b || b2)) a, c)
         _:_:_
           | back -> do
              q <- newQDep$ And$ NE.fromList qs0
              qc <- newCombined$ And$ NE.fromList qcs
-             c <- newCombined$ And$ (False, qc) :| [(False, a)]
+             c <- newCombined$ And$ (False, qc) :| [a]
              return (AndMix (QRef True (Right q) qc False) a, c)
           | otherwise -> do
              q <- newQDep$ And$ NE.fromList qs0
              s <- newState q
              qc <- newCombined$ State (False, s)
-             c <- newCombined$ And$ (False, qc) :| [(False, a)]
+             c <- newCombined$ And$ (False, qc) :| [a]
              return (AndMix (QRef False (Right q) qc False) a, c)
   where
   lts = NE.toList ts
@@ -171,22 +181,22 @@ qac (And ts)
     PureQ qref -> Just qref
     AndMix qref _ -> Just qref
     _ -> Nothing
-  as = flip mapMaybe lts$ \(_, mix) -> case mix of
-    (PureA aref, _) -> Just aref
-    (OrMix _ _, cref) -> Just cref
-    (AndMix _ aref, _) -> Just aref
+  as = flip mapMaybe lts$ \(b, mix) -> case mix of
+    (PureA (b2, aref), _) -> Just (b || b2, aref)
+    (OrMix _ _, cref) -> Just (b, cref)
+    (AndMix _ (b2, aref), _) -> Just (b || b2, aref)
     _ -> Nothing
   qs0 = map (\(b, QRef _ q _ b2) -> (b || b2, q)) qsBoth
   qcs = map (\(b, QRef _ _ qc b2) -> (b || b2, qc)) qsBoth
   back = all (\(b, QRef qb _ _ _) -> b || qb) qsBoth
 qac (Or ts)
   | null qs0 = do
-      c <- newCombined$ Or$ fmap (\(b, (_, t)) -> (b, t)) ts
-      return (PureA c, c)
+      c <- newCombined$ Or$ fmap (\(b, (m, t)) -> (b || getUnresolvedBack m, t)) ts
+      return (PureA (False, c), c)
   | null as =
       if back
       then do
-        c <- newCombined$ Or$ fmap (\(b, (_, t)) -> (b, t)) ts
+        c <- newCombined$ Or$ fmap (\(b, (m, t)) -> (b || getUnresolvedBack m, t)) ts
         q <- newQDep$ Or$ NE.fromList qs0
         return (PureQ (QRef True (Right q) c False), c)
       else do
@@ -197,22 +207,22 @@ qac (Or ts)
   | otherwise = do
       a <- case as of
         [a] -> return a
-        _:_:_ -> newCombined$ Or$ NE.fromList$ map (False,) as
+        _:_:_ -> fmap (False,)$ newCombined$ Or$ NE.fromList as
       case qsBoth of
         [(b, QRef _ q qc b2)] -> do
-          c <- newCombined$ Or$ (b || b2, qc) :| [(False, a)]
+          c <- newCombined$ Or$ (b || b2, qc) :| [a]
           return (OrMix (QRef back q qc (b || b2)) a, c)
         _:_:_
           | back -> do
              q <- newQDep$ Or$ NE.fromList qs0
              qc <- newCombined$ Or$ NE.fromList qcs
-             c <- newCombined$ Or$ (False, qc) :| [(False, a)]
+             c <- newCombined$ Or$ (False, qc) :| [a]
              return (OrMix (QRef True (Right q) qc False) a, c)
           | otherwise -> do
              q <- newQDep$ Or$ NE.fromList qs0
              s <- newState q
              qc <- newCombined$ State (False, s)
-             c <- newCombined$ Or$ (False, qc) :| [(False, a)]
+             c <- newCombined$ Or$ (False, qc) :| [a]
              return (OrMix (QRef False (Right q) qc False) a, c)
   where
   lts = NE.toList ts
@@ -220,10 +230,10 @@ qac (Or ts)
     PureQ qref -> Just qref
     OrMix qref _ -> Just qref
     _ -> Nothing
-  as = flip mapMaybe lts$ \(_, mix) -> case mix of
-    (PureA aref, _) -> Just aref
-    (AndMix _ _, cref) -> Just cref
-    (OrMix _ aref, _) -> Just aref
+  as = flip mapMaybe lts$ \(b, mix) -> case mix of
+    (PureA (b2, aref), _) -> Just (b || b2, aref)
+    (AndMix _ _, cref) -> Just (b, cref)
+    (OrMix _ (b2, aref), _) -> Just (b || b2, aref)
     _ -> Nothing
   qs0 = map (\(b, QRef _ q _ b2) -> (b || b2, q)) qsBoth
   qcs = map (\(b, QRef _ _ qc b2) -> (b || b2, qc)) qsBoth
@@ -232,7 +242,7 @@ qac (Or ts)
 
 {-# INLINABLE extract #-}
 extract
-  :: Term p (Bool, Int) (Bool, (Mix, Int))
+  :: Show p => Term p (Bool, Int) (Bool, (Mix, Int))
   -> Free (Term p (Bool, Int)) (Bool, (Mix, Int))
 extract LTrue = Free LTrue
 extract (Predicate p) = Free (Predicate p)
@@ -246,20 +256,23 @@ extract (And ts) = case extracted of
     x@(_, (OrMix _ a, _)) -> (Just a, x)
     x@(_, (PureA a, _)) -> (Just a, x)
     x -> (Nothing, x)
-  grouped = groupWith fst$ sortWith fst candidates
+  grouped = groupWith (fmap snd . fst)$ sortWith (fmap snd . fst) candidates
   extracted = flip map grouped$ \case
     [x] -> Pure$ snd x
-    ((a, x):(map snd -> xs)) -> case a of
+    ((a, x):axs) -> case a of
       Nothing -> Free$ And$ NE.map Pure$ x:|xs
-      Just a -> case xs' of
+      Just (ab0, a) -> case xs' of
         Right xs' -> Free$ Or$
-          Pure (False, (PureA a, a))
-          :| [Free$ And$ NE.map Pure xs']
+          Pure (False, (PureA (ab, a), a)) :| [Free$ And$ NE.map Pure xs']
         Left x -> Pure x
         where
         xs' = for (x:|xs)$ \case
           (b, (OrMix q@(QRef _ _ qc _) _, _)) -> Right (b, (PureQ q, qc))
           x -> Left x
+        ab = or$ ab0 : map (fst . fromJust . fst) axs
+      where
+      xs = map snd axs
+
 extract (Or ts) = case extracted of
   [x] -> x
   (x:xs) -> Free$ Or$ x :| xs
@@ -272,22 +285,24 @@ extract (Or ts) = case extracted of
   grouped = groupWith fst$ sortWith fst candidates
   extracted = flip map grouped$ \case
     [x] -> Pure$ snd x
-    ((a, x):(map snd -> xs)) -> case a of
+    ((a, x):axs) -> case a of
       Nothing -> Free$ Or$ NE.map Pure$ x:|xs
-      Just a -> case xs' of
+      Just (ab0, a) -> case xs' of
         Right xs' -> Free$ And$
-          Pure (False, (PureA a, a))
-          :| [Free$ Or$ NE.map Pure xs']
+          Pure (False, (PureA (ab, a), a)) :| [Free$ Or$ NE.map Pure xs']
         Left x -> Pure x
         where
         xs' = for (x:|xs)$ \case
           (b, (AndMix q@(QRef _ _ qc _) _, _)) -> Right (b, (PureQ q, qc))
           x -> Left x
+        ab = or$ ab0 : map (fst . fromJust . fst) axs
+      where
+      xs = map snd axs
 
 
 {-# INLINABLE extractAndQac #-}
 extractAndQac
-  :: Monad m
+  :: (Monad m, Show p, Eq p)
   => Term p (Bool, Int) (Bool, (Mix, Int))
   -> NoConsT Int
        ( NoConsT (Term Void Void (Bool, Either (Bool, Int) Int))
@@ -299,10 +314,10 @@ extractAndQac (extract -> x) = fmap snd$ flip iterM x$
 
 
 {-# INLINABLE goblin2 #-}
-goblin2 :: forall p.
+goblin2 :: forall p. (Show p, Eq p) =>
      Afa (Array Int (Term p (Bool, Int) (Bool, Int))) (Array Int Int) Int
   -> Maybe (Afa (Array Int (Term p (Bool, Int) (Bool, Int))) (Array Int Int) Int)
-goblin2 (Afa terms states init) = do
+goblin2 afa@(Afa terms states init) = do
   (terms', states') <- runST action
   Just$ Afa (listArray' terms') (listArray' states') init
   where
@@ -325,7 +340,7 @@ goblin2 (Afa terms states init) = do
 
     return$ case statesL of
       [] -> Nothing
-      _ -> traceShow (length statesL)$ Just (aterms ++ qterms', elems mappedStates ++ map (+ qshift) statesL)
+      _ -> Just (aterms ++ qterms', elems mappedStates ++ map (+ qshift) statesL)
 
 
 {-# INLINABLE removeUnused #-}
@@ -386,3 +401,29 @@ markReachable (Afa terms states init) = (qmarks, termMarks)
     [ (q, ())
     | (i@(unsafeAt terms -> State (_, q)), True) <- zip [0..] (elems termMarks)
     ]
+
+toDotGoblin
+  :: Show p
+  => Bool
+  -> Afa (Array Int (Term p (Bool, Int) (Bool, Int))) (Array Int Int) Int
+  -> String
+toDotGoblin cyclic (Afa mterms states init) = unlines
+  [ "digraph afa {"
+  , "  graph [nodesep=0.2];"
+  , "  node [fontsize=20];"
+  , unlines [[i|  m#{j} -> #{c} [penwidth=#{if w then "3.0" else "1.0"}]|] | (j, t) <- assocs mterms, (w, c) <- mchilds t]
+  , unlines [[i|  q#{j} -> m#{q}|] | (j, q) <- assocs states]
+  , unlines [[i|  q#{j} [style=filled, fillcolor=#{if j == init then "yellow" else "pink"}]|] | (j, _) <- assocs states]
+  , unlines [[i|  m#{j} [style=filled, #{mstyle j t}]|] | (j, t) <- assocs mterms]
+  , "}"
+  ]
+  where
+  mchilds t = case t of
+    State (b, q) -> [(b, if cyclic then [i|q#{q}|] else [i|Q#{q}|])]
+    _ -> [(b, [i|m#{c}|]) | (b, c) <- toList t]
+
+  mstyle j (And _) = "shape=rectangle, fillcolor=lightgoldenrod1"
+  mstyle j (Or _) = "shape=rectangle, fillcolor=lightblue"
+  mstyle j (Predicate p) = [i|shape=rectangle, fillcolor=lightgrey, label=m#{j}p#{p}|]
+  mstyle j (State _) = "shape=rectangle, fillcolor=white"
+  mstyle j LTrue = "shape=rectangle, fillcolor=green"

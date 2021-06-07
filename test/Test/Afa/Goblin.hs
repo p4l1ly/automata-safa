@@ -12,7 +12,7 @@ import Data.List.NonEmpty (NonEmpty(..))
 import Afa
 import Afa.Lib
 import Afa.Term.Mix
-import Afa.Ops.Goblin
+import Afa.Ops.Goblin2
 import Afa.Ops.QMinCut
 
 tests =
@@ -38,25 +38,25 @@ tests =
       -- print$ goblin afa4 >>= goblin >>= goblin >>= goblin
       -- print$ goblin afa5
 
-      putStrLn ""
-      putStrLn "Goblin: afa6"
-      print$ markBack afa6
-      let afa6' = afa6{terms = markBack afa6}
-      print$ goblin2 afa6'
-      print$ goblin2 afa6' >>= goblin2
+      -- putStrLn ""
+      -- putStrLn "Goblin: afa6"
+      -- print$ markBack afa6
+      -- let afa6' = afa6{terms = markBack afa6}
+      -- print$ goblin2 afa6'
+      -- print$ goblin2 afa6' >>= goblin2
 
-      putStrLn ""
-      putStrLn "Goblin: afa7"
-      print$ markBack afa7
-      let afa7' = afa7{terms = markBack afa7}
-      print$ goblin2 afa7'
+      -- putStrLn ""
+      -- putStrLn "Goblin: afa7"
+      -- print$ markBack afa7
+      -- let afa7' = afa7{terms = markBack afa7}
+      -- print$ goblin2 afa7'
 
-      putStrLn ""
-      putStrLn "Goblin: afa8"
-      print$ markBack afa8
-      let afa8' = afa8{terms = markBack afa8}
-      print$ goblin2 afa8'
-      print$ goblin2 afa8' >>= goblin2
+      -- putStrLn ""
+      -- putStrLn "Goblin: afa8"
+      -- print$ markBack afa8
+      -- let afa8' = afa8{terms = markBack afa8}
+      -- print$ goblin2 afa8'
+      -- print$ goblin2 afa8' >>= goblin2
 
       putStrLn ""
       putStrLn "Goblin: afa9"
@@ -69,7 +69,8 @@ tests =
       let Right afa9'''' = simplifyAll afa9'''
       print afa9''''
 
-      let afa10' = simplifyAll$ goblinUntilFixpoint afa10
+      let guf = goblinUntilFixpoint afa10
+      let afa10' = simplifyAll guf
       assertEqual "Goblin: afa10 (extract)" afa10'$ Right Afa
         { terms = listArray'$ reverse
             [ Or$ 3 :| [4]

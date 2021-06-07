@@ -3,6 +3,11 @@
 {-# LANGUAGE TupleSections #-}
 {-# LANGUAGE TypeApplications #-}
 {-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE DerivingVia #-}
+{-# LANGUAGE DataKinds #-}
+{-# LANGUAGE StandaloneDeriving #-}
+{-# LANGUAGE FlexibleInstances #-}
+{-# LANGUAGE MultiParamTypeClasses #-}
 
 module Afa.Term.Mix.Simplify where
 
@@ -14,7 +19,7 @@ import Data.Foldable
 import Data.Traversable
 import Control.Arrow
 import Control.RecursionSchemes.Lens
-import Control.RecursionSchemes.Utils.HashCons
+import qualified Control.RecursionSchemes.Utils.HashCons2 as HCons
 import Control.Lens
 import Data.Fix
 import Data.Functor.Compose
@@ -29,6 +34,12 @@ import Data.List.NonEmpty (NonEmpty(..))
 import qualified Data.List.NonEmpty as NE
 import Data.Hashable
 import qualified Data.HashSet as S
+import Data.STRef
+import Control.Monad.Reader (ReaderT(..))
+import Capability.Reader
+import Capability.State
+import Capability.Source
+import Capability.Sink
 
 import Afa.Lib
   ( nonEmptyConcatMap
@@ -144,6 +155,16 @@ simplify project getR =
   skipJoin (Right (Left t)) = Right (Left t)
 
 
+type BuilderCtx s x = STRef s (HCons.ConsState x x)
+newtype Builder s x a = Builder { runBuilder :: BuilderCtx s x -> ST s a }
+  deriving (Functor, Applicative, Monad) via (ReaderT (BuilderCtx s x) (ST s))
+  deriving
+    ( HasState "cons" (HCons.ConsState x x)
+    , HasSource "cons" (HCons.ConsState x x)
+    , HasSink "cons" (HCons.ConsState x x)
+    ) via ReaderRef (MonadReader (ReaderT (BuilderCtx s x) (ST s)))
+blift = Builder . const
+
 {-# INLINABLE simplifyDag #-}
 simplifyDag :: forall p q. (Eq p, Hashable p, Eq q, Hashable q)
   => Array Int Any
@@ -152,54 +173,25 @@ simplifyDag :: forall p q. (Eq p, Hashable p, Eq q, Hashable q)
 simplifyDag gs (ixMap, arr) = runST action where
   action :: forall s. ST s (Array Int (Either Bool Int), Array Int (Term p q Int))
   action = do
-    (ixMap', tList) <- runHashConsT$ do
-      gs'M :: STArray s Int DumbCount <- lift$ unsafeThaw$ eixMappedGs2 arr ixMap gs
-      for_ [iend, iend - 1 .. ibeg]$ \i -> do
-        g <- lift$ unsafeRead gs'M i
+    hcref <- newSTRef HCons.consState0
+    ixMap' <- flip runBuilder hcref$ do
+      gs'M :: STArray s Int DumbCount <- blift$ unsafeThaw$ eixMappedGs2 arr ixMap gs
+      blift$ for_ [iend, iend - 1 .. ibeg]$ \i -> do
+        g <- unsafeRead gs'M i
         for (arr `unsafeAt` i)$ \ichild -> do
-          gchild <- lift$ unsafeRead gs'M ichild
-          lift$ unsafeWrite gs'M ichild$ gchild <> case g of Zero -> Zero; _ -> One
-
-      ixMap'<- lift$ unsafeNewArray_ @(STArray s) bnds
-      for_ [ibeg .. iend]$ \i -> do
-        g <- lift$ unsafeRead gs'M i
-        t <- for (arr `unsafeAt` i)$ lift . unsafeRead ixMap'
-        alg g t >>= lift . unsafeWrite ixMap' i
-
-      lift$ unsafeFreeze ixMap'
-    return (fmap (>>= unsafeAt @Array ixMap' >&> fst) ixMap, listArray' tList)
-
-  bnds@(ibeg, iend) = bounds arr
-
-  alg Zero _ = return$ error "accessing element without parents"
-  alg g t = case simplify (\(_, Fix (Compose (Compose gt))) -> gt) fst t of
-    Left b -> return$ Left b
-    Right (Left it) -> return$ Right it
-    Right (Right t) -> hashCons' (fmap fst t) <&> \i ->
-      Right (i, Fix$Compose$Compose (g, t))
-
-
--- more elegant but slower, don't know exactly why (probably some inlining + specialization issues)
-{-# INLINABLE simplifyDag2 #-}
-simplifyDag2 :: forall p q. (Eq p, Hashable p, Eq q, Hashable q)
-  => Array Int Any
-  -> (Array Int (Either Bool Int), Array Int (Term p q Int))
-  -> (Array Int (Either Bool Int), Array Int (Term p q Int))
-simplifyDag2 gs (ixMap, arr) = runST action where
-  action :: forall s. ST s (Array Int (Either Bool Int), Array Int (Term p q Int))
-  action = do
-    (ixMap', tList) <- runHashConsT$ do
-      gs'M :: LSTArray s Int DumbCount <- unsafeThaw$ eixMappedGs2 arr ixMap gs
-      (_, ixMap') <- hyloScanTFast @(LSTArray s) (return ())
-        (\g i -> for_ (arr `unsafeAt` i)$ \ichild -> do
           gchild <- unsafeRead gs'M ichild
           unsafeWrite gs'M ichild$ gchild <> case g of Zero -> Zero; _ -> One
-        )
-        (\ixMap' _ g i -> for (arr `unsafeAt` i) (unsafeRead ixMap') >>= alg g)
-        gs'M
 
-      unsafeFreeze ixMap'
-    return (fmap (>>= unsafeAt @Array ixMap' >&> fst) ixMap, listArray' tList)
+      ixMap'<- blift$ unsafeNewArray_ @(STArray s) bnds
+      for_ [ibeg .. iend]$ \i -> do
+        g <- blift$ unsafeRead gs'M i
+        t <- blift$ for (arr `unsafeAt` i)$ unsafeRead ixMap'
+        alg g t >>= blift . unsafeWrite ixMap' i
+
+      blift$ unsafeFreeze ixMap'
+
+    (tListSize, tList) <- HCons.consResult <$> readSTRef hcref
+    return (fmap (>>= unsafeAt @Array ixMap' >&> fst) ixMap, listArray (0, tListSize - 1) tList)
 
   bnds@(ibeg, iend) = bounds arr
 
@@ -207,8 +199,43 @@ simplifyDag2 gs (ixMap, arr) = runST action where
   alg g t = case simplify (\(_, Fix (Compose (Compose gt))) -> gt) fst t of
     Left b -> return$ Left b
     Right (Left it) -> return$ Right it
-    Right (Right t) -> hashCons' (fmap fst t) <&> \i ->
+    Right (Right t) -> HCons.cons @"cons" (fmap fst t) <&> \i ->
       Right (i, Fix$Compose$Compose (g, t))
+
+
+
+
+
+-- -- more elegant but slower, don't know exactly why (probably some inlining + specialization issues)
+-- {-# INLINABLE simplifyDag2 #-}
+-- simplifyDag2 :: forall p q. (Eq p, Hashable p, Eq q, Hashable q)
+--   => Array Int Any
+--   -> (Array Int (Either Bool Int), Array Int (Term p q Int))
+--   -> (Array Int (Either Bool Int), Array Int (Term p q Int))
+-- simplifyDag2 gs (ixMap, arr) = runST action where
+--   action :: forall s. ST s (Array Int (Either Bool Int), Array Int (Term p q Int))
+--   action = do
+--     (ixMap', tList) <- runHashConsT$ do
+--       gs'M :: LSTArray s Int DumbCount <- unsafeThaw$ eixMappedGs2 arr ixMap gs
+--       (_, ixMap') <- hyloScanTFast @(LSTArray s) (return ())
+--         (\g i -> for_ (arr `unsafeAt` i)$ \ichild -> do
+--           gchild <- unsafeRead gs'M ichild
+--           unsafeWrite gs'M ichild$ gchild <> case g of Zero -> Zero; _ -> One
+--         )
+--         (\ixMap' _ g i -> for (arr `unsafeAt` i) (unsafeRead ixMap') >>= alg g)
+--         gs'M
+-- 
+--       unsafeFreeze ixMap'
+--     return (fmap (>>= unsafeAt @Array ixMap' >&> fst) ixMap, listArray' tList)
+-- 
+--   bnds@(ibeg, iend) = bounds arr
+-- 
+--   alg Zero _ = return$ error "accessing element without parents"
+--   alg g t = case simplify (\(_, Fix (Compose (Compose gt))) -> gt) fst t of
+--     Left b -> return$ Left b
+--     Right (Left it) -> return$ Right it
+--     Right (Right t) -> hashCons' (fmap fst t) <&> \i ->
+--       Right (i, Fix$Compose$Compose (g, t))
 
 
 {-# INLINABLE simplifyDagUntilFixpoint #-}

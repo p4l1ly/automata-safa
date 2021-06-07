@@ -3,6 +3,12 @@
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TupleSections #-}
 {-# LANGUAGE TypeApplications #-}
+{-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE DerivingVia #-}
+{-# LANGUAGE DataKinds #-}
+{-# LANGUAGE StandaloneDeriving #-}
+{-# LANGUAGE FlexibleInstances #-}
+{-# LANGUAGE MultiParamTypeClasses #-}
 
 module Afa.Term.Bool.Simplify where
 
@@ -14,7 +20,7 @@ import Data.Traversable
 import Control.Monad.Free
 import Control.Arrow
 import Control.RecursionSchemes.Lens
-import Control.RecursionSchemes.Utils.HashCons
+import qualified Control.RecursionSchemes.Utils.HashCons2 as HCons
 import Control.Lens
 import Data.Fix
 import Data.Functor.Compose
@@ -29,6 +35,12 @@ import qualified Data.List.NonEmpty as NE
 import Data.Hashable
 import qualified Data.HashSet as S
 import qualified Data.HashMap.Strict as HM
+import Data.STRef
+import Control.Monad.Reader (ReaderT(..))
+import Capability.Reader hiding (Pos)
+import Capability.State hiding (Pos)
+import Capability.Source hiding (Pos)
+import Capability.Sink hiding (Pos)
 
 import Afa.Lib
   ( nonEmptyConcatMap
@@ -225,6 +237,17 @@ negRefSign Pos = Neg
 negRefSign x = x
 
 
+type BuilderCtx s x = STRef s (HCons.ConsState x x)
+newtype Builder s x a = Builder { runBuilder :: BuilderCtx s x -> ST s a }
+  deriving (Functor, Applicative, Monad) via (ReaderT (BuilderCtx s x) (ST s))
+  deriving
+    ( HasState "cons" (HCons.ConsState x x)
+    , HasSource "cons" (HCons.ConsState x x)
+    , HasSink "cons" (HCons.ConsState x x)
+    ) via ReaderRef (MonadReader (ReaderT (BuilderCtx s x) (ST s)))
+blift = Builder . const
+
+
 {-# INLINABLE simplifyDag #-}
 simplifyDag :: forall p. (Eq p, Hashable p)
   => Array Int Any
@@ -233,18 +256,19 @@ simplifyDag :: forall p. (Eq p, Hashable p)
 simplifyDag gs (ixMap, arr) = runST action where
   action :: forall s. ST s (Array Int (Either Bool Int), Array Int (Term p Int))
   action = do
-    (ixMap', tList) <- runHashConsT$ do
-      gs'M :: STArray s Int (DumbCount, RefSign) <- lift$ unsafeThaw gs''
-      for_ [iend, iend - 1 .. ibeg]$ \i -> do
-        (count, sgn) <- lift$ unsafeRead gs'M i
+    hcref <- newSTRef HCons.consState0
+    ixMap' <- flip runBuilder hcref$ do
+      gs'M :: STArray s Int (DumbCount, RefSign) <- blift$ unsafeThaw gs''
+      blift$ for_ [iend, iend - 1 .. ibeg]$ \i -> do
+        (count, sgn) <- unsafeRead gs'M i
         let node = arr `unsafeAt` i
         let count' = case count of Zero -> Zero; _ -> One
         let sgn' = case node of Not _ -> negRefSign sgn; _ -> sgn
         for (arr `unsafeAt` i)$ \ichild -> do
-          gchild <- lift$ unsafeRead gs'M ichild
-          lift$ unsafeWrite gs'M ichild$ gchild <> (count', sgn')
+          gchild <- unsafeRead gs'M ichild
+          unsafeWrite gs'M ichild$ gchild <> (count', sgn')
 
-      gs3 :: Array Int (DumbCount, RefSign) <- lift$ unsafeFreeze gs'M
+      gs3 :: Array Int (DumbCount, RefSign) <- blift$ unsafeFreeze gs'M
       -- WARNING, TODO: this can be applied only for variable predicates
       let predicateSigns =
             HM.fromListWith (<>)
@@ -258,13 +282,15 @@ simplifyDag gs (ixMap, arr) = runST action where
               _ -> x
             x -> x
 
-      ixMap'<- lift$ unsafeNewArray_ @(STArray s) bnds
+      ixMap'<- blift$ unsafeNewArray_ @(STArray s) bnds
       for_ [ibeg .. iend]$ \i -> do
-        t <- for (arr' `unsafeAt` i)$ lift . unsafeRead ixMap'
-        alg (fst$ gs3 `unsafeAt` i) t >>= lift . unsafeWrite ixMap' i
+        t <- blift$ for (arr' `unsafeAt` i)$ unsafeRead ixMap'
+        alg (fst$ gs3 `unsafeAt` i) t >>= blift . unsafeWrite ixMap' i
 
-      lift$ unsafeFreeze ixMap'
-    return (fmap (>>= unsafeAt @Array ixMap' >&> fst) ixMap, listArray' tList)
+      blift$ unsafeFreeze ixMap'
+
+    (tListSize, tList) <- HCons.consResult <$> readSTRef hcref
+    return (fmap (>>= unsafeAt @Array ixMap' >&> fst) ixMap, listArray (0, tListSize - 1) tList)
 
   gs' = eixMappedGs2 arr ixMap gs
   gs'' = gs' <&> \case Zero -> (Zero, NoRefSign); x -> (x, Pos)
@@ -275,7 +301,7 @@ simplifyDag gs (ixMap, arr) = runST action where
     Left b -> return$ Left b
     Right x -> fmap Right$ flip iterM x$ \t -> do
       t' <- sequence t
-      i <- hashCons' (fmap fst t')
+      i <- HCons.cons @"cons" (fmap fst t')
       return (i, Fix$Compose$Compose (count, t'))
     where descend (_, Fix (Compose (Compose gt))) = gt
 

@@ -12,7 +12,7 @@ import Data.Hashable
 import Data.Array.Base (numElements)
 import Afa (Afa(..))
 import Afa.Bool
-import Afa.Ops.Goblin
+import Afa.Ops.Goblin2
 import Afa.Ops.QMinCut
 
 mincutUntilFixpoint :: (Eq p, Hashable p, Show p) =>
@@ -52,4 +52,4 @@ simpMincut :: (Eq p, Hashable p, Show p)
   => BoolAfaUnswallowed p -> Either Bool (BoolAfaUnswallowed p)
 simpMincut bafa = do
   bafa@(BoolAfa _ afa) <- simplifyAll bafa
-  simplifyAll bafa{afa = qminCut afa}
+  mincutUntilFixpoint bafa
