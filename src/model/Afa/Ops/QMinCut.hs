@@ -26,18 +26,19 @@ import Afa.Lib.LiftArray
 qminCut :: forall p. AfaUnswallowed p -> AfaUnswallowed p
 qminCut (Afa terms states init) = Afa terms' states''' init''
   where
-  sinks = map fst$ ($ assocs terms)$ filter$ \(_, x) -> case x of
+  initTerm = states!init
+  sinks = map fst$ ($ assocs terms)$ filter$ \(i, x) -> case x of
     Predicate _ -> True
     State _ -> True
     LTrue -> True
-    _ -> False
+    _ -> i == initTerm
   sources = map head$ group$ sort$ elems states
   states' = minCut2Lowest terms sources sinks
 
   ((init', states''), listArray' -> terms') = runST topToBottom
   (init'', states''') = case terms' `unsafeAt` init' of
     State q -> (q, listArray' states'')
-    _ -> let qs = listArray'$ states'' ++ [init'] in (snd$ bounds qs, qs)
+    _ -> error "init did not remain" -- let qs = listArray'$ states'' ++ [init'] in (snd$ bounds qs, qs)
 
   topToBottom :: forall s. ST s ((Int, [Int]), [Term p Int Int])
   topToBottom = runNoConsT$ do

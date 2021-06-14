@@ -2,20 +2,14 @@
 
 # m6: zsh reconvert ../data/m6  480.37s user 7.20s system 99% cpu 8:07.94 total
 
-# afaSimpGoblin4 \
-# afaCnf4 \
-# sepDelaying4 \
-# afaSimpMincut5 \
-# afaCnf5 \
-# sepDelaying5 \
-# afaCnf0 \
-# sepDelaying0 \
+TIMEOUT=15
+TIMEOUT_MS=15000
 
 READAFA="afa"
 GENERATE=true
 MODELCHECK=true
 
-FROM_LTL=true
+FROM_LTL=false
 FROM_STRANGER=false
 BASIC=true
 GOBLIN3=true
@@ -26,7 +20,7 @@ ZERO=false
 
 SUCCINCT=true
 AFASAT=true
-AFASAT_CLAUSAL=true
+AFASAT_CLAUSAL=false
 DANTONI=true
 JIMPACT=true
 ABC=true
@@ -213,7 +207,7 @@ $ZERO && $ABC && {
   rm -f $1/abc0.csv
   for f in $(ls -v $1/aig0); do
     echo checking $f
-    result=$(../abc/build/abc -c "read_aiger $1/aig0/$f; pdr -T 60" | grep -E '^Property|^Output')
+    result=$(../abc/build/abc -c "read_aiger $1/aig0/$f; pdr -T $TIMEOUT" | grep -E '^Property|^Output')
     {
       echo -n -e "$f\t"
       echo -n -e "$(($(echo $result | sed -r 's/.*Time =\s+([^ ]+).*/\1/')*1000))\t"
@@ -232,7 +226,7 @@ $NRAND && $BASIC && $ABC && {
   rm -f $1/abc.csv
   for f in $(ls -v $1/aig); do
     echo checking $f
-    result=$(../abc/build/abc -c "read_aiger $1/aig/$f; pdr -T 60" | grep -E '^Property|^Output')
+    result=$(../abc/build/abc -c "read_aiger $1/aig/$f; pdr -T $TIMEOUT" | grep -E '^Property|^Output')
     {
       echo -n -e "$f\t"
       echo -n -e "$(($(echo $result | sed -r 's/.*Time =\s+([^ ]+).*/\1/')*1000))\t"
@@ -251,7 +245,7 @@ $NRAND && $GOBLIN3 && $ABC && {
   rm -f $1/abc3.csv
   for f in $(ls -v $1/aig3); do
     echo checking $f
-    result=$(../abc/build/abc -c "read_aiger $1/aig3/$f; pdr -T 60" | grep -E '^Property|^Output')
+    result=$(../abc/build/abc -c "read_aiger $1/aig3/$f; pdr -T $TIMEOUT" | grep -E '^Property|^Output')
     {
       echo -n -e "$f\t"
       echo -n -e "$(($(echo $result | sed -r 's/.*Time =\s+([^ ]+).*/\1/')*1000))\t"
@@ -270,7 +264,7 @@ $NRAND && $GOBLIN4 && $ABC && {
   rm -f $1/abc4.csv
   for f in $(ls -v $1/aig4); do
     echo checking $f
-    result=$(../abc/build/abc -c "read_aiger $1/aig4/$f; pdr -T 60" | grep -E '^Property|^Output')
+    result=$(../abc/build/abc -c "read_aiger $1/aig4/$f; pdr -T $TIMEOUT" | grep -E '^Property|^Output')
     {
       echo -n -e "$f\t"
       echo -n -e "$(($(echo $result | sed -r 's/.*Time =\s+([^ ]+).*/\1/')*1000))\t"
@@ -289,7 +283,7 @@ $NRAND && $BASIC && $ABC_REV && {
   rm -f $1/abcReverse.csv
   for f in $(ls -v $1/aigReverse); do
     echo checking $f
-    result=$(../abc/build/abc -c "read_aiger $1/aigReverse/$f; pdr -T 60" | grep -E '^Property|^Output')
+    result=$(../abc/build/abc -c "read_aiger $1/aigReverse/$f; pdr -T $TIMEOUT" | grep -E '^Property|^Output')
     {
       echo -n -e "$f\t"
       echo -n -e "$(($(echo $result | sed -r 's/.*Time =\s+([^ ]+).*/\1/')*1000))\t"
@@ -308,7 +302,7 @@ $NRAND && $GOBLIN3 && $ABC_REV && {
   rm -f $1/abcReverse3.csv
   for f in $(ls -v $1/aigReverse3); do
     echo checking $f
-    result=$(../abc/build/abc -c "read_aiger $1/aigReverse3/$f; pdr -T 60" | grep -E '^Property|^Output')
+    result=$(../abc/build/abc -c "read_aiger $1/aigReverse3/$f; pdr -T $TIMEOUT" | grep -E '^Property|^Output')
     {
       echo -n -e "$f\t"
       echo -n -e "$(($(echo $result | sed -r 's/.*Time =\s+([^ ]+).*/\1/')*1000))\t"
@@ -327,7 +321,7 @@ $NRAND && $GOBLIN4 && $ABC_REV && {
   rm -f $1/abcReverse4.csv
   for f in $(ls -v $1/aigReverse4); do
     echo checking $f
-    result=$(../abc/build/abc -c "read_aiger $1/aigReverse4/$f; pdr -T 60" | grep -E '^Property|^Output')
+    result=$(../abc/build/abc -c "read_aiger $1/aigReverse4/$f; pdr -T $TIMEOUT" | grep -E '^Property|^Output')
     {
       echo -n -e "$f\t"
       echo -n -e "$(($(echo $result | sed -r 's/.*Time =\s+([^ ]+).*/\1/')*1000))\t"
@@ -345,7 +339,7 @@ $NRAND && $GOBLIN4 && $ABC_REV && {
 $RAND && $BASIC && $ABC && {
   rm -f $1/abcRand.csv
   for f in $(ls -v $1/aigRand); do
-    result=$(../abc/build/abc -c "read_aiger $1/aigRand/$f; pdr -T 60" | grep -E '^Property|^Output')
+    result=$(../abc/build/abc -c "read_aiger $1/aigRand/$f; pdr -T $TIMEOUT" | grep -E '^Property|^Output')
     {
       echo -n -e "$f\t"
       echo -n -e "$(($(echo $result | sed -r 's/.*Time =\s+([^ ]+).*/\1/')*1000))\t"
@@ -363,7 +357,7 @@ $RAND && $BASIC && $ABC && {
 $RAND && $GOBLIN3 && $ABC && {
   rm -f $1/abcRand3.csv
   for f in $(ls -v $1/aigRand3); do
-    result=$(../abc/build/abc -c "read_aiger $1/aigRand3/$f; pdr -T 60" | grep -E '^Property|^Output')
+    result=$(../abc/build/abc -c "read_aiger $1/aigRand3/$f; pdr -T $TIMEOUT" | grep -E '^Property|^Output')
     {
       echo -n -e "$f\t"
       echo -n -e "$(($(echo $result | sed -r 's/.*Time =\s+([^ ]+).*/\1/')*1000))\t"
@@ -381,7 +375,7 @@ $RAND && $GOBLIN3 && $ABC && {
 $RAND && $BASIC && $ABC_REV && {
   rm -f $1/abcReverseRand.csv
   for f in $(ls -v $1/aigReverseRand); do
-    result=$(../abc/build/abc -c "read_aiger $1/aigReverseRand/$f; pdr -T 60" | grep -E '^Property|^Output')
+    result=$(../abc/build/abc -c "read_aiger $1/aigReverseRand/$f; pdr -T $TIMEOUT" | grep -E '^Property|^Output')
     {
       echo -n -e "$f\t"
       echo -n -e "$(($(echo $result | sed -r 's/.*Time =\s+([^ ]+).*/\1/')*1000))\t"
@@ -399,7 +393,7 @@ $RAND && $BASIC && $ABC_REV && {
 $RAND && $GOBLIN3 && $ABC_REV && {
   rm -f $1/abcReverseRand3.csv
   for f in $(ls -v $1/aigReverseRand3); do
-    result=$(../abc/build/abc -c "read_aiger $1/aigReverseRand3/$f; pdr -T 60" | grep -E '^Property|^Output')
+    result=$(../abc/build/abc -c "read_aiger $1/aigReverseRand3/$f; pdr -T $TIMEOUT" | grep -E '^Property|^Output')
     {
       echo -n -e "$f\t"
       echo -n -e "$(($(echo $result | sed -r 's/.*Time =\s+([^ ]+).*/\1/')*1000))\t"
@@ -437,12 +431,12 @@ $NRAND && $BASIC && $JIMPACT && {
   for f in $(ls -v $1/ada); do
     echo checking $f
     cp $1/ada/$f /tmp/jimpact.ada
-    timeout 60 ant -Dmodel.path=/tmp/jimpact.ada > /tmp/jimpact.log
+    timeout $TIMEOUT ant -Dmodel.path=/tmp/jimpact.ada > /tmp/jimpact.log
     result=$?
     {
       echo -n -e "$f\t"
       if [ $result = 124 ]; then
-        echo -e "60000\t-2"
+        echo -e "$TIMEOUT_MS\t-2"
       else
         if cat /tmp/jimpact.log | grep 'NOT EMPTY' > /dev/null; then
           echo -n -e "$(cat /tmp/jimpact.log | grep 'Time Cost' | sed 's/.*: //')\t"
@@ -451,7 +445,7 @@ $NRAND && $BASIC && $JIMPACT && {
           echo -n -e "$(cat /tmp/jimpact.log | grep 'Time Cost' | sed 's/.*: //')\t"
           echo 0
         else
-          echo "60000\t-3"
+          echo "$TIMEOUT_MS\t-3"
         fi
       fi
     } >> $1/jimpact.csv
@@ -463,12 +457,12 @@ $NRAND && $GOBLIN3 && $JIMPACT && {
   for f in $(ls -v $1/ada3); do
     echo checking $f
     cp $1/ada3/$f /tmp/jimpact.ada
-    timeout 60 ant -Dmodel.path=/tmp/jimpact.ada > /tmp/jimpact.log
+    timeout $TIMEOUT ant -Dmodel.path=/tmp/jimpact.ada > /tmp/jimpact.log
     result=$?
     {
       echo -n -e "$f\t"
       if [ $result = 124 ]; then
-        echo -e "60000\t-2"
+        echo -e "$TIMEOUT_MS\t-2"
       else
         if cat /tmp/jimpact.log | grep 'NOT EMPTY' > /dev/null; then
           echo -n -e "$(cat /tmp/jimpact.log | grep 'Time Cost' | sed 's/.*: //')\t"
@@ -477,7 +471,7 @@ $NRAND && $GOBLIN3 && $JIMPACT && {
           echo -n -e "$(cat /tmp/jimpact.log | grep 'Time Cost' | sed 's/.*: //')\t"
           echo 0
         else
-          echo "60000\t-3"
+          echo "$TIMEOUT_MS\t-3"
         fi
       fi
     } >> $1/jimpact3.csv
@@ -489,12 +483,12 @@ $NRAND && $GOBLIN4 && $JIMPACT && {
   for f in $(ls -v $1/ada4); do
     echo checking $f
     cp $1/ada4/$f /tmp/jimpact.ada
-    timeout 60 ant -Dmodel.path=/tmp/jimpact.ada > /tmp/jimpact.log
+    timeout $TIMEOUT ant -Dmodel.path=/tmp/jimpact.ada > /tmp/jimpact.log
     result=$?
     {
       echo -n -e "$f\t"
       if [ $result = 124 ]; then
-        echo -e "60000\t-2"
+        echo -e "$TIMEOUT_MS\t-2"
       else
         if cat /tmp/jimpact.log | grep 'NOT EMPTY' > /dev/null; then
           echo -n -e "$(cat /tmp/jimpact.log | grep 'Time Cost' | sed 's/.*: //')\t"
@@ -503,7 +497,7 @@ $NRAND && $GOBLIN4 && $JIMPACT && {
           echo -n -e "$(cat /tmp/jimpact.log | grep 'Time Cost' | sed 's/.*: //')\t"
           echo 0
         else
-          echo "60000\t-3"
+          echo "$TIMEOUT_MS\t-3"
         fi
       fi
     } >> $1/jimpact4.csv
@@ -514,12 +508,12 @@ $RAND && $BASIC && $JIMPACT && {
   rm -f $1/jimpactRand.csv
   for f in $(ls -v $1/adaRand); do
     cp $1/adaRand/$f /tmp/jimpact.ada
-    timeout 60 ant -Dmodel.path=/tmp/jimpact.ada > /tmp/jimpact.log
+    timeout $TIMEOUT ant -Dmodel.path=/tmp/jimpact.ada > /tmp/jimpact.log
     result=$?
     {
       echo -n -e "$f\t"
       if [ $result = 124 ]; then
-        echo -e "60000\t-2"
+        echo -e "$TIMEOUT_MS\t-2"
       else
         if cat /tmp/jimpact.log | grep 'NOT EMPTY' > /dev/null; then
           echo -n -e "$(cat /tmp/jimpact.log | grep 'Time Cost' | sed 's/.*: //')\t"
@@ -528,7 +522,7 @@ $RAND && $BASIC && $JIMPACT && {
           echo -n -e "$(cat /tmp/jimpact.log | grep 'Time Cost' | sed 's/.*: //')\t"
           echo 0
         else
-          echo "60000\t-3"
+          echo "$TIMEOUT_MS\t-3"
         fi
       fi
     } >> $1/jimpactRand.csv
@@ -539,12 +533,12 @@ $RAND && $GOBLIN3 && $JIMPACT && {
   rm -f $1/jimpactRand3.csv
   for f in $(ls -v $1/adaRand3); do
     cp $1/adaRand3/$f /tmp/jimpact.ada
-    timeout 60 ant -Dmodel.path=/tmp/jimpact.ada > /tmp/jimpact.log
+    timeout $TIMEOUT ant -Dmodel.path=/tmp/jimpact.ada > /tmp/jimpact.log
     result=$?
     {
       echo -n -e "$f\t"
       if [ $result = 124 ]; then
-        echo -e "60000\t-2"
+        echo -e "$TIMEOUT_MS\t-2"
       else
         if cat /tmp/jimpact.log | grep 'NOT EMPTY' > /dev/null; then
           echo -n -e "$(cat /tmp/jimpact.log | grep 'Time Cost' | sed 's/.*: //')\t"
@@ -553,7 +547,7 @@ $RAND && $GOBLIN3 && $JIMPACT && {
           echo -n -e "$(cat /tmp/jimpact.log | grep 'Time Cost' | sed 's/.*: //')\t"
           echo 0
         else
-          echo "60000\t-3"
+          echo "$TIMEOUT_MS\t-3"
         fi
       fi
     } >> $1/jimpactRand3.csv

@@ -411,12 +411,12 @@ goblin2 afa@(Afa terms states init) = Afa terms' states' init
   action :: forall s. ST s (Array Int (Term p Int Int), Array Int Int)
   action = do
     qconsV <- newSTRef$ QCons.ConsState (numElements states) (HM.fromList$ map swap$ assocs states) (reverse$ elems states)
-    tconsV <- newSTRef$ TCons.consState0
+    tconsV <- newSTRef TCons.consState0
     algDomainV <- runIdentityT (GArray.new (numElements terms * 2)) >>= newSTRef
     wasNewQV <- newSTRef False
 
     inTarr <- runIdentityT$ GArray.new (numElements terms * 2)
-    inTarr <- runIdentityT$ foldM (\arr t -> GArray.append t arr) inTarr (elems terms)
+    inTarr <- runIdentityT$ foldM (flip GArray.append) inTarr (elems terms)
     inTconsV <- newSTRef$ InTCons.ConsState (HM.fromList$ map swap$ assocs terms) inTarr
 
     let ctx = BuilderCtx qconsV inTconsV tconsV algDomainV wasNewQV
@@ -437,7 +437,7 @@ goblin2 afa@(Afa terms states init) = Afa terms' states' init
       InTCons.ConsState _ (GrowableArray n arr) <- get @"inTcons"
       when (i < n)$ do
         -- when (i `mod` 100 == 0)$ traceShow i$ return ()
-        if (i == stageEnd)
+        if i == stageEnd
           then do
             wasNewQ <- get @"wasNewQ"
             when wasNewQ$ do
