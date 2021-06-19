@@ -52,7 +52,7 @@ reorderStates' afa@Afa{qterms, states, initState} =
   A.Afa qterms' states' initState' = A.reorderStates (A.Afa qterms states initState)
 
 simplify :: forall p. (Eq p, Hashable p) => Afa p -> Either Bool (Afa p)
-simplify Afa{aterms, qterms, states, initState} = do
+simplify afa@Afa{aterms, qterms, states, initState} = do
   (qterms2, states2, init2) <- simplifyStatesAndQTerms qIxMap qterms' states' initState
   let states2' = fmap absorb states2
 

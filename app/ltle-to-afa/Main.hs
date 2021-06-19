@@ -193,6 +193,11 @@ optParser = Opts
       (break (== ':') -> ("afa0", ':':outdir)) ->
         Right$ repeat$ \i bafa ->
           Right$ afaWriter0 outdir i bafa
+      (break (== ':') -> ("cnfafa0", ':':outdir)) ->
+        Right$ repeat$ \i bafa ->
+          Right$ (afaCosts bafa,)$
+            withFile (outdir ++ "/" ++ i) WriteMode$ hWriteCnfAfa$
+              tseytin'$ hashConsBoolAfa$ replaceLits bafa
       (break (== ':') -> ("afaHashCons", ':':outdir)) ->
         Right$ repeat$ \i bafa ->
           Right$ afaWriter0 outdir i$ hashConsBoolAfa bafa
@@ -238,6 +243,9 @@ optParser = Opts
       (break (== ':') -> ("smvReverse", ':':outdir)) ->
         Right$ repeat$ \i bafa ->
           Right$ (afaCosts bafa,)$ TIO.writeFile (outdir ++ "/" ++ i)$ toSmvReverse bafa
+      (break (== ':') -> ("smvReverseAssign", ':':outdir)) ->
+        Right$ repeat$ \i bafa ->
+          Right$ (afaCosts bafa,)$ TIO.writeFile (outdir ++ "/" ++ i)$ toSmvReverseAssign bafa
       (break (== ':') -> ("dot", ':':outdir)) ->
         Right$ repeat$ \i bafa ->
           Right$ (afaCosts bafa,)$ TIO.writeFile (outdir ++ "/" ++ i)$ toDot True$

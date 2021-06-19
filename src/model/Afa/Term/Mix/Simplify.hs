@@ -1,4 +1,5 @@
 {-# LANGUAGE LambdaCase #-}
+{-# LANGUAGE PartialTypeSignatures #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TupleSections #-}
 {-# LANGUAGE TypeApplications #-}
@@ -13,11 +14,13 @@ module Afa.Term.Mix.Simplify where
 
 import Debug.Trace
 
+import Data.Bifunctor
+import Control.Monad.Free
 import Data.Array.Base (unsafeRead, unsafeWrite, unsafeNewArray_, unsafeAt)
 import Control.Monad.Trans
 import Data.Foldable
 import Data.Traversable
-import Control.Arrow
+import Control.Arrow hiding (first)
 import Control.RecursionSchemes.Lens
 import qualified Control.RecursionSchemes.Utils.HashCons2 as HCons
 import Control.Lens
@@ -154,6 +157,23 @@ simplify project getR =
   skipJoin (Left b) = Left b
   skipJoin (Right (Left t)) = Right (Left t)
 
+simplify' :: (Eq r, Hashable r, Ord r)
+  => (t -> (DumbCount, Term p q t))
+  -> (t -> r)
+  -> Term p q (Either Bool t) -> Either Bool (Free (Term p q) t)
+simplify' project getR = simplify project getR >&> \case
+  Left t -> Pure t
+  Right term -> Free$ term <&> Pure
+
+share :: (Eq r, Hashable r, Ord r)
+  => (t -> (DumbCount, Term p q t))
+  -> (t -> r)
+  -> Term p q (Either Bool t) -> Either Bool (Free (Term p q) t)
+share project getR t = fmap Free$ for t$ \case
+  Left False -> Left False
+  Left True -> Right$ Free LTrue
+  Right t -> Right$ Pure t
+
 
 type BuilderCtx s x = STRef s (HCons.ConsState x x)
 newtype Builder s x a = Builder { runBuilder :: BuilderCtx s x -> ST s a }
@@ -203,7 +223,86 @@ simplifyDag gs (ixMap, arr) = runST action where
       Right (i, Fix$Compose$Compose (g, t))
 
 
+{-# INLINABLE simplifyDag3 #-}
+simplifyDag3 :: forall p q. (Eq p, Hashable p, Eq q, Hashable q)
+  => Array Int Any
+  -> (Array Int (Either Bool Int), Array Int (Term p q Int))
+  -> (Array Int (Either Bool Int), Array Int (Term p q Int))
+simplifyDag3 gs (ixMap, arr) = runST action where
+  action :: forall s. ST s (Array Int (Either Bool Int), Array Int (Term p q Int))
+  action = do
+    hcref <- newSTRef HCons.consState0
+    ixMap' <- flip runBuilder hcref$ do
+      gs'M :: STArray s Int DumbCount <- blift$ unsafeThaw$ eixMappedGs2 arr ixMap gs
+      blift$ for_ [iend, iend - 1 .. ibeg]$ \i -> do
+        g <- unsafeRead gs'M i
+        for (arr `unsafeAt` i)$ \ichild -> do
+          gchild <- unsafeRead gs'M ichild
+          unsafeWrite gs'M ichild$ gchild <> case g of Zero -> Zero; _ -> One
 
+      ixMap' <- blift$ unsafeNewArray_ @(STArray s) bnds
+      for_ [ibeg .. iend]$ \i -> do
+        g <- blift$ unsafeRead gs'M i
+        t <- blift$ for (arr `unsafeAt` i)$ fmap (first fst) . unsafeRead ixMap'
+        alg g t >>= blift . unsafeWrite ixMap' i
+
+      fmap (fmap keepLits)$ blift$ unsafeFreeze ixMap'
+
+    (tListSize, tList) <- HCons.consResult <$> readSTRef hcref
+    return (fmap (>>= unsafeAt @Array ixMap' >&> fst) ixMap, listArray (0, tListSize - 1) tList)
+
+  keepLits (Left (True, i)) = Right (i, undefined)
+  keepLits (Left (False, _)) = Left False
+  keepLits (Right t) = Right t
+
+  bnds@(ibeg, iend) = bounds arr
+
+  alg Zero _ = return$ error "accessing element without parents"
+  alg g t = case simplify (\(_, Fix (Compose (Compose gt))) -> gt) fst t of
+    Left True -> HCons.cons @"cons" LTrue <&> Left . (True,)
+    Left b -> return$ Left (b, undefined)
+    Right (Left it) -> return$ Right it
+    Right (Right t) -> HCons.cons @"cons" (fmap fst t) <&> \i ->
+      Right (i, Fix$Compose$Compose (g, t))
+
+
+{-# INLINABLE simplifyDag4 #-}
+simplifyDag4 :: forall p q. (Eq p, Hashable p, Eq q, Hashable q)
+  => Array Int Any
+  -> (Array Int (Either Bool Int), Array Int (Term p q Int))
+  -> (Array Int (Either Bool Int), Array Int (Term p q Int))
+simplifyDag4 gs (ixMap, arr) = runST action where
+  action :: forall s. ST s (Array Int (Either Bool Int), Array Int (Term p q Int))
+  action = do
+    hcref <- newSTRef HCons.consState0
+    ixMap' <- flip runBuilder hcref$ do
+      gs'M :: STArray s Int DumbCount <- blift$ unsafeThaw$ eixMappedGs2 arr ixMap gs
+      blift$ for_ [iend, iend - 1 .. ibeg]$ \i -> do
+        g <- unsafeRead gs'M i
+        for (arr `unsafeAt` i)$ \ichild -> do
+          gchild <- unsafeRead gs'M ichild
+          unsafeWrite gs'M ichild$ gchild <> case g of Zero -> Zero; _ -> One
+
+      ixMap'<- blift$ unsafeNewArray_ @(STArray s) bnds
+      for_ [ibeg .. iend]$ \i -> do
+        g <- blift$ unsafeRead gs'M i
+        t <- blift$ for (arr `unsafeAt` i)$ unsafeRead ixMap'
+        alg g t >>= blift . unsafeWrite ixMap' i
+
+      blift$ unsafeFreeze ixMap'
+
+    (tListSize, tList) <- HCons.consResult <$> readSTRef hcref
+    return (fmap (>>= unsafeAt @Array ixMap' >&> fst) ixMap, listArray (0, tListSize - 1) tList)
+
+  bnds@(ibeg, iend) = bounds arr
+
+  alg Zero _ = return$ error "accessing element without parents"
+  alg g t = case share (\(_, Fix (Compose (Compose gt))) -> gt) fst t of
+    Left b -> return$ Left b
+    Right x -> fmap Right$ flip iterM x$ \t -> do
+      t' <- sequence t
+      i <- HCons.cons @"cons" (fmap fst t')
+      return (i, Fix$Compose$Compose (g, t'))
 
 
 -- -- more elegant but slower, don't know exactly why (probably some inlining + specialization issues)

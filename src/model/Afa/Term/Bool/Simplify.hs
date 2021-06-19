@@ -12,13 +12,14 @@
 
 module Afa.Term.Bool.Simplify where
 
+import Data.Bifunctor
 import Data.Array.ST
 import Data.Array.Base (unsafeRead, unsafeWrite, unsafeNewArray_, unsafeAt)
 import Control.Monad.Trans
 import Data.Foldable
 import Data.Traversable
 import Control.Monad.Free
-import Control.Arrow
+import Control.Arrow hiding (first)
 import Control.RecursionSchemes.Lens
 import qualified Control.RecursionSchemes.Utils.HashCons2 as HCons
 import Control.Lens
@@ -220,6 +221,15 @@ simplify project getR = stage1 >&> fmap pure >>> iter (either id Free . deUnary)
           )
     ) >>> skipJoin
 
+share :: (Eq r, Hashable r, Ord r)
+  => (t -> (DumbCount, Term p t))
+  -> (t -> r)
+  -> Term p (Either Bool t) -> Either Bool (Free (Term p) t)
+share project getR t = fmap Free$ for t$ \case
+  Left False -> Right$ Free LFalse
+  Left True -> Right$ Free LTrue
+  Right t -> Right$ Pure t
+
 
 data RefSign = NoRefSign | Neg | Pos | NegPos deriving (Eq, Show)
 instance Semigroup RefSign where
@@ -298,6 +308,128 @@ simplifyDag gs (ixMap, arr) = runST action where
 
   alg Zero _ = return$ error "accessing element without parents"
   alg count t = case simplify descend fst t of
+    Left b -> return$ Left b
+    Right x -> fmap Right$ flip iterM x$ \t -> do
+      t' <- sequence t
+      i <- HCons.cons @"cons" (fmap fst t')
+      return (i, Fix$Compose$Compose (count, t'))
+    where descend (_, Fix (Compose (Compose gt))) = gt
+
+
+
+{-# INLINABLE simplifyDag3 #-}
+simplifyDag3 :: forall p. (Eq p, Hashable p)
+  => Array Int Any
+  -> (Array Int (Either Bool Int), Array Int (Term p Int))
+  -> (Array Int (Either Bool Int), Array Int (Term p Int))
+simplifyDag3 gs (ixMap, arr) = runST action where
+  action :: forall s. ST s (Array Int (Either Bool Int), Array Int (Term p Int))
+  action = do
+    hcref <- newSTRef HCons.consState0
+    ixMap' <- flip runBuilder hcref$ do
+      gs'M :: STArray s Int (DumbCount, RefSign) <- blift$ unsafeThaw gs''
+      blift$ for_ [iend, iend - 1 .. ibeg]$ \i -> do
+        (count, sgn) <- unsafeRead gs'M i
+        let node = arr `unsafeAt` i
+        let count' = case count of Zero -> Zero; _ -> One
+        let sgn' = case node of Not _ -> negRefSign sgn; _ -> sgn
+        for (arr `unsafeAt` i)$ \ichild -> do
+          gchild <- unsafeRead gs'M ichild
+          unsafeWrite gs'M ichild$ gchild <> (count', sgn')
+
+      gs3 :: Array Int (DumbCount, RefSign) <- blift$ unsafeFreeze gs'M
+      -- WARNING, TODO: this can be applied only for variable predicates
+      let predicateSigns =
+            HM.fromListWith (<>)
+            $ catMaybes
+            $ zipWith (\(_, sgn) -> \case Predicate i -> Just (i, sgn); _ -> Nothing)
+                (elems gs3) (elems arr)
+          arr' = arr <&> \case
+            x@(Predicate i) -> case predicateSigns HM.! i of
+              Neg -> LFalse
+              Pos -> LTrue
+              _ -> x
+            x -> x
+
+      ixMap'<- blift$ unsafeNewArray_ @(STArray s) bnds
+      for_ [ibeg .. iend]$ \i -> do
+        t <- blift$ for (arr' `unsafeAt` i)$ fmap (first fst) . unsafeRead ixMap'
+        alg (fst$ gs3 `unsafeAt` i) t >>= blift . unsafeWrite ixMap' i
+
+      fmap (fmap keepLits)$ blift$ unsafeFreeze ixMap'
+
+    (tListSize, tList) <- HCons.consResult <$> readSTRef hcref
+    return (fmap (>>= unsafeAt @Array ixMap' >&> fst) ixMap, listArray (0, tListSize - 1) tList)
+
+  keepLits (Left (True, i)) = Right (i, undefined)
+  keepLits (Left (False, _)) = Left False
+  keepLits (Right t) = Right t
+
+  gs' = eixMappedGs2 arr ixMap gs
+  gs'' = gs' <&> \case Zero -> (Zero, NoRefSign); x -> (x, Pos)
+  bnds@(ibeg, iend) = bounds arr
+
+  alg Zero _ = return$ error "accessing element without parents"
+  alg count t = case simplify descend fst t of
+    Left True -> HCons.cons @"cons" LTrue <&> Left . (True,)
+    Left b -> return$ Left (b, undefined)
+    Right x -> fmap Right$ flip iterM x$ \t -> do
+      t' <- sequence t
+      i <- HCons.cons @"cons" (fmap fst t')
+      return (i, Fix$Compose$Compose (count, t'))
+    where descend (_, Fix (Compose (Compose gt))) = gt
+
+
+{-# INLINABLE simplifyDag4 #-}
+simplifyDag4 :: forall p. (Eq p, Hashable p)
+  => Array Int Any
+  -> (Array Int (Either Bool Int), Array Int (Term p Int))
+  -> (Array Int (Either Bool Int), Array Int (Term p Int))
+simplifyDag4 gs (ixMap, arr) = runST action where
+  action :: forall s. ST s (Array Int (Either Bool Int), Array Int (Term p Int))
+  action = do
+    hcref <- newSTRef HCons.consState0
+    ixMap' <- flip runBuilder hcref$ do
+      gs'M :: STArray s Int (DumbCount, RefSign) <- blift$ unsafeThaw gs''
+      blift$ for_ [iend, iend - 1 .. ibeg]$ \i -> do
+        (count, sgn) <- unsafeRead gs'M i
+        let node = arr `unsafeAt` i
+        let count' = case count of Zero -> Zero; _ -> One
+        let sgn' = case node of Not _ -> negRefSign sgn; _ -> sgn
+        for (arr `unsafeAt` i)$ \ichild -> do
+          gchild <- unsafeRead gs'M ichild
+          unsafeWrite gs'M ichild$ gchild <> (count', sgn')
+
+      gs3 :: Array Int (DumbCount, RefSign) <- blift$ unsafeFreeze gs'M
+      -- WARNING, TODO: this can be applied only for variable predicates
+      let predicateSigns =
+            HM.fromListWith (<>)
+            $ catMaybes
+            $ zipWith (\(_, sgn) -> \case Predicate i -> Just (i, sgn); _ -> Nothing)
+                (elems gs3) (elems arr)
+          arr' = arr <&> \case
+            x@(Predicate i) -> case predicateSigns HM.! i of
+              Neg -> LFalse
+              Pos -> LTrue
+              _ -> x
+            x -> x
+
+      ixMap'<- blift$ unsafeNewArray_ @(STArray s) bnds
+      for_ [ibeg .. iend]$ \i -> do
+        t <- blift$ for (arr' `unsafeAt` i)$ unsafeRead ixMap'
+        alg (fst$ gs3 `unsafeAt` i) t >>= blift . unsafeWrite ixMap' i
+
+      blift$ unsafeFreeze ixMap'
+
+    (tListSize, tList) <- HCons.consResult <$> readSTRef hcref
+    return (fmap (>>= unsafeAt @Array ixMap' >&> fst) ixMap, listArray (0, tListSize - 1) tList)
+
+  gs' = eixMappedGs2 arr ixMap gs
+  gs'' = gs' <&> \case Zero -> (Zero, NoRefSign); x -> (x, Pos)
+  bnds@(ibeg, iend) = bounds arr
+
+  alg Zero _ = return$ error "accessing element without parents"
+  alg count t = case share descend fst t of
     Left b -> return$ Left b
     Right x -> fmap Right$ flip iterM x$ \t -> do
       t' <- sequence t

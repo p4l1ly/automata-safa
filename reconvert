@@ -1,30 +1,70 @@
 #! /bin/zsh
 
-# m6: zsh reconvert ../data/m6  480.37s user 7.20s system 99% cpu 8:07.94 total
+# another interesting abc setting: drw; rf; b; drw; rwz; b; rfz; rwz; b;
 
-TIMEOUT=15
-TIMEOUT_MS=15000
+UUID=$(uuidgen)
 
-READAFA="afa"
-GENERATE=true
-MODELCHECK=true
+date
+echo $1
+echo $UUID
 
-FROM_LTL=false
-FROM_STRANGER=false
-BASIC=true
-GOBLIN3=true
-GOBLIN4=true
-NRAND=true
-RAND=false
-ZERO=false
+if [ "$EXTERNAL" = true ]; then
+  READAFA=${READAFA:-afa}
 
-SUCCINCT=true
-AFASAT=true
-AFASAT_CLAUSAL=false
-DANTONI=true
-JIMPACT=true
-ABC=true
-ABC_REV=true
+  TIMEOUT=${TIMEOUT:-15}
+  TIMEOUT_MS=$(($TIMEOUT*1000))
+
+  GENERATE=${GENERATE:-false}
+  MODELCHECK=${MODELCHECK:-false}
+
+  FROM_LTL=${FROM_LTL:-false}
+  FROM_STRANGER=${FROM_STRANGER:-false}
+  BASIC=${BASIC:-false}
+  GOBLIN3=${GOBLIN3:-false}
+  GOBLIN4=${GOBLIN4:-false}
+  NRAND=${NRAND:-true}
+  RAND=${RAND:-false}
+  ZERO=${ZERO:-false}
+
+  SUCCINCT=${SUCCINCT:-false}
+  AFASAT=${AFASAT:-false}
+  AFASAT_CLAUSAL=${AFASAT_CLAUSAL:-false}
+  DANTONI=${DANTONI:-false}
+  JIMPACT=${JIMPACT:-false}
+  ABC=${ABC:-false}
+  ABC_REV=${ABC_REV:-false}
+  ABC_REV_ASGN=${ABC_REV_ASGN:-false}
+
+  RETIME=${RETIME:-false}
+else
+  READAFA=afa
+
+  TIMEOUT=15
+  TIMEOUT_MS=$(($TIMEOUT*1000))
+
+  GENERATE=true
+  MODELCHECK=false
+
+  FROM_LTL=false
+  FROM_STRANGER=false
+  BASIC=false
+  GOBLIN3=false
+  GOBLIN4=false
+  NRAND=true
+  RAND=false
+  ZERO=true
+
+  SUCCINCT=false
+  AFASAT=false
+  AFASAT_CLAUSAL=false
+  DANTONI=false
+  JIMPACT=false
+  ABC=false
+  ABC_REV=false
+  ABC_REV_ASGN=true
+
+  RETIME=false
+fi
 
 ROOT=$1
 
@@ -40,40 +80,47 @@ resetDir() {
 $GENERATE && {
   {$FROM_LTL || $FROM_STRANGER} && resetDir afa0
 
-  $NRAND && $BASIC   && $SUCCINCT   && resetDir afaBasic
-  $NRAND && $BASIC   && $AFASAT_ANY && resetDir afaCnf
-  $NRAND && $BASIC   && $DANTONI    && resetDir sepDelaying
-  $NRAND && $BASIC   && $JIMPACT    && resetDir ada
-  $NRAND && $BASIC   && $ABC        && resetDir smv
-  $NRAND && $BASIC   && $ABC_REV    && resetDir smvReverse
-  $NRAND && $BASIC   && $ABC        && resetDir aig
-  $NRAND && $BASIC   && $ABC_REV    && resetDir aigReverse
+  $NRAND && $BASIC   && $SUCCINCT     && resetDir afaBasic
+  $NRAND && $BASIC   && $AFASAT_ANY   && resetDir afaCnf
+  $NRAND && $BASIC   && $DANTONI      && resetDir sepDelaying
+  $NRAND && $BASIC   && $JIMPACT      && resetDir ada
+  $NRAND && $BASIC   && $ABC          && resetDir smv
+  $NRAND && $BASIC   && $ABC_REV      && resetDir smvReverse
+  $NRAND && $BASIC   && $ABC_REV_ASGN && resetDir smvReverseAsgn
+  $NRAND && $BASIC   && $ABC          && resetDir aig
+  $NRAND && $BASIC   && $ABC_REV_ASGN && resetDir aigReverseAsgn
 
-  $NRAND && $GOBLIN3 && $SUCCINCT   && resetDir afaSimpGoblinMincut3
-  $NRAND && $GOBLIN3 && $AFASAT_ANY && resetDir afaCnf3
-  $NRAND && $GOBLIN3 && $DANTONI    && resetDir sepDelaying3
-  $NRAND && $GOBLIN3 && $JIMPACT    && resetDir ada3
-  $NRAND && $GOBLIN3 && $ABC        && resetDir smv3
-  $NRAND && $GOBLIN3 && $ABC_REV    && resetDir smvReverse3
-  $NRAND && $GOBLIN3 && $ABC        && resetDir aig3
-  $NRAND && $GOBLIN3 && $ABC_REV    && resetDir aigReverse3
+  $NRAND && $GOBLIN3 && $SUCCINCT     && resetDir afaSimpGoblinMincut3
+  $NRAND && $GOBLIN3 && $AFASAT_ANY   && resetDir afaCnf3
+  $NRAND && $GOBLIN3 && $DANTONI      && resetDir sepDelaying3
+  $NRAND && $GOBLIN3 && $JIMPACT      && resetDir ada3
+  $NRAND && $GOBLIN3 && $ABC          && resetDir smv3
+  $NRAND && $GOBLIN3 && $ABC_REV      && resetDir smvReverse3
+  $NRAND && $GOBLIN3 && $ABC_REV_ASGN && resetDir smvReverseAsgn3
+  $NRAND && $GOBLIN3 && $ABC          && resetDir aig3
+  $NRAND && $GOBLIN3 && $ABC_REV      && resetDir aigReverse3
+  $NRAND && $GOBLIN3 && $ABC_REV_ASGN && resetDir aigReverseAsgn3
 
-  $NRAND && $GOBLIN4 && $SUCCINCT   && resetDir afaSimpGoblin4
-  $NRAND && $GOBLIN4 && $AFASAT_ANY && resetDir afaCnf4
-  $NRAND && $GOBLIN4 && $DANTONI    && resetDir sepDelaying4
-  $NRAND && $GOBLIN4 && $JIMPACT    && resetDir ada4
-  $NRAND && $GOBLIN4 && $ABC        && resetDir smv4
-  $NRAND && $GOBLIN4 && $ABC_REV    && resetDir smvReverse4
-  $NRAND && $GOBLIN4 && $ABC        && resetDir aig4
-  $NRAND && $GOBLIN4 && $ABC_REV    && resetDir aigReverse4
+  $NRAND && $GOBLIN4 && $SUCCINCT     && resetDir afaSimpGoblin4
+  $NRAND && $GOBLIN4 && $AFASAT_ANY   && resetDir afaCnf4
+  $NRAND && $GOBLIN4 && $DANTONI      && resetDir sepDelaying4
+  $NRAND && $GOBLIN4 && $JIMPACT      && resetDir ada4
+  $NRAND && $GOBLIN4 && $ABC          && resetDir smv4
+  $NRAND && $GOBLIN4 && $ABC_REV      && resetDir smvReverse4
+  $NRAND && $GOBLIN4 && $ABC_REV_ASGN && resetDir smvReverseAsgn4
+  $NRAND && $GOBLIN4 && $ABC          && resetDir aig4
+  $NRAND && $GOBLIN4 && $ABC_REV      && resetDir aigReverse4
+  $NRAND && $GOBLIN4 && $ABC_REV_ASGN && resetDir aigReverseAsgn4
 
-  $ZERO && $AFASAT_ANY && resetDir afaCnf0
-  $ZERO && $DANTONI    && resetDir sepDelaying0
-  $ZERO && $JIMPACT    && resetDir ada0
-  $ZERO && $ABC        && resetDir smv0
-  $ZERO && $ABC        && resetDir aig0
-  $ZERO && $ABC_REV    && resetDir smvReverse0
-  $ZERO && $ABC_REV    && resetDir aigReverse0
+  $ZERO && $AFASAT_ANY   && resetDir afaCnf0
+  $ZERO && $DANTONI      && resetDir sepDelaying0
+  $ZERO && $JIMPACT      && resetDir ada0
+  $ZERO && $ABC          && resetDir smv0
+  $ZERO && $ABC          && resetDir aig0
+  $ZERO && $ABC_REV      && resetDir smvReverse0
+  $ZERO && $ABC_REV      && resetDir aigReverse0
+  $ZERO && $ABC_REV_ASGN && resetDir smvReverseAsgn0
+  $ZERO && $ABC_REV_ASGN && resetDir aigReverseAsgn0
 
   $RAND && $BASIC   && $SUCCINCT   && resetDir afaRand
   $RAND && $BASIC   && $AFASAT_ANY && resetDir afaCnfRand
@@ -97,68 +144,80 @@ $GENERATE && {
   $FROM_STRANGER && { cabal exec ltle-to-afa -- -i stranger:$1/input -o afa:$1/afa0 > $1/afa0.csv }
 
   $ZERO && {
-    $AFASAT_ANY && cabal exec ltle-to-afa -- -i $READAFA:$1/afa0 -o cnfafa:$1/afaCnf0 > $1/afaCnf0.csv
-    $DANTONI    && cabal exec ltle-to-afa -- -i $READAFA:$1/afa0 -o sepafaDelaying:$1/sepDelaying0 > $1/sepDelaying0.csv
-    $JIMPACT    && cabal exec ltle-to-afa -- -i $READAFA:$1/afa0 -o ada:$1/ada0 > $1/ada0.csv
-    $ABC        && cabal exec ltle-to-afa -- -i $READAFA:$1/afa0 -o smv:$1/smv0 > $1/smv0.csv
-    $ABC_REV    && cabal exec ltle-to-afa -- -i $READAFA:$1/afa0 -o smvReverse:$1/smvReverse0 > $1/smvReverse0.csv
-    $ABC        && for f in $(ls $1/smv0); do ../aiger/smvtoaig $1/smv0/$f > $1/aig0/$f; done
-    $ABC_REV    && for f in $(ls $1/smvReverse0); do ../aiger/smvtoaig $1/smvReverse0/$f > $1/aigReverse0/$f; done
+    $AFASAT_ANY   && cabal exec ltle-to-afa -- -i $READAFA:$1/afa0 -o cnfafa0:$1/afaCnf0 > $1/afaCnf0.csv
+    $DANTONI      && cabal exec ltle-to-afa -- -i $READAFA:$1/afa0 -o sepafaDelaying:$1/sepDelaying0 > $1/sepDelaying0.csv
+    $JIMPACT      && cabal exec ltle-to-afa -- -i $READAFA:$1/afa0 -o ada:$1/ada0 > $1/ada0.csv
+    $ABC          && cabal exec ltle-to-afa -- -i $READAFA:$1/afa0 -o smv:$1/smv0 > $1/smv0.csv
+    $ABC_REV      && cabal exec ltle-to-afa -- -i $READAFA:$1/afa0 -o smvReverse:$1/smvReverse0 > $1/smvReverse0.csv
+    $ABC_REV_ASGN && cabal exec ltle-to-afa -- -i $READAFA:$1/afa0 -o smvReverseAssign:$1/smvReverseAsgn0 > $1/smvReverseAsgn0.csv
+    $ABC          && for f in $(ls $1/smv0); do ../aiger/smvtoaig $1/smv0/$f > $1/aig0/$f; done
+    $ABC_REV      && for f in $(ls $1/smvReverse0); do ../aiger/smvtoaig $1/smvReverse0/$f > $1/aigReverse0/$f; done
+    $ABC_REV_ASGN && for f in $(ls $1/smvReverseAsgn0); do ../aiger/smvtoaig $1/smvReverseAsgn0/$f > $1/aigReverseAsgn0/$f; done
   }
 
   $NRAND && $BASIC && {
-    $SUCCINCT   && cabal exec ltle-to-afa -- -i $READAFA:$1/afa0 -o afaBasicSimp:$1/afaBasic > $1/afaBasic.csv
-    $AFASAT_ANY && cabal exec ltle-to-afa -- -i $READAFA:$1/afaBasic -o cnfafa:$1/afaCnf > $1/afaCnf.csv
-    $DANTONI    && cabal exec ltle-to-afa -- -i $READAFA:$1/afaBasic -o sepafaDelaying:$1/sepDelaying > $1/sepDelaying.csv
-    $JIMPACT    && cabal exec ltle-to-afa -- -i $READAFA:$1/afaBasic -o ada:$1/ada > $1/ada.csv
-    $ABC        && cabal exec ltle-to-afa -- -i $READAFA:$1/afaBasic -o smv:$1/smv > $1/smv.csv
-    $ABC_REV    && cabal exec ltle-to-afa -- -i $READAFA:$1/afaBasic -o smvReverse:$1/smvReverse > $1/smvReverse.csv
-    $ABC        && for f in $(ls $1/smv); do ../aiger/smvtoaig $1/smv/$f > $1/aig/$f; done
-    $ABC_REV    && for f in $(ls $1/smvReverse); do ../aiger/smvtoaig $1/smvReverse/$f > $1/aigReverse/$f; done
+    $SUCCINCT     && cabal exec ltle-to-afa -- -i $READAFA:$1/afa0 -o afaBasicSimp:$1/afaBasic > $1/afaBasic.csv
+    $AFASAT_ANY   && cabal exec ltle-to-afa -- -i $READAFA:$1/afaBasic -o cnfafa:$1/afaCnf > $1/afaCnf.csv
+    $DANTONI      && cabal exec ltle-to-afa -- -i $READAFA:$1/afaBasic -o sepafaDelaying:$1/sepDelaying > $1/sepDelaying.csv
+    $JIMPACT      && cabal exec ltle-to-afa -- -i $READAFA:$1/afaBasic -o ada:$1/ada > $1/ada.csv
+    $ABC          && cabal exec ltle-to-afa -- -i $READAFA:$1/afaBasic -o smv:$1/smv > $1/smv.csv
+    $ABC_REV      && cabal exec ltle-to-afa -- -i $READAFA:$1/afaBasic -o smvReverse:$1/smvReverse > $1/smvReverse.csv
+    $ABC_REV_ASGN && cabal exec ltle-to-afa -- -i $READAFA:$1/afaBasic -o smvReverseAssign:$1/smvReverseAsgn > $1/smvReverseAsgn.csv
+    $ABC          && for f in $(ls $1/smv); do ../aiger/smvtoaig $1/smv/$f > $1/aig/$f; done
+    $ABC_REV      && for f in $(ls $1/smvReverse); do ../aiger/smvtoaig $1/smvReverse/$f > $1/aigReverse/$f; done
+    $ABC_REV_ASGN && for f in $(ls $1/smvReverseAsgn); do ../aiger/smvtoaig $1/smvReverseAsgn/$f > $1/aigReverseAsgn/$f; done
   }
 
   $RAND && $BASIC && {
-    $SUCCINCT   && cabal exec ltle-to-afa -- -i $READAFA:$1/afaBasic -o afaRandomized:$1/afaRand > $1/afaRand.csv
-    $AFASAT_ANY && cabal exec ltle-to-afa -- -i $READAFA:$1/afaRand -o cnfafa:$1/afaCnfRand > $1/afaCnfRand.csv
-    $DANTONI    && cabal exec ltle-to-afa -- -i $READAFA:$1/afaRand -o sepafaDelaying:$1/sepDelayingRand > $1/sepDelayingRand.csv
-    $JIMPACT    && cabal exec ltle-to-afa -- -i $READAFA:$1/afaRand -o ada:$1/adaRand > $1/adaRand.csv
-    $ABC        && cabal exec ltle-to-afa -- -i $READAFA:$1/afaRand -o smv:$1/smvRand > $1/smvRand.csv
-    $ABC_REV    && cabal exec ltle-to-afa -- -i $READAFA:$1/afaRand -o smvReverse:$1/smvReverseRand > $1/smvReverseRand.csv
-    $ABC        && for f in $(ls $1/smvRand); do ../aiger/smvtoaig $1/smvRand/$f > $1/aigRand/$f; done
-    $ABC_REV    && for f in $(ls $1/smvReverseRand); do ../aiger/smvtoaig $1/smvReverseRand/$f > $1/aigReverseRand/$f; done
+    $SUCCINCT     && cabal exec ltle-to-afa -- -i $READAFA:$1/afaBasic -o afaRandomized:$1/afaRand > $1/afaRand.csv
+    $AFASAT_ANY   && cabal exec ltle-to-afa -- -i $READAFA:$1/afaRand -o cnfafa:$1/afaCnfRand > $1/afaCnfRand.csv
+    $DANTONI      && cabal exec ltle-to-afa -- -i $READAFA:$1/afaRand -o sepafaDelaying:$1/sepDelayingRand > $1/sepDelayingRand.csv
+    $JIMPACT      && cabal exec ltle-to-afa -- -i $READAFA:$1/afaRand -o ada:$1/adaRand > $1/adaRand.csv
+    $ABC          && cabal exec ltle-to-afa -- -i $READAFA:$1/afaRand -o smv:$1/smvRand > $1/smvRand.csv
+    $ABC_REV      && cabal exec ltle-to-afa -- -i $READAFA:$1/afaRand -o smvReverse:$1/smvReverseRand > $1/smvReverseRand.csv
+    $ABC_REV_ASGN && cabal exec ltle-to-afa -- -i $READAFA:$1/afaRand -o smvReverseAssign:$1/smvReverseAsgnRand > $1/smvReverseAsgnRand.csv
+    $ABC          && for f in $(ls $1/smvRand); do ../aiger/smvtoaig $1/smvRand/$f > $1/aigRand/$f; done
+    $ABC_REV      && for f in $(ls $1/smvReverseRand); do ../aiger/smvtoaig $1/smvReverseRand/$f > $1/aigReverseRand/$f; done
+    $ABC_REV_ASGN && for f in $(ls $1/smvReverseAsgnRand); do ../aiger/smvtoaig $1/smvReverseAsgnRand/$f > $1/aigReverseAsgnRand/$f; done
   }
 
   $NRAND && $GOBLIN3 && {
-    $SUCCINCT   && cabal exec ltle-to-afa -- -i $READAFA:$1/afaBasic -o afaSimpGoblinMincut:$1/afaSimpGoblinMincut3 > $1/afaSimpGoblinMincut3.csv
-    $AFASAT_ANY && cabal exec ltle-to-afa -- -i $READAFA:$1/afaSimpGoblinMincut3 -o cnfafa:$1/afaCnf3 > $1/afaCnf3.csv
-    $DANTONI    && cabal exec ltle-to-afa -- -i $READAFA:$1/afaSimpGoblinMincut3 -o sepafaDelaying:$1/sepDelaying3 > $1/sepDelaying3.csv
-    $JIMPACT    && cabal exec ltle-to-afa -- -i $READAFA:$1/afaSimpGoblinMincut3 -o ada:$1/ada3 > $1/ada3.csv
-    $ABC        && cabal exec ltle-to-afa -- -i $READAFA:$1/afaSimpGoblinMincut3 -o smv:$1/smv3 > $1/smv3.csv
-    $ABC_REV    && cabal exec ltle-to-afa -- -i $READAFA:$1/afaSimpGoblinMincut3 -o smvReverse:$1/smvReverse3 > $1/smvReverse3.csv
-    $ABC        && for f in $(ls $1/smv3); do ../aiger/smvtoaig $1/smv3/$f > $1/aig3/$f; done
-    $ABC_REV    && for f in $(ls $1/smvReverse3); do ../aiger/smvtoaig $1/smvReverse3/$f > $1/aigReverse3/$f; done
+    $SUCCINCT     && cabal exec ltle-to-afa -- -i $READAFA:$1/afaBasic -o afaSimpGoblinMincut:$1/afaSimpGoblinMincut3 > $1/afaSimpGoblinMincut3.csv
+    $AFASAT_ANY   && cabal exec ltle-to-afa -- -i $READAFA:$1/afaSimpGoblinMincut3 -o cnfafa:$1/afaCnf3 > $1/afaCnf3.csv
+    $DANTONI      && cabal exec ltle-to-afa -- -i $READAFA:$1/afaSimpGoblinMincut3 -o sepafaDelaying:$1/sepDelaying3 > $1/sepDelaying3.csv
+    $JIMPACT      && cabal exec ltle-to-afa -- -i $READAFA:$1/afaSimpGoblinMincut3 -o ada:$1/ada3 > $1/ada3.csv
+    $ABC          && cabal exec ltle-to-afa -- -i $READAFA:$1/afaSimpGoblinMincut3 -o smv:$1/smv3 > $1/smv3.csv
+    $ABC_REV      && cabal exec ltle-to-afa -- -i $READAFA:$1/afaSimpGoblinMincut3 -o smvReverse:$1/smvReverse3 > $1/smvReverse3.csv
+    $ABC_REV_ASGN && cabal exec ltle-to-afa -- -i $READAFA:$1/afaSimpGoblinMincut3 -o smvReverseAssign:$1/smvReverseAsgn3 > $1/smvReverseAsgn3.csv
+    $ABC          && for f in $(ls $1/smv3); do ../aiger/smvtoaig $1/smv3/$f > $1/aig3/$f; done
+    $ABC_REV      && for f in $(ls $1/smvReverse3); do ../aiger/smvtoaig $1/smvReverse3/$f > $1/aigReverse3/$f; done
+    $ABC_REV_ASGN && for f in $(ls $1/smvReverseAsgn3); do ../aiger/smvtoaig $1/smvReverseAsgn3/$f > $1/aigReverseAsgn3/$f; done
   }
 
   $RAND && $GOBLIN3 && {
-    $SUCCINCT   && cabal exec ltle-to-afa -- -i $READAFA:$1/afaSimpGoblinMincut3 -o afaRandomized:$1/afaRand3 > $1/afaRand3.csv
-    $AFASAT_ANY && cabal exec ltle-to-afa -- -i $READAFA:$1/afaRand3 -o cnfafa:$1/afaCnfRand3 > $1/afaCnfRand3.csv
-    $DANTONI    && cabal exec ltle-to-afa -- -i $READAFA:$1/afaRand3 -o sepafaDelaying:$1/sepDelayingRand3 > $1/sepDelayingRand3.csv
-    $JIMPACT    && cabal exec ltle-to-afa -- -i $READAFA:$1/afaRand3 -o ada:$1/adaRand3 > $1/adaRand3.csv
-    $ABC        && cabal exec ltle-to-afa -- -i $READAFA:$1/afaRand3 -o smv:$1/smvRand3 > $1/smvRand3.csv
-    $ABC_REV    && cabal exec ltle-to-afa -- -i $READAFA:$1/afaRand3 -o smvReverse:$1/smvReverseRand3 > $1/smvReverseRand3.csv
-    $ABC        && for f in $(ls $1/smvRand3); do ../aiger/smvtoaig $1/smvRand3/$f > $1/aigRand3/$f; done
-    $ABC_REV    && for f in $(ls $1/smvReverseRand3); do ../aiger/smvtoaig $1/smvReverseRand3/$f > $1/aigReverseRand3/$f; done
+    $SUCCINCT     && cabal exec ltle-to-afa -- -i $READAFA:$1/afaSimpGoblinMincut3 -o afaRandomized:$1/afaRand3 > $1/afaRand3.csv
+    $AFASAT_ANY   && cabal exec ltle-to-afa -- -i $READAFA:$1/afaRand3 -o cnfafa:$1/afaCnfRand3 > $1/afaCnfRand3.csv
+    $DANTONI      && cabal exec ltle-to-afa -- -i $READAFA:$1/afaRand3 -o sepafaDelaying:$1/sepDelayingRand3 > $1/sepDelayingRand3.csv
+    $JIMPACT      && cabal exec ltle-to-afa -- -i $READAFA:$1/afaRand3 -o ada:$1/adaRand3 > $1/adaRand3.csv
+    $ABC          && cabal exec ltle-to-afa -- -i $READAFA:$1/afaRand3 -o smv:$1/smvRand3 > $1/smvRand3.csv
+    $ABC_REV      && cabal exec ltle-to-afa -- -i $READAFA:$1/afaRand3 -o smvReverse:$1/smvReverseRand3 > $1/smvReverseRand3.csv
+    $ABC_REV_ASGN && cabal exec ltle-to-afa -- -i $READAFA:$1/afaRand3 -o smvReverseAssign:$1/smvReverseAsgnRand3 > $1/smvReverseAsgnRand3.csv
+    $ABC          && for f in $(ls $1/smvRand3); do ../aiger/smvtoaig $1/smvRand3/$f > $1/aigRand3/$f; done
+    $ABC_REV      && for f in $(ls $1/smvReverseRand3); do ../aiger/smvtoaig $1/smvReverseRand3/$f > $1/aigReverseRand3/$f; done
+    $ABC_REV_ASGN && for f in $(ls $1/smvReverseAsgnRand3); do ../aiger/smvtoaig $1/smvReverseAsgnRand3/$f > $1/aigReverseAsgnRand3/$f; done
   }
 
   $NRAND && $GOBLIN4 && {
-    $SUCCINCT   && cabal exec ltle-to-afa -- -i $READAFA:$1/afaBasic -o afaSimpGoblin:$1/afaSimpGoblin4 > $1/afaSimpGoblin4.csv
-    $AFASAT_ANY && cabal exec ltle-to-afa -- -i $READAFA:$1/afaSimpGoblin4 -o cnfafa:$1/afaCnf4 > $1/afaCnf4.csv
-    $DANTONI    && cabal exec ltle-to-afa -- -i $READAFA:$1/afaSimpGoblin4 -o sepafaDelaying:$1/sepDelaying4 > $1/sepDelaying4.csv
-    $JIMPACT    && cabal exec ltle-to-afa -- -i $READAFA:$1/afaSimpGoblin4 -o ada:$1/ada4 > $1/ada4.csv
-    $ABC        && cabal exec ltle-to-afa -- -i $READAFA:$1/afaSimpGoblin4 -o smv:$1/smv4 > $1/smv4.csv
-    $ABC_REV    && cabal exec ltle-to-afa -- -i $READAFA:$1/afaSimpGoblin4 -o smvReverse:$1/smvReverse4 > $1/smvReverse4.csv
-    $ABC        && for f in $(ls $1/smv4); do ../aiger/smvtoaig $1/smv4/$f > $1/aig4/$f; done
-    $ABC_REV    && for f in $(ls $1/smvReverse4); do ../aiger/smvtoaig $1/smvReverse4/$f > $1/aigReverse4/$f; done
+    $SUCCINCT     && cabal exec ltle-to-afa -- -i $READAFA:$1/afaBasic -o afaSimpGoblin:$1/afaSimpGoblin4 > $1/afaSimpGoblin4.csv
+    $AFASAT_ANY   && cabal exec ltle-to-afa -- -i $READAFA:$1/afaSimpGoblin4 -o cnfafa:$1/afaCnf4 > $1/afaCnf4.csv
+    $DANTONI      && cabal exec ltle-to-afa -- -i $READAFA:$1/afaSimpGoblin4 -o sepafaDelaying:$1/sepDelaying4 > $1/sepDelaying4.csv
+    $JIMPACT      && cabal exec ltle-to-afa -- -i $READAFA:$1/afaSimpGoblin4 -o ada:$1/ada4 > $1/ada4.csv
+    $ABC          && cabal exec ltle-to-afa -- -i $READAFA:$1/afaSimpGoblin4 -o smv:$1/smv4 > $1/smv4.csv
+    $ABC_REV      && cabal exec ltle-to-afa -- -i $READAFA:$1/afaSimpGoblin4 -o smvReverse:$1/smvReverse4 > $1/smvReverse4.csv
+    $ABC_REV_ASGN && cabal exec ltle-to-afa -- -i $READAFA:$1/afaSimpGoblin4 -o smvReverseAssign:$1/smvReverseAsgn4 > $1/smvReverseAsgn4.csv
+    $ABC          && for f in $(ls $1/smv4); do ../aiger/smvtoaig $1/smv4/$f > $1/aig4/$f; done
+    $ABC_REV      && for f in $(ls $1/smvReverse4); do ../aiger/smvtoaig $1/smvReverse4/$f > $1/aigReverse4/$f; done
+    $ABC_REV_ASGN && for f in $(ls $1/smvReverseAsgn4); do ../aiger/smvtoaig $1/smvReverseAsgn4/$f > $1/aigReverseAsgn4/$f; done
   }
 
   # cabal exec ltle-to-afa -- -i $READAFA:$1/afaBasic -o afaSimpGoblin:$1/afaSimpGoblin4 > $1/afaSimpGoblin4.csv
@@ -185,15 +244,7 @@ $NRAND && $GOBLIN3 && $DANTONI        && ./build/file-solver-1 $1/sepDelaying3 >
 $NRAND && $GOBLIN4 && $DANTONI        && ./build/file-solver-1 $1/sepDelaying4 > $1/dantoni4.csv
 
 $ZERO && $AFASAT         && ./build/file-solver-2 $1/afaCnf0 > $1/afasat0.csv
-
-# ./build/file-solver-2 $1/afaCnf0 > $1/afasat0.csv
-# ./build/file-solver-2 $1/afaCnf4 > $1/afasat4.csv
-# ./build/file-solver-2 $1/afaCnf5 > $1/afasat5.csv
-# ./build/file-solver-3 $1/afaCnf4 > $1/afasatClausal4.csv
-# ./build/file-solver-3 $1/afaCnf5 > $1/afasatClausal5.csv
-# ./build/file-solver-1 $1/sepDelaying0 > $1/dantoni0.csv
-# ./build/file-solver-1 $1/sepDelaying4 > $1/dantoni4.csv
-# ./build/file-solver-1 $1/sepDelaying5 > $1/dantoni5.csv
+$ZERO && $DANTONI         && ./build/file-solver-1 $1/sepDelaying0 > $1/dantoni0.csv
 
 $RAND && $BASIC   && $AFASAT         && ./build/file-solver-2 $1/afaCnfRand > $1/afasatRand.csv
 $RAND && $GOBLIN3 && $AFASAT         && ./build/file-solver-2 $1/afaCnfRand3 > $1/afasatRand3.csv
@@ -202,209 +253,396 @@ $RAND && $GOBLIN3 && $AFASAT_CLAUSAL && ./build/file-solver-3 $1/afaCnfRand3 > $
 $RAND && $BASIC   && $DANTONI        && ./build/file-solver-1 $1/sepDelayingRand > $1/dantoniRand.csv
 $RAND && $GOBLIN3 && $DANTONI        && ./build/file-solver-1 $1/sepDelayingRand3 > $1/dantoniRand3.csv
 
+cd ../abc
+
 $ZERO && $ABC && {
-  echo bar
-  rm -f $1/abc0.csv
-  for f in $(ls -v $1/aig0); do
-    echo checking $f
-    result=$(../abc/build/abc -c "read_aiger $1/aig0/$f; pdr -T $TIMEOUT" | grep -E '^Property|^Output')
+  rm -f $ROOT/abc0.csv
+  for f in $(ls -v $ROOT/aig0); do
+    timeout $TIMEOUT /usr/bin/time -f "%e" ./build/abc -c "read_aiger $ROOT/aig0/$f; b; rw; rf; b; rw; rwz; b; rfz; rwz; b; pdr -T $TIMEOUT" > /tmp/abc.result.$UUID 2> /tmp/abc.time.$UUID
+    result=$?
     {
       echo -n -e "$f\t"
-      echo -n -e "$(($(echo $result | sed -r 's/.*Time =\s+([^ ]+).*/\1/')*1000))\t"
-      if echo $result | grep Output > /dev/null; then
-        echo 1
-      elif echo $result | grep prove > /dev/null; then
-        echo 0
+      if [ $result = 124 ]; then
+        echo -e "$TIMEOUT_MS\t-2"
       else
-        echo -2
+        echo -n -e "$(($(cat /tmp/abc.time.$UUID)*1000))\t"
+        if cat /tmp/abc.result.$UUID | grep Output > /dev/null; then
+          echo 1
+        elif cat /tmp/abc.result.$UUID | grep prove > /dev/null; then
+          echo 0
+        else
+          echo -2
+        fi
       fi
-    } >> $1/abc0.csv
+    } >> $ROOT/abc0.csv
+  done
+}
+
+$ZERO && $ABC_REV && {
+  rm -f $ROOT/abcReverse0.csv
+  for f in $(ls -v $ROOT/aigReverse0); do
+    timeout $TIMEOUT /usr/bin/time -f "%e" ./build/abc -c "read_aiger $ROOT/aigReverse0/$f; b; rw; rf; b; rw; rwz; b; rfz; rwz; b; pdr -T $TIMEOUT" > /tmp/abc.result.$UUID 2> /tmp/abc.time.$UUID
+    result=$?
+    {
+      echo -n -e "$f\t"
+      if [ $result = 124 ]; then
+        echo -e "$TIMEOUT_MS\t-2"
+      else
+        echo -n -e "$(($(cat /tmp/abc.time.$UUID)*1000))\t"
+        if cat /tmp/abc.result.$UUID | grep Output > /dev/null; then
+          echo 1
+        elif cat /tmp/abc.result.$UUID | grep prove > /dev/null; then
+          echo 0
+        else
+          echo -2
+        fi
+      fi
+    } >> $ROOT/abcReverse0.csv
+  done
+}
+
+$ZERO && $ABC_REV_ASGN && {
+  rm -f $ROOT/abcReverseAsgn0.csv
+  for f in $(ls -v $ROOT/aigReverseAsgn0); do
+    timeout $TIMEOUT /usr/bin/time -f "%e" ./build/abc -c "read_aiger $ROOT/aigReverseAsgn0/$f; b; rw; rf; b; rw; rwz; b; rfz; rwz; b; pdr -T $TIMEOUT" > /tmp/abc.result.$UUID 2> /tmp/abc.time.$UUID
+    result=$?
+    {
+      echo -n -e "$f\t"
+      if [ $result = 124 ]; then
+        echo -e "$TIMEOUT_MS\t-2"
+      else
+        echo -n -e "$(($(cat /tmp/abc.time.$UUID)*1000))\t"
+        if cat /tmp/abc.result.$UUID | grep Output > /dev/null; then
+          echo 1
+        elif cat /tmp/abc.result.$UUID | grep prove > /dev/null; then
+          echo 0
+        else
+          echo -2
+        fi
+      fi
+    } >> $ROOT/abcReverseAsgn0.csv
   done
 }
 
 $NRAND && $BASIC && $ABC && {
-  rm -f $1/abc.csv
-  for f in $(ls -v $1/aig); do
-    echo checking $f
-    result=$(../abc/build/abc -c "read_aiger $1/aig/$f; pdr -T $TIMEOUT" | grep -E '^Property|^Output')
+  rm -f $ROOT/abc.csv
+  for f in $(ls -v $ROOT/aig); do
+    timeout $TIMEOUT /usr/bin/time -f "%e" ./build/abc -c "read_aiger $ROOT/aig/$f; b; rw; rf; b; rw; rwz; b; rfz; rwz; b; pdr -T $TIMEOUT" > /tmp/abc.result.$UUID 2> /tmp/abc.time.$UUID
+    result=$?
     {
       echo -n -e "$f\t"
-      echo -n -e "$(($(echo $result | sed -r 's/.*Time =\s+([^ ]+).*/\1/')*1000))\t"
-      if echo $result | grep Output > /dev/null; then
-        echo 1
-      elif echo $result | grep prove > /dev/null; then
-        echo 0
+      if [ $result = 124 ]; then
+        echo -e "$TIMEOUT_MS\t-2"
       else
-        echo -2
+        echo -n -e "$(($(cat /tmp/abc.time.$UUID)*1000))\t"
+        if cat /tmp/abc.result.$UUID | grep Output > /dev/null; then
+          echo 1
+        elif cat /tmp/abc.result.$UUID | grep prove > /dev/null; then
+          echo 0
+        else
+          echo -2
+        fi
       fi
-    } >> $1/abc.csv
+    } >> $ROOT/abc.csv
   done
 }
 
 $NRAND && $GOBLIN3 && $ABC && {
-  rm -f $1/abc3.csv
-  for f in $(ls -v $1/aig3); do
-    echo checking $f
-    result=$(../abc/build/abc -c "read_aiger $1/aig3/$f; pdr -T $TIMEOUT" | grep -E '^Property|^Output')
+  rm -f $ROOT/abc3.csv
+  for f in $(ls -v $ROOT/aig3); do
+    timeout $TIMEOUT /usr/bin/time -f "%e" ./build/abc -c "read_aiger $ROOT/aig3/$f; b; rw; rf; b; rw; rwz; b; rfz; rwz; b; pdr -T $TIMEOUT" > /tmp/abc.result.$UUID 2> /tmp/abc.time.$UUID
+    result=$?
     {
       echo -n -e "$f\t"
-      echo -n -e "$(($(echo $result | sed -r 's/.*Time =\s+([^ ]+).*/\1/')*1000))\t"
-      if echo $result | grep Output > /dev/null; then
-        echo 1
-      elif echo $result | grep prove > /dev/null; then
-        echo 0
+      if [ $result = 124 ]; then
+        echo -e "$TIMEOUT_MS\t-2"
       else
-        echo -2
+        echo -n -e "$(($(cat /tmp/abc.time.$UUID)*1000))\t"
+        if cat /tmp/abc.result.$UUID | grep Output > /dev/null; then
+          echo 1
+        elif cat /tmp/abc.result.$UUID | grep prove > /dev/null; then
+          echo 0
+        else
+          echo -2
+        fi
       fi
-    } >> $1/abc3.csv
+    } >> $ROOT/abc3.csv
   done
 }
 
 $NRAND && $GOBLIN4 && $ABC && {
-  rm -f $1/abc4.csv
-  for f in $(ls -v $1/aig4); do
-    echo checking $f
-    result=$(../abc/build/abc -c "read_aiger $1/aig4/$f; pdr -T $TIMEOUT" | grep -E '^Property|^Output')
+  rm -f $ROOT/abc4.csv
+  for f in $(ls -v $ROOT/aig4); do
+    timeout $TIMEOUT /usr/bin/time -f "%e" ./build/abc -c "read_aiger $ROOT/aig4/$f; b; rw; rf; b; rw; rwz; b; rfz; rwz; b; pdr -T $TIMEOUT" > /tmp/abc.result.$UUID 2> /tmp/abc.time.$UUID
+    result=$?
     {
       echo -n -e "$f\t"
-      echo -n -e "$(($(echo $result | sed -r 's/.*Time =\s+([^ ]+).*/\1/')*1000))\t"
-      if echo $result | grep Output > /dev/null; then
-        echo 1
-      elif echo $result | grep prove > /dev/null; then
-        echo 0
+      if [ $result = 124 ]; then
+        echo -e "$TIMEOUT_MS\t-2"
       else
-        echo -2
+        echo -n -e "$(($(cat /tmp/abc.time.$UUID)*1000))\t"
+        if cat /tmp/abc.result.$UUID | grep Output > /dev/null; then
+          echo 1
+        elif cat /tmp/abc.result.$UUID | grep prove > /dev/null; then
+          echo 0
+        else
+          echo -2
+        fi
       fi
-    } >> $1/abc4.csv
+    } >> $ROOT/abc4.csv
   done
 }
 
 $NRAND && $BASIC && $ABC_REV && {
-  rm -f $1/abcReverse.csv
-  for f in $(ls -v $1/aigReverse); do
-    echo checking $f
-    result=$(../abc/build/abc -c "read_aiger $1/aigReverse/$f; pdr -T $TIMEOUT" | grep -E '^Property|^Output')
+  rm -f $ROOT/abcReverse.csv
+  for f in $(ls -v $ROOT/aigReverse); do
+    timeout $TIMEOUT /usr/bin/time -f "%e" ./build/abc -c "read_aiger $ROOT/aigReverse/$f; b; rw; rf; b; rw; rwz; b; rfz; rwz; b; pdr -T $TIMEOUT" > /tmp/abc.result.$UUID 2> /tmp/abc.time.$UUID
+    result=$?
     {
       echo -n -e "$f\t"
-      echo -n -e "$(($(echo $result | sed -r 's/.*Time =\s+([^ ]+).*/\1/')*1000))\t"
-      if echo $result | grep Output > /dev/null; then
-        echo 1
-      elif echo $result | grep prove > /dev/null; then
-        echo 0
+      if [ $result = 124 ]; then
+        echo -e "$TIMEOUT_MS\t-2"
       else
-        echo -2
+        echo -n -e "$(($(cat /tmp/abc.time.$UUID)*1000))\t"
+        if cat /tmp/abc.result.$UUID | grep Output > /dev/null; then
+          echo 1
+        elif cat /tmp/abc.result.$UUID | grep prove > /dev/null; then
+          echo 0
+        else
+          echo -2
+        fi
       fi
-    } >> $1/abcReverse.csv
+    } >> $ROOT/abcReverse.csv
+  done
+}
+
+$NRAND && $BASIC && $ABC_REV_ASGN && {
+  rm -f $ROOT/abcReverseAsgn.csv
+  for f in $(ls -v $ROOT/aigReverseAsgn); do
+    timeout $TIMEOUT /usr/bin/time -f "%e" ./build/abc -c "read_aiger $ROOT/aigReverseAsgn/$f; b; rw; rf; b; rw; rwz; b; rfz; rwz; b; pdr -T $TIMEOUT" > /tmp/abc.result.$UUID 2> /tmp/abc.time.$UUID
+    result=$?
+    {
+      echo -n -e "$f\t"
+      if [ $result = 124 ]; then
+        echo -e "$TIMEOUT_MS\t-2"
+      else
+        echo -n -e "$(($(cat /tmp/abc.time.$UUID)*1000))\t"
+        if cat /tmp/abc.result.$UUID | grep Output > /dev/null; then
+          echo 1
+        elif cat /tmp/abc.result.$UUID | grep prove > /dev/null; then
+          echo 0
+        else
+          echo -2
+        fi
+      fi
+    } >> $ROOT/abcReverseAsgn.csv
+  done
+}
+
+$NRAND && $BASIC && $RETIME && {
+  rm -f $ROOT/abcReverseAsgnRetime.csv
+  for f in $(ls -v $ROOT/aigReverseAsgn); do
+    timeout $TIMEOUT /usr/bin/time -f "%e" ./build/abc -c "read_aiger $ROOT/aigReverseAsgn/$f; dretime -m; strash; zero; b; rw; rf; b; rw; rwz; b; rfz; rwz; b; pdr -T $TIMEOUT" > /tmp/abc.result.$UUID 2> /tmp/abc.time.$UUID
+    result=$?
+    {
+      echo -n -e "$f\t"
+      if [ $result = 124 ]; then
+        echo -e "$TIMEOUT_MS\t-2"
+      else
+        echo -n -e "$(($(cat /tmp/abc.time.$UUID)*1000))\t"
+        if cat /tmp/abc.result.$UUID | grep Output > /dev/null; then
+          echo 1
+        elif cat /tmp/abc.result.$UUID | grep prove > /dev/null; then
+          echo 0
+        else
+          echo -2
+        fi
+      fi
+    } >> $ROOT/abcReverseAsgnRetime.csv
   done
 }
 
 $NRAND && $GOBLIN3 && $ABC_REV && {
-  rm -f $1/abcReverse3.csv
-  for f in $(ls -v $1/aigReverse3); do
-    echo checking $f
-    result=$(../abc/build/abc -c "read_aiger $1/aigReverse3/$f; pdr -T $TIMEOUT" | grep -E '^Property|^Output')
+  rm -f $ROOT/abcReverse3.csv
+  for f in $(ls -v $ROOT/aigReverse3); do
+    timeout $TIMEOUT /usr/bin/time -f "%e" ./build/abc -c "read_aiger $ROOT/aigReverse3/$f; b; rw; rf; b; rw; rwz; b; rfz; rwz; b; pdr -T $TIMEOUT" > /tmp/abc.result.$UUID 2> /tmp/abc.time.$UUID
+    result=$?
     {
       echo -n -e "$f\t"
-      echo -n -e "$(($(echo $result | sed -r 's/.*Time =\s+([^ ]+).*/\1/')*1000))\t"
-      if echo $result | grep Output > /dev/null; then
-        echo 1
-      elif echo $result | grep prove > /dev/null; then
-        echo 0
+      if [ $result = 124 ]; then
+        echo -e "$TIMEOUT_MS\t-2"
       else
-        echo -2
+        echo -n -e "$(($(cat /tmp/abc.time.$UUID)*1000))\t"
+        if cat /tmp/abc.result.$UUID | grep Output > /dev/null; then
+          echo 1
+        elif cat /tmp/abc.result.$UUID | grep prove > /dev/null; then
+          echo 0
+        else
+          echo -2
+        fi
       fi
-    } >> $1/abcReverse3.csv
+    } >> $ROOT/abcReverse3.csv
+  done
+}
+
+$NRAND && $GOBLIN3 && $ABC_REV_ASGN && {
+  rm -f $ROOT/abcReverseAsgn3.csv
+  for f in $(ls -v $ROOT/aigReverseAsgn3); do
+    timeout $TIMEOUT /usr/bin/time -f "%e" ./build/abc -c "read_aiger $ROOT/aigReverseAsgn3/$f; b; rw; rf; b; rw; rwz; b; rfz; rwz; b; pdr -T $TIMEOUT" > /tmp/abc.result.$UUID 2> /tmp/abc.time.$UUID
+    result=$?
+    {
+      echo -n -e "$f\t"
+      if [ $result = 124 ]; then
+        echo -e "$TIMEOUT_MS\t-2"
+      else
+        echo -n -e "$(($(cat /tmp/abc.time.$UUID)*1000))\t"
+        if cat /tmp/abc.result.$UUID | grep Output > /dev/null; then
+          echo 1
+        elif cat /tmp/abc.result.$UUID | grep prove > /dev/null; then
+          echo 0
+        else
+          echo -2
+        fi
+      fi
+    } >> $ROOT/abcReverseAsgn3.csv
   done
 }
 
 $NRAND && $GOBLIN4 && $ABC_REV && {
-  rm -f $1/abcReverse4.csv
-  for f in $(ls -v $1/aigReverse4); do
-    echo checking $f
-    result=$(../abc/build/abc -c "read_aiger $1/aigReverse4/$f; pdr -T $TIMEOUT" | grep -E '^Property|^Output')
+  rm -f $ROOT/abcReverse4.csv
+  for f in $(ls -v $ROOT/aigReverse4); do
+    timeout $TIMEOUT /usr/bin/time -f "%e" ./build/abc -c "read_aiger $ROOT/aigReverse4/$f; b; rw; rf; b; rw; rwz; b; rfz; rwz; b; pdr -T $TIMEOUT" > /tmp/abc.result.$UUID 2> /tmp/abc.time.$UUID
+    result=$?
     {
       echo -n -e "$f\t"
-      echo -n -e "$(($(echo $result | sed -r 's/.*Time =\s+([^ ]+).*/\1/')*1000))\t"
-      if echo $result | grep Output > /dev/null; then
-        echo 1
-      elif echo $result | grep prove > /dev/null; then
-        echo 0
+      if [ $result = 124 ]; then
+        echo -e "$TIMEOUT_MS\t-2"
       else
-        echo -2
+        echo -n -e "$(($(cat /tmp/abc.time.$UUID)*1000))\t"
+        if cat /tmp/abc.result.$UUID | grep Output > /dev/null; then
+          echo 1
+        elif cat /tmp/abc.result.$UUID | grep prove > /dev/null; then
+          echo 0
+        else
+          echo -2
+        fi
       fi
-    } >> $1/abcReverse4.csv
+    } >> $ROOT/abcReverse4.csv
+  done
+}
+
+$NRAND && $GOBLIN4 && $ABC_REV_ASGN && {
+  rm -f $ROOT/abcReverseAsgn4.csv
+  for f in $(ls -v $ROOT/aigReverseAsgn4); do
+    timeout $TIMEOUT /usr/bin/time -f "%e" ./build/abc -c "read_aiger $ROOT/aigReverseAsgn4/$f; b; rw; rf; b; rw; rwz; b; rfz; rwz; b; pdr -T $TIMEOUT" > /tmp/abc.result.$UUID 2> /tmp/abc.time.$UUID
+    result=$?
+    {
+      echo -n -e "$f\t"
+      if [ $result = 124 ]; then
+        echo -e "$TIMEOUT_MS\t-2"
+      else
+        echo -n -e "$(($(cat /tmp/abc.time.$UUID)*1000))\t"
+        if cat /tmp/abc.result.$UUID | grep Output > /dev/null; then
+          echo 1
+        elif cat /tmp/abc.result.$UUID | grep prove > /dev/null; then
+          echo 0
+        else
+          echo -2
+        fi
+      fi
+    } >> $ROOT/abcReverseAsgn4.csv
   done
 }
 
 $RAND && $BASIC && $ABC && {
-  rm -f $1/abcRand.csv
-  for f in $(ls -v $1/aigRand); do
-    result=$(../abc/build/abc -c "read_aiger $1/aigRand/$f; pdr -T $TIMEOUT" | grep -E '^Property|^Output')
+  rm -f $ROOT/abcRand.csv
+  for f in $(ls -v $ROOT/aigRand); do
+    timeout $TIMEOUT /usr/bin/time -f "%e" ./build/abc -c "read_aiger $ROOT/aigRand/$f; b; rw; rf; b; rw; rwz; b; rfz; rwz; b; pdr -T $TIMEOUT" > /tmp/abc.result.$UUID 2> /tmp/abc.time.$UUID
+    result=$?
     {
       echo -n -e "$f\t"
-      echo -n -e "$(($(echo $result | sed -r 's/.*Time =\s+([^ ]+).*/\1/')*1000))\t"
-      if echo $result | grep Output > /dev/null; then
-        echo 1
-      elif echo $result | grep prove > /dev/null; then
-        echo 0
+      if [ $result = 124 ]; then
+        echo -e "$TIMEOUT_MS\t-2"
       else
-        echo -2
+        echo -n -e "$(($(cat /tmp/abc.time.$UUID)*1000))\t"
+        if cat /tmp/abc.result.$UUID | grep Output > /dev/null; then
+          echo 1
+        elif cat /tmp/abc.result.$UUID | grep prove > /dev/null; then
+          echo 0
+        else
+          echo -2
+        fi
       fi
-    } >> $1/abcRand.csv
+    } >> $ROOT/abcRand.csv
   done
 }
 
 $RAND && $GOBLIN3 && $ABC && {
-  rm -f $1/abcRand3.csv
-  for f in $(ls -v $1/aigRand3); do
-    result=$(../abc/build/abc -c "read_aiger $1/aigRand3/$f; pdr -T $TIMEOUT" | grep -E '^Property|^Output')
+  rm -f $ROOT/abcRand3.csv
+  for f in $(ls -v $ROOT/aigRand3); do
+    timeout $TIMEOUT /usr/bin/time -f "%e" ./build/abc -c "read_aiger $ROOT/aigRand3/$f; b; rw; rf; b; rw; rwz; b; rfz; rwz; b; pdr -T $TIMEOUT" > /tmp/abc.result.$UUID 2> /tmp/abc.time.$UUID
+    result=$?
     {
       echo -n -e "$f\t"
-      echo -n -e "$(($(echo $result | sed -r 's/.*Time =\s+([^ ]+).*/\1/')*1000))\t"
-      if echo $result | grep Output > /dev/null; then
-        echo 1
-      elif echo $result | grep prove > /dev/null; then
-        echo 0
+      if [ $result = 124 ]; then
+        echo -e "$TIMEOUT_MS\t-2"
       else
-        echo -2
+        echo -n -e "$(($(cat /tmp/abc.time.$UUID)*1000))\t"
+        if cat /tmp/abc.result.$UUID | grep Output > /dev/null; then
+          echo 1
+        elif cat /tmp/abc.result.$UUID | grep prove > /dev/null; then
+          echo 0
+        else
+          echo -2
+        fi
       fi
-    } >> $1/abcRand3.csv
+    } >> $ROOT/abcRand3.csv
   done
 }
 
 $RAND && $BASIC && $ABC_REV && {
-  rm -f $1/abcReverseRand.csv
-  for f in $(ls -v $1/aigReverseRand); do
-    result=$(../abc/build/abc -c "read_aiger $1/aigReverseRand/$f; pdr -T $TIMEOUT" | grep -E '^Property|^Output')
+  rm -f $ROOT/abcReverseRand.csv
+  for f in $(ls -v $ROOT/aigReverseRand); do
+    timeout $TIMEOUT /usr/bin/time -f "%e" ./build/abc -c "read_aiger $ROOT/aigReverseRand/$f; b; rw; rf; b; rw; rwz; b; rfz; rwz; b; pdr -T $TIMEOUT" > /tmp/abc.result.$UUID 2> /tmp/abc.time.$UUID
+    result=$?
     {
       echo -n -e "$f\t"
-      echo -n -e "$(($(echo $result | sed -r 's/.*Time =\s+([^ ]+).*/\1/')*1000))\t"
-      if echo $result | grep Output > /dev/null; then
-        echo 1
-      elif echo $result | grep prove > /dev/null; then
-        echo 0
+      if [ $result = 124 ]; then
+        echo -e "$TIMEOUT_MS\t-2"
       else
-        echo -2
+        echo -n -e "$(($(cat /tmp/abc.time.$UUID)*1000))\t"
+        if cat /tmp/abc.result.$UUID | grep Output > /dev/null; then
+          echo 1
+        elif cat /tmp/abc.result.$UUID | grep prove > /dev/null; then
+          echo 0
+        else
+          echo -2
+        fi
       fi
-    } >> $1/abcReverseRand.csv
+    } >> $ROOT/abcReverseRand.csv
   done
 }
 
 $RAND && $GOBLIN3 && $ABC_REV && {
-  rm -f $1/abcReverseRand3.csv
-  for f in $(ls -v $1/aigReverseRand3); do
-    result=$(../abc/build/abc -c "read_aiger $1/aigReverseRand3/$f; pdr -T $TIMEOUT" | grep -E '^Property|^Output')
+  rm -f $ROOT/abcReverseRand3.csv
+  for f in $(ls -v $ROOT/aigReverseRand3); do
+    timeout $TIMEOUT /usr/bin/time -f "%e" ./build/abc -c "read_aiger $ROOT/aigReverseRand3/$f; b; rw; rf; b; rw; rwz; b; rfz; rwz; b; pdr -T $TIMEOUT" > /tmp/abc.result.$UUID 2> /tmp/abc.time.$UUID
+    result=$?
     {
       echo -n -e "$f\t"
-      echo -n -e "$(($(echo $result | sed -r 's/.*Time =\s+([^ ]+).*/\1/')*1000))\t"
-      if echo $result | grep Output > /dev/null; then
-        echo 1
-      elif echo $result | grep prove > /dev/null; then
-        echo 0
+      if [ $result = 124 ]; then
+        echo -e "$TIMEOUT_MS\t-2"
       else
-        echo -2
+        echo -n -e "$(($(cat /tmp/abc.time.$UUID)*1000))\t"
+        if cat /tmp/abc.result.$UUID | grep Output > /dev/null; then
+          echo 1
+        elif cat /tmp/abc.result.$UUID | grep prove > /dev/null; then
+          echo 0
+        else
+          echo -2
+        fi
       fi
-    } >> $1/abcReverseRand3.csv
+    } >> $ROOT/abcReverseRand3.csv
   done
 }
 
@@ -426,23 +664,47 @@ $RAND && $GOBLIN3 && $ABC_REV && {
 
 cd ../JAltImpact
 
-$NRAND && $BASIC && $JIMPACT && {
-  rm -f $1/jimpact.csv
-  for f in $(ls -v $1/ada); do
-    echo checking $f
-    cp $1/ada/$f /tmp/jimpact.ada
-    timeout $TIMEOUT ant -Dmodel.path=/tmp/jimpact.ada > /tmp/jimpact.log
+$ZERO && $JIMPACT && {
+  rm -f $1/jimpact0.csv
+  for f in $(ls -v $1/ada0); do
+    cp $1/ada0/$f /tmp/jimpact.ada.$UUID
+    timeout $TIMEOUT ant -Dmodel.path=/tmp/jimpact.ada.$UUID > /tmp/jimpact.log.$UUID
     result=$?
     {
       echo -n -e "$f\t"
       if [ $result = 124 ]; then
         echo -e "$TIMEOUT_MS\t-2"
       else
-        if cat /tmp/jimpact.log | grep 'NOT EMPTY' > /dev/null; then
-          echo -n -e "$(cat /tmp/jimpact.log | grep 'Time Cost' | sed 's/.*: //')\t"
+        if cat /tmp/jimpact.log.$UUID | grep 'NOT EMPTY' > /dev/null; then
+          echo -n -e "$(cat /tmp/jimpact.log.$UUID | grep 'Time Cost' | sed 's/.*: //')\t"
           echo 1
-        elif cat /tmp/jimpact.log | grep 'EMPTY' > /dev/null; then
-          echo -n -e "$(cat /tmp/jimpact.log | grep 'Time Cost' | sed 's/.*: //')\t"
+        elif cat /tmp/jimpact.log.$UUID | grep 'EMPTY' > /dev/null; then
+          echo -n -e "$(cat /tmp/jimpact.log.$UUID | grep 'Time Cost' | sed 's/.*: //')\t"
+          echo 0
+        else
+          echo "$TIMEOUT_MS\t-3"
+        fi
+      fi
+    } >> $1/jimpact0.csv
+  done
+}
+
+$NRAND && $BASIC && $JIMPACT && {
+  rm -f $1/jimpact.csv
+  for f in $(ls -v $1/ada); do
+    cp $1/ada/$f /tmp/jimpact.ada.$UUID
+    timeout $TIMEOUT ant -Dmodel.path=/tmp/jimpact.ada.$UUID > /tmp/jimpact.log.$UUID
+    result=$?
+    {
+      echo -n -e "$f\t"
+      if [ $result = 124 ]; then
+        echo -e "$TIMEOUT_MS\t-2"
+      else
+        if cat /tmp/jimpact.log.$UUID | grep 'NOT EMPTY' > /dev/null; then
+          echo -n -e "$(cat /tmp/jimpact.log.$UUID | grep 'Time Cost' | sed 's/.*: //')\t"
+          echo 1
+        elif cat /tmp/jimpact.log.$UUID | grep 'EMPTY' > /dev/null; then
+          echo -n -e "$(cat /tmp/jimpact.log.$UUID | grep 'Time Cost' | sed 's/.*: //')\t"
           echo 0
         else
           echo "$TIMEOUT_MS\t-3"
@@ -455,20 +717,19 @@ $NRAND && $BASIC && $JIMPACT && {
 $NRAND && $GOBLIN3 && $JIMPACT && {
   rm -f $1/jimpact3.csv
   for f in $(ls -v $1/ada3); do
-    echo checking $f
-    cp $1/ada3/$f /tmp/jimpact.ada
-    timeout $TIMEOUT ant -Dmodel.path=/tmp/jimpact.ada > /tmp/jimpact.log
+    cp $1/ada3/$f /tmp/jimpact.ada.$UUID
+    timeout $TIMEOUT ant -Dmodel.path=/tmp/jimpact.ada.$UUID > /tmp/jimpact.log.$UUID
     result=$?
     {
       echo -n -e "$f\t"
       if [ $result = 124 ]; then
         echo -e "$TIMEOUT_MS\t-2"
       else
-        if cat /tmp/jimpact.log | grep 'NOT EMPTY' > /dev/null; then
-          echo -n -e "$(cat /tmp/jimpact.log | grep 'Time Cost' | sed 's/.*: //')\t"
+        if cat /tmp/jimpact.log.$UUID | grep 'NOT EMPTY' > /dev/null; then
+          echo -n -e "$(cat /tmp/jimpact.log.$UUID | grep 'Time Cost' | sed 's/.*: //')\t"
           echo 1
-        elif cat /tmp/jimpact.log | grep 'EMPTY' > /dev/null; then
-          echo -n -e "$(cat /tmp/jimpact.log | grep 'Time Cost' | sed 's/.*: //')\t"
+        elif cat /tmp/jimpact.log.$UUID | grep 'EMPTY' > /dev/null; then
+          echo -n -e "$(cat /tmp/jimpact.log.$UUID | grep 'Time Cost' | sed 's/.*: //')\t"
           echo 0
         else
           echo "$TIMEOUT_MS\t-3"
@@ -481,20 +742,19 @@ $NRAND && $GOBLIN3 && $JIMPACT && {
 $NRAND && $GOBLIN4 && $JIMPACT && {
   rm -f $1/jimpact4.csv
   for f in $(ls -v $1/ada4); do
-    echo checking $f
-    cp $1/ada4/$f /tmp/jimpact.ada
-    timeout $TIMEOUT ant -Dmodel.path=/tmp/jimpact.ada > /tmp/jimpact.log
+    cp $1/ada4/$f /tmp/jimpact.ada.$UUID
+    timeout $TIMEOUT ant -Dmodel.path=/tmp/jimpact.ada.$UUID > /tmp/jimpact.log.$UUID
     result=$?
     {
       echo -n -e "$f\t"
       if [ $result = 124 ]; then
         echo -e "$TIMEOUT_MS\t-2"
       else
-        if cat /tmp/jimpact.log | grep 'NOT EMPTY' > /dev/null; then
-          echo -n -e "$(cat /tmp/jimpact.log | grep 'Time Cost' | sed 's/.*: //')\t"
+        if cat /tmp/jimpact.log.$UUID | grep 'NOT EMPTY' > /dev/null; then
+          echo -n -e "$(cat /tmp/jimpact.log.$UUID | grep 'Time Cost' | sed 's/.*: //')\t"
           echo 1
-        elif cat /tmp/jimpact.log | grep 'EMPTY' > /dev/null; then
-          echo -n -e "$(cat /tmp/jimpact.log | grep 'Time Cost' | sed 's/.*: //')\t"
+        elif cat /tmp/jimpact.log.$UUID | grep 'EMPTY' > /dev/null; then
+          echo -n -e "$(cat /tmp/jimpact.log.$UUID | grep 'Time Cost' | sed 's/.*: //')\t"
           echo 0
         else
           echo "$TIMEOUT_MS\t-3"
@@ -507,19 +767,19 @@ $NRAND && $GOBLIN4 && $JIMPACT && {
 $RAND && $BASIC && $JIMPACT && {
   rm -f $1/jimpactRand.csv
   for f in $(ls -v $1/adaRand); do
-    cp $1/adaRand/$f /tmp/jimpact.ada
-    timeout $TIMEOUT ant -Dmodel.path=/tmp/jimpact.ada > /tmp/jimpact.log
+    cp $1/adaRand/$f /tmp/jimpact.ada.$UUID
+    timeout $TIMEOUT ant -Dmodel.path=/tmp/jimpact.ada.$UUID > /tmp/jimpact.log.$UUID
     result=$?
     {
       echo -n -e "$f\t"
       if [ $result = 124 ]; then
         echo -e "$TIMEOUT_MS\t-2"
       else
-        if cat /tmp/jimpact.log | grep 'NOT EMPTY' > /dev/null; then
-          echo -n -e "$(cat /tmp/jimpact.log | grep 'Time Cost' | sed 's/.*: //')\t"
+        if cat /tmp/jimpact.log.$UUID | grep 'NOT EMPTY' > /dev/null; then
+          echo -n -e "$(cat /tmp/jimpact.log.$UUID | grep 'Time Cost' | sed 's/.*: //')\t"
           echo 1
-        elif cat /tmp/jimpact.log | grep 'EMPTY' > /dev/null; then
-          echo -n -e "$(cat /tmp/jimpact.log | grep 'Time Cost' | sed 's/.*: //')\t"
+        elif cat /tmp/jimpact.log.$UUID | grep 'EMPTY' > /dev/null; then
+          echo -n -e "$(cat /tmp/jimpact.log.$UUID | grep 'Time Cost' | sed 's/.*: //')\t"
           echo 0
         else
           echo "$TIMEOUT_MS\t-3"
@@ -532,19 +792,19 @@ $RAND && $BASIC && $JIMPACT && {
 $RAND && $GOBLIN3 && $JIMPACT && {
   rm -f $1/jimpactRand3.csv
   for f in $(ls -v $1/adaRand3); do
-    cp $1/adaRand3/$f /tmp/jimpact.ada
-    timeout $TIMEOUT ant -Dmodel.path=/tmp/jimpact.ada > /tmp/jimpact.log
+    cp $1/adaRand3/$f /tmp/jimpact.ada.$UUID
+    timeout $TIMEOUT ant -Dmodel.path=/tmp/jimpact.ada.$UUID > /tmp/jimpact.log.$UUID
     result=$?
     {
       echo -n -e "$f\t"
       if [ $result = 124 ]; then
         echo -e "$TIMEOUT_MS\t-2"
       else
-        if cat /tmp/jimpact.log | grep 'NOT EMPTY' > /dev/null; then
-          echo -n -e "$(cat /tmp/jimpact.log | grep 'Time Cost' | sed 's/.*: //')\t"
+        if cat /tmp/jimpact.log.$UUID | grep 'NOT EMPTY' > /dev/null; then
+          echo -n -e "$(cat /tmp/jimpact.log.$UUID | grep 'Time Cost' | sed 's/.*: //')\t"
           echo 1
-        elif cat /tmp/jimpact.log | grep 'EMPTY' > /dev/null; then
-          echo -n -e "$(cat /tmp/jimpact.log | grep 'Time Cost' | sed 's/.*: //')\t"
+        elif cat /tmp/jimpact.log.$UUID | grep 'EMPTY' > /dev/null; then
+          echo -n -e "$(cat /tmp/jimpact.log.$UUID | grep 'Time Cost' | sed 's/.*: //')\t"
           echo 0
         else
           echo "$TIMEOUT_MS\t-3"

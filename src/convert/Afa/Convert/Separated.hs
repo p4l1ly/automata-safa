@@ -151,7 +151,8 @@ mixedToSeparated
   action :: forall s. ST s (Maybe (SepAfa.Afa p))
   action = do
     result <- runHashConsT$ runHashConsT$ runMaybeT$ do
-      bixMap <- for bterms$ lift . lift .  hashCons'
+      bixMap <- cataScanT' @(LiftArray (LiftArray (LiftArray (STArray s))))
+        traversed (lift . lift . hashCons') bterms
       cataScanT' @(LiftArray (LiftArray (LiftArray (STArray s))))
         traversed (alg bixMap) mterms
 

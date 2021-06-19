@@ -67,9 +67,29 @@ toSmvReverse (BoolAfa bterms (Afa mterms states init)) = T.unlines
   , [i|INIT #{nqConj}|]
   , T.append "TRANS "$ T.intercalate " & "$
       map (\(q, t) -> [i|(next(q#{q}) -> m#{t})|]) (assocs states)
-  , [i|SPEC AG(!q0)|]
+  , [i|SPEC AG(!q#{init})|]
   ]
   where
   qcount = rangeSize$ bounds states
   (varCnt, bterms') = CapAfa.varCount bterms
   nqConj = T.intercalate " & "$ map (\q -> [i|!q#{q}|]) [0..qcount-1]
+
+
+toSmvReverseAssign :: BoolAfaUnswallowed Int -> T.Text
+toSmvReverseAssign (BoolAfa bterms (Afa mterms states init)) = T.unlines
+  [ "MODULE main"
+  , "VAR"
+  , T.unlines$ map (\j -> [i|  q#{j}: boolean;|]) [0..qcount - 1]
+  , T.unlines$ map (\j -> [i|  v#{j}: boolean;|]) [0..varCnt - 1]
+  , "DEFINE"
+  , T.unlines$ map (\(j, t) -> [i|  b#{j} := #{fromBTerm t};|]) (assocs bterms)
+  , T.unlines$ map (\(j, t) -> [i|  m#{j} := #{fromMTermReverse t};|]) (assocs mterms)
+  , "ASSIGN"
+  , T.unlines$ map (\j -> [i|  init(q#{j}) := FALSE; |]) [0..qcount - 1]
+  , T.unlines$ map (\j -> [i|  init(v#{j}) := FALSE; |]) [0..varCnt - 1]  -- ABC does not like initial don't cares?
+  , T.unlines$ map (\(q, t) -> [i|  next(q#{q}) := m#{t}; |]) (assocs states)
+  , [i|SPEC AG(!q#{init})|]
+  ]
+  where
+  qcount = rangeSize$ bounds states
+  (varCnt, bterms') = CapAfa.varCount bterms

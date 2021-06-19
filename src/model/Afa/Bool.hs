@@ -16,6 +16,7 @@ import Debug.Trace
 
 import Control.Applicative ((<|>))
 import Data.List (find)
+import Data.List.NonEmpty (NonEmpty((:|)))
 import Data.Array.Base (unsafeRead, unsafeWrite, unsafeAccumArray, unsafeAt, numElements)
 import Data.Foldable
 import Control.Monad.Free
@@ -75,6 +76,37 @@ isValid (BoolAfa bterms (Afa mterms states init)) = foldr1 (<|>)
       not$ inRange (bounds mterms) t
   , if not$ inRange (bounds states) init then Just$ "init " ++ show init else Nothing
   ]
+
+
+{-# INLINABLE replaceLits #-}
+replaceLits :: BoolAfaUnswallowed Int -> BoolAfaUnswallowed Int
+replaceLits (BoolAfa bterms (Afa mterms states init)) =
+  BoolAfa bterms'' (Afa mterms'' (states <&> (mixMap!)) init)
+  where
+    btermCount = numElements bterms
+    (bixMap, bterms') = runST action where
+      action :: forall s. ST s (Array Int Int, [BTerm.Term Int Int])
+      action = runNoConsTFrom 4$ ($ bterms)$
+        cataScanT' @(LSTArray s) traversed$ \case
+          BTerm.LTrue -> return 2
+          BTerm.LFalse -> return 3
+          BTerm.And (i :| []) -> return i
+          BTerm.Or (i :| []) -> return i
+          t -> nocons t
+    bterms'' = listArray'$
+      [BTerm.Predicate 0, BTerm.Not 0, BTerm.Or$ 0 :| [1], BTerm.And$ 0 :| [1]]
+      ++ bterms'
+
+    (mixMap, mterms') = runST action where
+      action :: forall s. ST s (Array Int Int, [MTerm.Term Int Int Int])
+      action = runNoConsT$ ($ mterms)$
+        cataScanT' @(LSTArray s) traversed$ \case
+          MTerm.LTrue -> nocons$ MTerm.Predicate 2
+          MTerm.Predicate p -> nocons$ MTerm.Predicate (bixMap!p)
+          MTerm.And (i :| []) -> return i
+          MTerm.Or (i :| []) -> return i
+          t -> nocons t
+    mterms'' = listArray' mterms'
 
 
 {-# INLINABLE reorderStates' #-}
