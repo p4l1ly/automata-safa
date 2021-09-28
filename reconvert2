@@ -1,0 +1,124 @@
+#! /bin/zsh
+# cat ../data/regexlib/choice.csv| cabal exec ltle-to-afa -- -i conjunctEq:0,1,2:0,1,2,3:../data/regexlib/elementaryHashCons -o afa0:../data/regexlib-abc-abcd/afa0 > ../data/regexlib-abc-abcd/afa0.csv
+# zsh reconvert ../data/regexlib-abc-abcd
+
+# cat ../data/regexlib/choice.csv| cabal exec ltle-to-afa -- -i conjunctEq:0,1,2:0,1,2,2:../data/regexlib/elementaryHashCons -o afa0:../data/regexlib-abc-abcc/afa0 > ../data/regexlib-abc-abcc/afa0.csv
+# zsh reconvert ../data/regexlib-abc-abcc
+
+# cat ../data/regexlib/choice.csv| cabal exec ltle-to-afa -- -i conjunctEq:0,1,2,3:0,1,2,3,4:../data/regexlib/elementaryHashCons -o afa0:../data/regexlib-abcd-abcde/afa0 > ../data/regexlib-abcd-abcde/afa0.csv
+# zsh reconvert ../data/regexlib-abcd-abcde
+
+# cat ../data/regexlib/choice.csv| cabal exec ltle-to-afa -- -i conjunctEq:0,1,2,3:0,1,2,3,3:../data/regexlib/elementaryHashCons -o afa0:../data/regexlib-abcd-abcdd2/afa0 > ../data/regexlib-abcd-abcdd2/afa0.csv
+# zsh reconvert ../data/regexlib-abcd-abcdd2
+
+# cat ../data/email75/choice.csv| cabal exec ltle-to-afa -- -i conjunctEq:0,1,2,3:0,1,2,3,3:../data/email75/elementaryHashCons -o afa0:../data/email75-abcd-abcdd/afa0 > ../data/email75-abcd-abcdd/afa0.csv
+# zsh reconvert ../data/email75-abcd-abcdd
+
+# cat ../data/email75/choice.csv| cabal exec ltle-to-afa -- -i conjunctEq:0,1,2:0,1,2,3:../data/email75/elementaryHashCons -o afa0:../data/email75-abc-abcd/afa0 > ../data/email75-abc-abcd/afa0.csv
+# zsh reconvert ../data/email75-abc-abcd
+
+# zsh reconvert ../data/m7
+# zsh reconvert ../data/m12
+# zsh reconvert ../data/m13
+# zsh reconvert ../data/m14
+
+export EXTERNAL=true
+
+# (
+#   export GENERATE=true
+#   export MODELCHECK=true
+#   export BASIC=true
+#   export GOBLIN3=true
+#   export GOBLIN4=true
+#   export ABC=true
+#   export ABC_REV=true
+#   echo 2
+#   zsh reconvert ../data/m13
+# )
+
+# (
+#   export MODELCHECK=true
+#   export ZERO=true
+#   export ABC=true
+#   export ABC_REV=true
+#   echo 3
+#   zsh reconvert ../data/m7
+#   zsh reconvert ../data/m12
+# )
+# 
+# (
+#   export MODELCHECK=true
+#   export ZERO=true
+#   export AFASAT=true
+#   export DANTONI=true
+#   export ABC=true
+#   export ABC_REV=true
+#   echo 4
+#   zsh reconvert ../data/m13
+#   zsh reconvert ../data/m14
+#   zsh reconvert ../data/m15
+#   zsh reconvert ../data/email75-abc-abcd
+#   zsh reconvert ../data/email75-abcd-abcdd
+# )
+# 
+# (
+#   export GENERATE=true
+#   export MODELCHECK=true
+#   export SUCCINCT=true
+#   export BASIC=true
+#   export GOBLIN3=true
+#   export GOBLIN4=true
+#   export AFASAT=true
+#   export DANTONI=true
+#   export JIMPACT=true
+#   echo 5
+#   zsh reconvert ../data/m13
+# )
+
+(
+  export MODELCHECK=true
+  export BASIC=true
+  export GOBLIN3=true
+  export GOBLIN4=true
+  export ABC=true
+  echo abc
+  zsh reconvert ../data/email75-abcd-abcdd
+)
+
+# (
+#   export GENERATE=true
+#   export FROM_LTL=true
+#   export BASIC=true
+# #   export GOBLIN3=true
+# export GOBLIN4=true
+# #   export SUCCINCT=true
+# #   echo preproc
+# zsh reconvert ../data/myCounter
+# )
+
+# (
+#   export GENERATE=false
+#   export MODELCHECK=true
+#   export GOBLIN3=true
+#   export GOBLIN4=true
+#   export ABC_REV_ASGN=true
+#   echo asgn
+#   zsh reconvert ../data/myCounter
+# )
+
+# (
+#   export GENERATE=false
+#   export MODELCHECK=true
+#   export BASIC=true
+#   export ABC_REV_ASGN=true
+#   echo abc
+#   zsh reconvert ../data/myCounter
+# )
+
+# (
+#   export MODELCHECK=true
+#   export BASIC=true
+#   export RETIME=true
+#   echo abc
+#   zsh reconvert ../data/email75-abcd-abcdd
+# )
