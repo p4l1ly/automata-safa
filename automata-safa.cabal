@@ -117,7 +117,6 @@ library convert
   hs-source-dirs:      src/convert
   default-language:    Haskell2010
   extra-libraries:     automata_safa
-  enable-shared: True
 
 test-suite automata-safa-test
   default-language:    Haskell2010
@@ -138,7 +137,6 @@ test-suite automata-safa-test
     free ^>=5.1.4,
     automata-safa,
     automata-safa:convert,
-  extra-lib-dirs:      target/release
   extra-libraries:     automata_safa
 
 executable ltle-to-afa
@@ -161,7 +159,6 @@ executable ltle-to-afa
   hs-source-dirs:      app/ltle-to-afa
   default-language:    Haskell2010
   ghc-options: -threaded
-  extra-lib-dirs:      target/release
   extra-libraries:     automata_safa
 
 -- executable ltle-sat
