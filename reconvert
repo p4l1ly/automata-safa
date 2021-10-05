@@ -667,8 +667,8 @@ cd ../JAltImpact
 $ZERO && $JIMPACT && {
   rm -f $1/jimpact0.csv
   for f in $(ls -v $1/ada0); do
-    cp $1/ada0/$f /tmp/jimpact.ada.$UUID
-    timeout $TIMEOUT ant -Dmodel.path=/tmp/jimpact.ada.$UUID > /tmp/jimpact.log.$UUID
+    cp $1/ada0/$f /tmp/jimpact.$UUID.ada
+    timeout $TIMEOUT ant -Dmodel.path=/tmp/jimpact.$UUID.ada > /tmp/jimpact.log.$UUID
     result=$?
     {
       echo -n -e "$f\t"
@@ -692,8 +692,8 @@ $ZERO && $JIMPACT && {
 $NRAND && $BASIC && $JIMPACT && {
   rm -f $1/jimpact.csv
   for f in $(ls -v $1/ada); do
-    cp $1/ada/$f /tmp/jimpact.ada.$UUID
-    timeout $TIMEOUT ant -Dmodel.path=/tmp/jimpact.ada.$UUID > /tmp/jimpact.log.$UUID
+    cp $1/ada/$f /tmp/jimpact.$UUID.ada
+    timeout $TIMEOUT ant -Dmodel.path=/tmp/jimpact.$UUID.ada > /tmp/jimpact.log.$UUID
     result=$?
     {
       echo -n -e "$f\t"
@@ -717,8 +717,8 @@ $NRAND && $BASIC && $JIMPACT && {
 $NRAND && $GOBLIN3 && $JIMPACT && {
   rm -f $1/jimpact3.csv
   for f in $(ls -v $1/ada3); do
-    cp $1/ada3/$f /tmp/jimpact.ada.$UUID
-    timeout $TIMEOUT ant -Dmodel.path=/tmp/jimpact.ada.$UUID > /tmp/jimpact.log.$UUID
+    cp $1/ada3/$f /tmp/jimpact.$UUID.ada
+    timeout $TIMEOUT ant -Dmodel.path=/tmp/jimpact.$UUID.ada > /tmp/jimpact.log.$UUID
     result=$?
     {
       echo -n -e "$f\t"
@@ -742,8 +742,8 @@ $NRAND && $GOBLIN3 && $JIMPACT && {
 $NRAND && $GOBLIN4 && $JIMPACT && {
   rm -f $1/jimpact4.csv
   for f in $(ls -v $1/ada4); do
-    cp $1/ada4/$f /tmp/jimpact.ada.$UUID
-    timeout $TIMEOUT ant -Dmodel.path=/tmp/jimpact.ada.$UUID > /tmp/jimpact.log.$UUID
+    cp $1/ada4/$f /tmp/jimpact.$UUID.ada
+    timeout $TIMEOUT ant -Dmodel.path=/tmp/jimpact.$UUID.ada > /tmp/jimpact.log.$UUID
     result=$?
     {
       echo -n -e "$f\t"
@@ -767,8 +767,8 @@ $NRAND && $GOBLIN4 && $JIMPACT && {
 $RAND && $BASIC && $JIMPACT && {
   rm -f $1/jimpactRand.csv
   for f in $(ls -v $1/adaRand); do
-    cp $1/adaRand/$f /tmp/jimpact.ada.$UUID
-    timeout $TIMEOUT ant -Dmodel.path=/tmp/jimpact.ada.$UUID > /tmp/jimpact.log.$UUID
+    cp $1/adaRand/$f /tmp/jimpact.$UUID.ada
+    timeout $TIMEOUT ant -Dmodel.path=/tmp/jimpact.$UUID.ada > /tmp/jimpact.log.$UUID
     result=$?
     {
       echo -n -e "$f\t"
@@ -792,8 +792,8 @@ $RAND && $BASIC && $JIMPACT && {
 $RAND && $GOBLIN3 && $JIMPACT && {
   rm -f $1/jimpactRand3.csv
   for f in $(ls -v $1/adaRand3); do
-    cp $1/adaRand3/$f /tmp/jimpact.ada.$UUID
-    timeout $TIMEOUT ant -Dmodel.path=/tmp/jimpact.ada.$UUID > /tmp/jimpact.log.$UUID
+    cp $1/adaRand3/$f /tmp/jimpact.$UUID.ada
+    timeout $TIMEOUT ant -Dmodel.path=/tmp/jimpact.$UUID.ada > /tmp/jimpact.log.$UUID
     result=$?
     {
       echo -n -e "$f\t"
