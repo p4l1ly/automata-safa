@@ -5,6 +5,9 @@ module Test.Afa.Convert.Stranger where
 
 import Test.HUnit hiding (State)
 import Data.Fix
+import Control.Monad.Free
+import qualified Data.Text.IO as T
+import Data.Array
 
 import Afa.Convert.Stranger
 
@@ -18,7 +21,11 @@ pattern FSAnd a b = Fix (SAnd a b)
 pattern FSOr a b = Fix (SOr a b)
 
 tests =
-  [ "Convert.Stranger" ~: do
+  [ "Convert.Stranger.convertFormulae" ~: do
+      assertEqual "convertFormulae"
+        (listArray (0, 1) [(False, 9), (False, 10)], [Pure 0, Pure 9], [])
+        (convertFormulae [Fix STrue, Fix$ SFormula 0] 2 3 5)
+  , "Convert.Stranger" ~: do
       assertEqual "term"
         ( FSAnd
             (FSAnd (FSState 1) (FSNot$ FSVar "e_0"))
@@ -38,5 +45,22 @@ tests =
         \s_2 ∧ ¬e_0\n\
         \state 2:\n\
         \s_0 ∧ ¬e_0\n\
+        \"
+
+      putStrLn ""
+      putStrLn "simple"
+      T.putStrLn$ formatAfa$ parseAfa
+        "numOfStates:   2\n\
+        \initialStates: s_0\n\
+        \finalStates:   ¬s_0 ∧ ¬s_1\n\
+        \numOfTransitionSubformulae: 1\n\
+        \TransitionSubformulae:\n\
+        \formula 0:\n\
+        \!e_0\n\
+        \States: \n\
+        \state 0:\n\
+        \s_1 ∧ e_0\n\
+        \state 1:\n\
+        \s_0 ∧ f_0\n\
         \"
   ]

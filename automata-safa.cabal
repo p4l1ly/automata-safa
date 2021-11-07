@@ -135,6 +135,7 @@ test-suite automata-safa-test
     array ^>= 0.5.4.0,
     data-fix ^>=0.3.0,
     free ^>=5.1.4,
+    text ^>= 1.2.4.1,
     automata-safa,
     automata-safa:convert,
   extra-libraries:     automata_safa

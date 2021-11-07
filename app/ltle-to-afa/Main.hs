@@ -254,6 +254,9 @@ optParser = Opts
       (break (== ':') -> ("ada", ':':outdir)) ->
         Right$ repeat$ \i bafa ->
           Right$ (afaCosts bafa,)$ TIO.writeFile (outdir ++ "/" ++ i)$ toAda bafa
+      (break (== ':') -> ("stranger", ':':outdir)) ->
+        Right$ repeat$ \i bafa ->
+          Right$ (afaCosts bafa,)$ TIO.writeFile (outdir ++ "/" ++ i)$ Stranger.formatAfa bafa
       x -> Left$ "expected one of: \
         \{afa,afaBasicSimp,cnfafa,sepafaExploding,sepafaDelaying}:<path>; got " ++ x
     )

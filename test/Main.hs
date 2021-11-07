@@ -18,6 +18,6 @@ main = (check =<<)$ runTestTT$ TestList$ concat
   -- [ Test.Afa.Simplify.tests
   -- , Test.Afa.Convert.Separated.tests
   -- , Test.Afa.QMinCut.tests
-  [ Test.Afa.Goblin.tests
-  -- , Test.Afa.Convert.Stranger.tests
+  -- , Test.Afa.Goblin.tests
+  [ Test.Afa.Convert.Stranger.tests
   ]
