@@ -398,14 +398,27 @@ swallow BoolAfa{boolTerms=bterms, afa=afa@Afa{terms=mterms, states=transitions}}
     return$ BoolAfa (listArray' bterms')
       afa{ terms = listArray' mterms', states = transitions'}
 
-  alg 0 _ = return$ error "accessing element without parents"
-  alg 1 t = return$ Free t
-  alg _ tb = Pure<$> nocons (Free tb)
+  alg _ 0 _ = return$ error "accessing element without parents"
+  alg _ 1 t = return$ Free t
+  alg isTerminal _ t
+    | isTerminal t = return$ Free t
+    | otherwise = Pure<$> nocons (Free t)
 
   modPT lP lT = MTerm.modChilds MTerm.pureChildMod{ MTerm.lT = lT, MTerm.lP = lP }
 
-  bhylogebra (g, i) = return ((g,) <$> bterms `unsafeAt` i, alg g)
+  bIsTerminal (BTerm.Predicate _) = True
+  bIsTerminal BTerm.LTrue = True
+  bIsTerminal BTerm.LFalse = True
+  bIsTerminal _ = False
+
+  mIsTerminal MTerm.LTrue = True
+  mIsTerminal (MTerm.State _) = True
+  mIsTerminal (MTerm.Predicate (Pure _)) = True
+  mIsTerminal (MTerm.Predicate (Free p)) = bIsTerminal p
+  mIsTerminal _ = False
+
+  bhylogebra (g, i) = return ((g,) <$> bterms `unsafeAt` i, alg bIsTerminal g)
   mhylogebra (g, i) = return
     ( MTerm.appMTFun MTerm.mtfun0{MTerm.mtfunT = (g,), MTerm.mtfunP = (g,)} (mterms `unsafeAt` i)
-    , alg g
+    , alg mIsTerminal g
     )

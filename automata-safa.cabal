@@ -81,6 +81,7 @@ library convert
     -- Afa.Convert.Pretty
     Afa.Convert.Dot
     Afa.Convert.Stranger
+    Afa.Convert.PrettyStranger
     Afa.Convert.Smv
     Afa.Convert.Ada
     Afa.Convert.CnfAfa

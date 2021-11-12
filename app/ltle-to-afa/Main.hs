@@ -46,6 +46,8 @@ import qualified Afa.Term.Mix as MTerm
 import qualified Afa.Term.Bool as BTerm
 import qualified Afa.Convert.Stranger as Stranger
 import qualified Afa.Convert.Capnp.Range16Nfa as Range16Nfa
+import qualified Afa.Convert.PrettyStranger as PrettyStranger
+import qualified Data.Text as T
 import qualified Data.Text.IO as TIO
 
 data Opts = Opts
@@ -66,8 +68,9 @@ dirReaders count fileReader indir = Fix$ Compose$ do
     afa <- withFile (indir ++ "/" ++ show file) ReadMode fileReader
     return$ Cons (show file, afa) a
 
-strangerReaders :: String -> Fix (Compose IO (ListF (String, BoolAfaUnswallowed Int)))
-strangerReaders = dirReaders maxBound$ \h -> TIO.hGetContents h <&> Stranger.parseAfa
+strangerReaders :: (T.Text -> BoolAfaUnswallowed Int) -> String
+  -> Fix (Compose IO (ListF (String, BoolAfaUnswallowed Int)))
+strangerReaders parseAfa = dirReaders maxBound$ \h -> TIO.hGetContents h <&> parseAfa
 
 arrSize :: Array Int a -> Int
 arrSize = rangeSize . bounds
@@ -134,7 +137,8 @@ optParser = Opts
         `catch` \(SomeException _) -> return Nil
       (splitOn ":" -> ["afai", read -> i, indir]) -> Right$ dirReaders i hReadAfa indir
       (break (== ':') -> ("afa", ':':indir)) -> Right$ dirReaders maxBound hReadAfa indir
-      (break (== ':') -> ("stranger", ':':indir)) -> Right$ strangerReaders indir
+      (break (== ':') -> ("stranger", ':':indir)) -> Right$ strangerReaders Stranger.parseAfa indir
+      (break (== ':') -> ("prettyStranger", ':':indir)) -> Right$ strangerReaders PrettyStranger.parseAfa indir
       (break (== ':') -> ("range16nfa", ':':indir)) -> Right$
         dirReaders maxBound Range16Nfa.hReadNfa indir
       ( splitOn ":" ->
@@ -257,6 +261,9 @@ optParser = Opts
       (break (== ':') -> ("stranger", ':':outdir)) ->
         Right$ repeat$ \i bafa ->
           Right$ (afaCosts bafa,)$ TIO.writeFile (outdir ++ "/" ++ i)$ Stranger.formatAfa bafa
+      (break (== ':') -> ("prettyStranger", ':':outdir)) ->
+        Right$ repeat$ \i bafa ->
+          Right$ (afaCosts bafa,)$ TIO.writeFile (outdir ++ "/" ++ i)$ PrettyStranger.formatAfa bafa
       x -> Left$ "expected one of: \
         \{afa,afaBasicSimp,cnfafa,sepafaExploding,sepafaDelaying}:<path>; got " ++ x
     )
