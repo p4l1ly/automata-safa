@@ -33,6 +33,7 @@ import Control.Arrow
 import Data.Functor.Compose
 import Control.Lens
 import Data.Char
+import qualified Data.Attoparsec.Text as Parsec
 import Data.Attoparsec.Text
 import Data.Attoparsec.Expr
 import Data.Fix hiding (cata)
@@ -62,8 +63,8 @@ import qualified Afa.Term.Mix as MTerm
 import qualified Afa.Term.Bool.Simplify as BTerm
 import qualified Afa.Term.Mix.Simplify as MTerm
 
-parseExpr :: T.Text -> Fix STermStr
-parseExpr str = case parse (char ':' *> expr)$ T.filter (not . isSpace) str of
+parseWhole :: Parser a -> T.Text -> a
+parseWhole parser str = case parse parser str of
   Fail i ctxs err -> error$ show (i, ctxs, err)
   Partial p -> case p "" of
     Fail i ctxs err -> error$ show (i, ctxs, err)
@@ -74,8 +75,11 @@ parseExpr str = case parse (char ':' *> expr)$ T.filter (not . isSpace) str of
 parseAfa :: T.Text -> BoolAfaUnswallowed Int
 parseAfa str = toAfa (length states) (length formulae) acount init final states formulae
   where
-  ((init, final, states, formulae), acount) = enumerate$
-    map (uncurry parseOne . T.breakOn ":") $ T.lines str
+  str' = T.filter (not . isSpace) str
+  parser = many$ parseOne
+    <$> (char '@' *> Parsec.takeWhile (/= ':') <* char ':')
+    <*> (Parsec.takeWhile (/= '@'))
+  ((init, final, states, formulae), acount) = enumerate$ parseWhole parser str'
 
 data Definition
   = DInitialStates {dterm :: Fix STermStr}
@@ -88,11 +92,11 @@ type STerm' = STerm Int Int Int
 
 parseOne :: T.Text -> T.Text -> Definition
 parseOne name value = case T.uncons name of
-  Just ('f', name') -> DFormula name'$ parseExpr value
-  Just ('s', name') -> DState name'$ parseExpr value
+  Just ('f', name') -> DFormula name'$ parseWhole expr value
+  Just ('s', name') -> DState name'$ parseWhole expr value
   Just ('k', keyword) -> case keyword of
-    "InitialFormula" -> DInitialStates$ parseExpr value
-    "FinalFormula" -> DFinalStates$ parseExpr value
+    "InitialFormula" -> DInitialStates$ parseWhole expr value
+    "FinalFormula" -> DFinalStates$ parseWhole expr value
     _ -> error [i|unknown keyowrd #{keyword}|]
   Just (t, _) -> error [i|unknown type #{t}|]
   Nothing -> error "empty identifier"
@@ -105,13 +109,13 @@ recur fn = rec where rec = fn rec
 
 enumerate :: [Definition] -> ((Fix STerm', Fix STerm', [Fix STerm'], [Fix STerm']), Int)
 enumerate defs = second length$ runIdentity$ runHashConsT$ (,,,)
-  <$> namesToIxs init'
-  <*> namesToIxs final'
-  <*> mapM (namesToIxs . snd) states
-  <*> mapM (namesToIxs . snd) formulae
+  <$> namesToIxs (orize init)
+  <*> namesToIxs (orize final)
+  <*> mapM (namesToIxs . snd) orStates
+  <*> mapM (namesToIxs . snd) orFormulae
   where
-  init' = case init of [x] -> x; _ -> error "not a single kInitialFormula"
-  final' = case final of [x] -> x; _ -> error "not a single kFinalFormula"
+  orize [] = Fix SFalse
+  orize xs = foldr1 (Fix .: SOr) xs
 
   (u -> init, u -> final, u -> states, u -> formulae) =
     execWriter$ for defs$ \case
@@ -120,18 +124,21 @@ enumerate defs = second length$ runIdentity$ runHashConsT$ (,,,)
       DInitialStates dterm -> tell (Endo (dterm:), mempty, mempty, mempty)
       DFinalStates dterm -> tell (mempty, Endo (dterm:), mempty, mempty)
 
-  fNameToContents = HM.fromList formulae
-  (fNameToIx, _) = flip execState (HM.empty, 0)$ for formulae$ fRec . fst where
+  orFormulaeHM = HM.fromListWith (Fix .: SOr) formulae
+  orFormulae = HM.toList orFormulaeHM
+  orStates = HM.toList$ HM.fromListWith (Fix .: SOr) states
+
+  (fNameToIx, _) = flip execState (HM.empty, 0)$ for orFormulae$ fRec . fst where
     fRec name = gets ((HM.!? name) . fst) >>= \case
       Just Nothing -> error [i|cycle #{name}|]
       Just _ -> return ()
       Nothing -> do
         modify$ \(m, i) -> (HM.insert name Nothing m, i)
-        let formula = fNameToContents HM.! name
+        let formula = orFormulaeHM HM.! name
         let fRecAll rRec = unFix >>> appMTFol mtfol0{mtfolF = Ap . fRec, mtfolR = rRec}
         getAp$ recur fRecAll formula
         modify$ \(m, i) -> (HM.insert name (Just i) m, i + 1)
-  qNameToIx = HM.fromList$ zip (map fst states) [0..]
+  qNameToIx = HM.fromList$ zip (map fst orStates) [0..]
 
   namesToIxs :: Fix STermStr -> HashConsT T.Text T.Text Identity (Fix STerm')
   namesToIxs = unFix >>> appMTTra MTTra
@@ -149,7 +156,7 @@ expr = buildExpressionParser table term <?> "expression" where
     , [Infix (Fix .: SOr <$ (char '|')) AssocLeft]
     ]
 
-identifier = Data.Attoparsec.Text.takeWhile (\case '_' -> True; x -> isAlphaNum x)
+identifier = Parsec.takeWhile (\case '_' -> True; x -> isAlphaNum x)
 
 term :: Parser (Fix STermStr)
 term = "(" *> expr <* ")"
@@ -336,13 +343,13 @@ finalSplitSimple qcount final = traceShow (qcount, final)$
 
 formatAfa :: BoolAfaUnswallowed Int -> T.Text
 formatAfa (swallow -> BoolAfa bterms (Afa mterms states init)) = T.unlines$
-  [ [i|kInitialFormula: s#{init}|]
+  [ [i|@kInitialFormula: s#{init}|]
   , let finals = map (\q -> [i|!s#{q}|]) $ Data.Array.indices states
-    in [i|kFinalFormula: #{T.intercalate " & " finals}|]
+    in [i|@kFinalFormula: #{T.intercalate " & " finals}|]
   ]
-  ++ map (\(j, t) -> [i|fBool#{j}: #{fromBTermTree t}|]) (assocs bterms)
-  ++ map (\(j, t) -> [i|fMix#{j}: #{fromMTermTree t}|]) (assocs mterms)
-  ++ map (\(j, t) -> [i|s#{j}: #{fromMTermTree t}|]) (assocs states)
+  ++ map (\(j, t) -> [i|@fBool#{j}: #{fromBTermTree t}|]) (assocs bterms)
+  ++ map (\(j, t) -> [i|@fMix#{j}: #{fromMTermTree t}|]) (assocs mterms)
+  ++ map (\(j, t) -> [i|@s#{j}: #{fromMTermTree t}|]) (assocs states)
   where
   fromBTermTree :: BoolTermIFree Int -> T.Text
   fromBTermTree = iter fromBTerm . fmap (\j -> [i|fBool#{j}|])
