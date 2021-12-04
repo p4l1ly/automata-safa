@@ -51,8 +51,8 @@ import System.Directory
 import System.IO
 
 data Opts = Opts
-  { readers :: Fix (Compose IO (ListF (String, BoolAfaUnswallowed Int))),
-    writers :: [String -> BoolAfaUnswallowed Int -> Either Bool ((Int, Int, Int), IO ())]
+  { readers :: Fix (Compose IO (ListF (String, BoolAfaUnswallowed Int)))
+  , writers :: [String -> BoolAfaUnswallowed Int -> Either Bool ((Int, Int, Int), IO ())]
   }
 
 dirReaders :: Int -> (Handle -> IO a) -> String -> Fix (Compose IO (ListF (String, a)))
@@ -112,18 +112,18 @@ sepAfaCosts sepafa = (qCount, nCount, eCount)
         + sum (Sep.states sepafa <&> (2 *) . length . filter (\(a, q) -> isJust a && isJust q))
 
 afaWriter outdir i (reorderStates' -> bafa) =
-  ( afaCosts bafa,
-    withFile (outdir ++ "/" ++ i) WriteMode $ hWriteAfa True bafa
+  ( afaCosts bafa
+  , withFile (outdir ++ "/" ++ i) WriteMode $ hWriteAfa True bafa
   )
 
 afaWriter0 outdir i (reorderStates' -> bafa) =
-  ( afaCosts bafa,
-    withFile (outdir ++ "/" ++ i) WriteMode $ hWriteAfa False bafa
+  ( afaCosts bafa
+  , withFile (outdir ++ "/" ++ i) WriteMode $ hWriteAfa False bafa
   )
 
 sepAfaWriter outdir i (Sep.reorderStates' -> sepafa) =
-  ( sepAfaCosts sepafa,
-    withFile (outdir ++ "/" ++ i) WriteMode $ SepCap.hWrite sepafa
+  ( sepAfaCosts sepafa
+  , withFile (outdir ++ "/" ++ i) WriteMode $ SepCap.hWrite sepafa
   )
 
 parseIxList :: String -> [Int]
@@ -159,10 +159,10 @@ optParser =
             Right $
               dirReaders maxBound Range16Nfa.hReadNfa indir
           ( splitOn ":" ->
-              [ "conjunctEq",
-                parseIxList -> conjunct1,
-                parseIxList -> conjunct2,
-                indir
+              [ "conjunctEq"
+                , parseIxList -> conjunct1
+                , parseIxList -> conjunct2
+                , indir
                 ]
             ) -> Right $
               flip ana 0 $ \i ->
@@ -178,9 +178,9 @@ optParser =
                       hPrint stderr exc
                       return Nil
           ( splitOn ":" ->
-              [ "inclusion",
-                indir1,
-                indir2
+              [ "inclusion"
+                , indir1
+                , indir2
                 ]
             ) -> Right $
               flip ana 1 $ \i ->
@@ -193,9 +193,9 @@ optParser =
                       hPrint stderr exc
                       return Nil
           ( splitOn ":" ->
-              [ "intersection",
-                indir1,
-                indir2
+              [ "intersection"
+                , indir1
+                , indir2
                 ]
             ) -> Right $
               flip ana 1 $ \i ->
@@ -278,14 +278,14 @@ optParser =
               repeat $ \i bafa ->
                 let Just sepafa =
                       Sep.mixedToSeparated bafa
-                        <|> Sep.mixedToSeparated bafa {afa = Sep.separabilizeAfa $ afa bafa}
+                        <|> Sep.mixedToSeparated bafa{afa = Sep.separabilizeAfa $ afa bafa}
                  in Sep.simplify sepafa <&> sepAfaWriter outdir i
           (break (== ':') -> ("sepafaDelaying", ':' : outdir)) ->
             Right $
               repeat $ \i bafa ->
                 let Just sepafa =
                       Sep.mixedToSeparated bafa
-                        <|> Sep.mixedToSeparated bafa {afa = delayPredicates $ afa bafa}
+                        <|> Sep.mixedToSeparated bafa{afa = delayPredicates $ afa bafa}
                  in Sep.simplify sepafa <&> sepAfaWriter outdir i
           (break (== ':') -> ("dnfsepafaDelaying", ':' : outdir)) ->
             Right $
@@ -293,7 +293,7 @@ optParser =
                 let Just sepafa =
                       traceShow (bafa, Sep.mixedToSeparated bafa) $
                         Sep.mixedToSeparated bafa
-                          <|> Sep.mixedToSeparated bafa {afa = delayPredicates $ afa bafa}
+                          <|> Sep.mixedToSeparated bafa{afa = delayPredicates $ afa bafa}
                 sepafa' <- Sep.simplify sepafa
                 let sepafa''
                       | all (\case MTerm.Or _ -> False; _ -> True) $ Sep.qterms sepafa = trace "dnfOk" sepafa
@@ -321,7 +321,7 @@ optParser =
                     TIO.writeFile (outdir ++ "/" ++ i) $
                       toDot True $
                         let bafa' = separateStatelessBottoms bafa
-                         in bafa' {afa = (\(Right x) -> x) $ Afa.simplifyAll $ afa bafa'}
+                         in bafa'{afa = (\(Right x) -> x) $ Afa.simplifyAll $ afa bafa'}
           (break (== ':') -> ("ada", ':' : outdir)) ->
             Right $
               repeat $ \i bafa ->
@@ -399,12 +399,12 @@ applyWritersAndReaders (writer : writers) (Fix (Compose action)) =
       putStrLn $
         intercalate
           "\t"
-          [ name,
-            show $ floor $ 1000 * (toc - tic),
-            show qCount,
-            show nodeCount,
-            show edgeCount,
-            show result
+          [ name
+          , show $ floor $ 1000 * (toc - tic)
+          , show qCount
+          , show nodeCount
+          , show edgeCount
+          , show result
           ]
 
       hFlush stdout

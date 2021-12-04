@@ -22,10 +22,10 @@ hWrite afa h = Capnp.hPutValue h $ serializeAfa afa
 serializeAfa :: Afa Int -> AfaC.BoolAfa
 serializeAfa (Afa aterms qterms states 0) =
   AfaC.BoolAfa
-    { AfaC.aterms = V.fromList $ map serializeBTerm $ elems aterms',
-      AfaC.varCount = fromIntegral varCnt,
-      AfaC.qterms = V.fromList $ map serializeQTerm $ elems qterms,
-      AfaC.states =
+    { AfaC.aterms = V.fromList $ map serializeBTerm $ elems aterms'
+    , AfaC.varCount = fromIntegral varCnt
+    , AfaC.qterms = V.fromList $ map serializeQTerm $ elems qterms
+    , AfaC.states =
         V.fromList $
           elems states
             <&> V.fromList . map (uncurry AfaC.Conjunct11 . (toMaybe1 *** toMaybe1))
@@ -55,12 +55,12 @@ hRead :: Handle -> IO (Afa Int)
 hRead h = deserializeAfa <$> Capnp.hGetValue h Capnp.defaultLimit
 
 deserializeAfa :: AfaC.BoolAfa -> Afa Int
-deserializeAfa AfaC.BoolAfa {AfaC.aterms = aterms, AfaC.qterms = qterms, AfaC.states = states} =
+deserializeAfa AfaC.BoolAfa{AfaC.aterms = aterms, AfaC.qterms = qterms, AfaC.states = states} =
   Afa
-    { aterms = listArray' $ map deserializeBTerm $ V.toList aterms,
-      qterms = listArray' $ map deserializeQTerm $ V.toList qterms,
-      states = listArray' $ map (map fromConjunct . V.toList) $ V.toList states,
-      initState = 0
+    { aterms = listArray' $ map deserializeBTerm $ V.toList aterms
+    , qterms = listArray' $ map deserializeQTerm $ V.toList qterms
+    , states = listArray' $ map (map fromConjunct . V.toList) $ V.toList states
+    , initState = 0
     }
 
 fromConjunct (AfaC.Conjunct11 t a) = (fromMaybe1 t, fromMaybe1 a)

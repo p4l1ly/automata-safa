@@ -13,13 +13,13 @@
 module Afa.Bool where
 
 import Afa hiding (simplifyAll)
-import Afa.Lib
-  ( DumbCount (..),
-    eixMappedGs,
-    listArray',
-    nonemptyCanonicalizeWith,
-    (>&>),
-  )
+import Afa.Lib (
+  DumbCount (..),
+  eixMappedGs,
+  listArray',
+  nonemptyCanonicalizeWith,
+  (>&>),
+ )
 import Afa.Lib.Free
 import Afa.Lib.LiftArray
 import qualified Afa.Term.Bool as BTerm
@@ -53,8 +53,8 @@ import Debug.Trace
 import System.IO.Unsafe
 
 data BoolAfa boolTerms afa = BoolAfa
-  { boolTerms :: !boolTerms,
-    afa :: !afa
+  { boolTerms :: !boolTerms
+  , afa :: !afa
   }
   deriving (Show, Eq)
 
@@ -74,16 +74,16 @@ isValid :: Show p => BoolAfaUnswallowed p -> Maybe String
 isValid (BoolAfa bterms (Afa mterms states init)) =
   foldr1
     (<|>)
-    [ ("bterms " ++) . show <$> find (\(i, t) -> any (>= i) t) (assocs bterms),
-      fmap (("mterms " ++) . show) $
+    [ ("bterms " ++) . show <$> find (\(i, t) -> any (>= i) t) (assocs bterms)
+    , fmap (("mterms " ++) . show) $
         flip find (assocs mterms) $ \(i, t) ->
           any (>= i) t || case t of
             MTerm.Predicate p -> not $ inRange (bounds bterms) p
-            _ -> False,
-      fmap (("states " ++) . show) $
+            _ -> False
+    , fmap (("states " ++) . show) $
         flip find (assocs states) $ \(i, t) ->
-          not $ inRange (bounds mterms) t,
-      if not $ inRange (bounds states) init then Just $ "init " ++ show init else Nothing
+          not $ inRange (bounds mterms) t
+    , if not $ inRange (bounds states) init then Just $ "init " ++ show init else Nothing
     ]
 
 {-# INLINEABLE replaceLits #-}
@@ -123,7 +123,7 @@ replaceLits (BoolAfa bterms (Afa mterms states init)) =
 
 {-# INLINEABLE reorderStates' #-}
 reorderStates' :: BoolAfaUnswallowed p -> BoolAfaUnswallowed p
-reorderStates' bafa = bafa {afa = reorderStates $ afa bafa}
+reorderStates' bafa = bafa{afa = reorderStates $ afa bafa}
 
 hashConsBoolAfa ::
   forall p.
@@ -135,7 +135,7 @@ hashConsBoolAfa (BoolAfa bterms (Afa mterms states init)) = runST action
     action :: forall s. ST s (BoolAfaUnswallowed p)
     action = do
       (bIxMap, bterms') <- runHashConsT $ cataScanT' @(LSTArray s) traversed hashCons' bterms
-      let mtraversed rec = MTerm.modChilds MTerm.pureChildMod {MTerm.lT = rec, MTerm.lP = return . (bIxMap !)}
+      let mtraversed rec = MTerm.modChilds MTerm.pureChildMod{MTerm.lT = rec, MTerm.lP = return . (bIxMap !)}
       (mIxMap, mterms') <- runHashConsT $ cataScanT' @(LSTArray s) mtraversed hashCons' mterms
       return $
         BoolAfa (listArray' bterms') $
@@ -165,9 +165,9 @@ simplifyMixAndBoolTs ::
   Array Int Any ->
   Array Int (BTerm.Term p Int) ->
   Array Int (MTerm.Term Int q Int) ->
-  ( Array Int (Either Bool Int),
-    Array Int (BTerm.Term p Int),
-    Array Int (MTerm.Term Int q Int)
+  ( Array Int (Either Bool Int)
+  , Array Int (BTerm.Term p Int)
+  , Array Int (MTerm.Term Int q Int)
   )
 simplifyMixAndBoolTs mgs bterms mterms = closure ixMap bterms mterms
   where
@@ -190,9 +190,9 @@ simplifyInitMixAndBoolTs ::
   Array Int (Either Bool Int) ->
   Array Int (BTerm.Term p Int) ->
   Array Int (MTerm.Term Int q Int) ->
-  ( Array Int (Either Bool Int),
-    Array Int (BTerm.Term p Int),
-    Array Int (MTerm.Term Int q Int)
+  ( Array Int (Either Bool Int)
+  , Array Int (BTerm.Term p Int)
+  , Array Int (MTerm.Term Int q Int)
   )
 simplifyInitMixAndBoolTs mgs ixMap bterms mterms = runST action
   where
@@ -200,9 +200,9 @@ simplifyInitMixAndBoolTs mgs ixMap bterms mterms = runST action
       forall s.
       ST
         s
-        ( Array Int (Either Bool Int),
-          Array Int (BTerm.Term p Int),
-          Array Int (MTerm.Term Int q Int)
+        ( Array Int (Either Bool Int)
+        , Array Int (BTerm.Term p Int)
+        , Array Int (MTerm.Term Int q Int)
         )
     action = do
       (((_, bterms'), ixMap'), tList) <- runHashConsT $ do
@@ -216,8 +216,8 @@ simplifyInitMixAndBoolTs mgs ixMap bterms mterms = runST action
                   getAp $
                     MTerm.appMTFol
                       MTerm.mtfol0
-                        { MTerm.mtfolT = \j -> Ap $ unsafeRead mgs'M j >>= unsafeWrite mgs'M j . (<> g),
-                          MTerm.mtfolP = \j -> Ap $ unsafeRead bgs'M j >>= unsafeWrite bgs'M j . (<> g)
+                        { MTerm.mtfolT = \j -> Ap $ unsafeRead mgs'M j >>= unsafeWrite mgs'M j . (<> g)
+                        , MTerm.mtfolP = \j -> Ap $ unsafeRead bgs'M j >>= unsafeWrite bgs'M j . (<> g)
                         }
                       (mterms `unsafeAt` i)
             )
@@ -225,8 +225,8 @@ simplifyInitMixAndBoolTs mgs ixMap bterms mterms = runST action
                 alg g
                   =<< MTerm.appMTTra
                     MTerm.mttra0
-                      { MTerm.mttraT = unsafeRead ixMap',
-                        MTerm.mttraP = \j -> return $ bterms' `unsafeAt` j
+                      { MTerm.mttraT = unsafeRead ixMap'
+                      , MTerm.mttraP = \j -> return $ bterms' `unsafeAt` j
                       }
                     (mterms `unsafeAt` i)
             )
@@ -239,7 +239,7 @@ simplifyInitMixAndBoolTs mgs ixMap bterms mterms = runST action
         bInitIxMap = listArray (bounds bterms) $ map Right [0 ..]
 
     {-# INLINE modPT #-}
-    modPT lP lT = MTerm.modChilds MTerm.pureChildMod {MTerm.lT = lT, MTerm.lP = lP}
+    modPT lP lT = MTerm.modChilds MTerm.pureChildMod{MTerm.lT = lT, MTerm.lP = lP}
 
     alg (Any False) _ = return $ error "accessing element without parents"
     alg _ !t = case modPT id pure t of
@@ -256,14 +256,14 @@ separateStatelessBottoms ::
   (Eq p, Hashable p) =>
   BoolAfaUnswallowed p ->
   BoolAfaUnswallowed p
-separateStatelessBottoms (BoolAfa bterms afa@Afa {terms = mterms, states = states}) =
+separateStatelessBottoms (BoolAfa bterms afa@Afa{terms = mterms, states = states}) =
   runST action
   where
     action :: forall s. ST s (BoolAfaUnswallowed p)
     action = do
       ((ixMap, mList), bList) <-
         runHashConsT $ do
-          bixMap <- ($bterms) $ cataScanT' @(LSTArray s) traversed `traverseOf` hashCons'
+          bixMap <- ($ bterms) $ cataScanT' @(LSTArray s) traversed `traverseOf` hashCons'
           runNoConsT $
             mterms & cataScanT' @(LLSTArray s) traversed `traverseOf` \case
               MTerm.State q -> (Nothing,) <$> nocons (MTerm.State q)
@@ -279,7 +279,7 @@ separateStatelessBottoms (BoolAfa bterms afa@Afa {terms = mterms, states = state
       return $
         BoolAfa
           (listArray' bList)
-          afa {terms = listArray' mList, states = fmap (snd . unsafeAt ixMap) states}
+          afa{terms = listArray' mList, states = fmap (snd . unsafeAt ixMap) states}
 
     handleStateless bt = do
       ref <- lift $ hashCons' bt
@@ -305,7 +305,7 @@ separatePositiveTops bterms mterms =
         runHashConsT $ do
           bgs <- newArray @(LLSTArray s) (bounds bterms) mempty
           bixMap <- unsafeFreeze =<< hyloScanTTerminal' traversed bhylogebra bgs
-          ($mterms) $
+          ($ mterms) $
             traverseOf (cataScanT' @(LLSTArray s) traversed) $ \case
               MTerm.Predicate p -> either return (hashCons' . MTerm.Predicate) $ unsafeAt @Array bixMap p
               x -> hashCons' x
@@ -314,8 +314,8 @@ separatePositiveTops bterms mterms =
 
     bhylogebra (g, i) =
       return
-        ( (g',) <$> bterm,
-          case g' of
+        ( (g',) <$> bterm
+        , case g' of
             Any True ->
               fmap Right . lift . nocons
                 . fmap (either (error "positive under negative") id)
@@ -340,7 +340,7 @@ separatePositiveTops bterms mterms =
 -- TODO the frees are traversed thrice, we need a setter generator for frees
 {-# INLINEABLE unswallow #-}
 unswallow :: forall p. (Show p, Hashable p, Eq p) => BoolAfaSwallowed p -> BoolAfaUnswallowed p
-unswallow BoolAfa {boolTerms = bterms, afa = afa@Afa {terms = mterms, states = transitions}} =
+unswallow BoolAfa{boolTerms = bterms, afa = afa@Afa{terms = mterms, states = transitions}} =
   runST action
   where
     action :: forall s. ST s (BoolAfaUnswallowed p)
@@ -378,7 +378,7 @@ unswallow BoolAfa {boolTerms = bterms, afa = afa@Afa {terms = mterms, states = t
       return $
         BoolAfa
           (listArray' bterms')
-          afa {terms = listArray' mterms', states = transitions'}
+          afa{terms = listArray' mterms', states = transitions'}
 
     ifG (Any True) action !x = action x
     ifG _ _ _ = return $ error "accessing element without parents"
@@ -386,12 +386,12 @@ unswallow BoolAfa {boolTerms = bterms, afa = afa@Afa {terms = mterms, states = t
     unfree !t = cataT (freeTraversal traversed) (either return nocons) t
     bhylogebra (!g, !i) = return ((g, bterms `unsafeAt` i), ifG g unfree)
 
-    bsetter1 bgs = \(!g, !t) -> ($t) $
+    bsetter1 bgs = \(!g, !t) -> ($ t) $
       traverse $ \j ->
         Enclosing (beforeP bgs g j) (afterPM j)
 
     msetter1 !mgs !bgs = \(!g, !t) ->
-      ($t) $
+      ($ t) $
         modPT (traverse $ \(!j) -> Enclosing (beforeP bgs g j) (afterP2 j))
           `freeModChilds` \(!i) -> Enclosing (beforeP mgs g i) (afterP1M i)
 
@@ -399,7 +399,7 @@ unswallow BoolAfa {boolTerms = bterms, afa = afa@Afa {terms = mterms, states = t
       return
         ((g, t), ifG g $ cataT (freeTraversal $ modPT $ lift . unfree) (either return nocons))
 
-modPT lP lT = MTerm.modChilds MTerm.pureChildMod {MTerm.lT = lT, MTerm.lP = lP}
+modPT lP lT = MTerm.modChilds MTerm.pureChildMod{MTerm.lT = lT, MTerm.lP = lP}
 
 type MixBoolTerm p = MixTermIFree (BoolTermIFree p)
 
@@ -420,7 +420,7 @@ instance
   where
   {-# NOINLINE actionBefore #-}
   actionBefore (MEncloser mgs bgs g t) =
-    ($t) $
+    ($ t) $
       freeFor_
         ( \rec -> \case
             MTerm.Predicate !p -> for_ p (beforeP bgs g)
@@ -432,7 +432,7 @@ instance
         (beforeP mgs g)
   {-# NOINLINE actionAfter #-}
   actionAfter (MEncloser mgs bgs g t) =
-    ($t) $
+    ($ t) $
       freeModChilds (modPT $ traverse afterP2) afterP1
 
 {-# NOINLINE beforeP #-}
@@ -455,7 +455,7 @@ afterPM !j = ask >>= \bs -> lift $ unsafeRead bs j
 
 {-# INLINEABLE swallow #-}
 swallow :: forall p. BoolAfaUnswallowed p -> BoolAfaSwallowed p
-swallow BoolAfa {boolTerms = bterms, afa = afa@Afa {terms = mterms, states = transitions}} =
+swallow BoolAfa{boolTerms = bterms, afa = afa@Afa{terms = mterms, states = transitions}} =
   runST action
   where
     action :: forall s. ST s (BoolAfaSwallowed p)
@@ -479,7 +479,7 @@ swallow BoolAfa {boolTerms = bterms, afa = afa@Afa {terms = mterms, states = tra
       return $
         BoolAfa
           (listArray' bterms')
-          afa {terms = listArray' mterms', states = transitions'}
+          afa{terms = listArray' mterms', states = transitions'}
 
     alg _ 0 _ = return $ error "accessing element without parents"
     alg _ 1 t = return $ Free t
@@ -487,7 +487,7 @@ swallow BoolAfa {boolTerms = bterms, afa = afa@Afa {terms = mterms, states = tra
       | isTerminal t = return $ Free t
       | otherwise = Pure <$> nocons (Free t)
 
-    modPT lP lT = MTerm.modChilds MTerm.pureChildMod {MTerm.lT = lT, MTerm.lP = lP}
+    modPT lP lT = MTerm.modChilds MTerm.pureChildMod{MTerm.lT = lT, MTerm.lP = lP}
 
     bIsTerminal (BTerm.Predicate _) = True
     bIsTerminal BTerm.LTrue = True
@@ -503,6 +503,6 @@ swallow BoolAfa {boolTerms = bterms, afa = afa@Afa {terms = mterms, states = tra
     bhylogebra (g, i) = return ((g,) <$> bterms `unsafeAt` i, alg bIsTerminal g)
     mhylogebra (g, i) =
       return
-        ( MTerm.appMTFun MTerm.mtfun0 {MTerm.mtfunT = (g,), MTerm.mtfunP = (g,)} (mterms `unsafeAt` i),
-          alg mIsTerminal g
+        ( MTerm.appMTFun MTerm.mtfun0{MTerm.mtfunT = (g,), MTerm.mtfunP = (g,)} (mterms `unsafeAt` i)
+        , alg mIsTerminal g
         )

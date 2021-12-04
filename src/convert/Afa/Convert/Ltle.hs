@@ -118,12 +118,12 @@ instance Monad m => AfaBuilder (BuilderT m) (Int, Bool) where
 ltleToUnswallowedAfa :: Fix Ltl -> BoolAfaUnswallowed Int
 ltleToUnswallowedAfa ltl =
   BoolAfa
-    { boolTerms = listArray' bterms,
-      afa =
+    { boolTerms = listArray' bterms
+    , afa =
         Afa
-          { terms = listArray' mterms',
-            states = listArray' states',
-            initState = init'
+          { terms = listArray' mterms'
+          , states = listArray' states'
+          , initState = init'
           }
     }
   where
@@ -132,9 +132,9 @@ ltleToUnswallowedAfa ltl =
         MTerm.State q -> (mterms, states, q)
         _ -> (mterms, states ++ [ref], length states)
       (ref, _) ->
-        ( mterms ++ [MTerm.Predicate ref],
-          states ++ [length mterms],
-          length states
+        ( mterms ++ [MTerm.Predicate ref]
+        , states ++ [length mterms]
+        , length states
         )
 
     (((ixMap, states), mterms), bterms) = runST $ runBuilderT action

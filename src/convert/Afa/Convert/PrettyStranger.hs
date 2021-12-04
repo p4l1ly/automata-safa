@@ -108,25 +108,22 @@ recur fn = rec where rec = fn rec
 
 enumerate :: [Definition] -> ((Fix STerm', Fix STerm', [Fix STerm'], [Fix STerm']), Int)
 enumerate defs =
-  second length $
-    runIdentity $
-      runHashConsT $
-        (,,,)
-          <$> namesToIxs (orize init)
-          <*> namesToIxs (orize final)
-          <*> mapM (namesToIxs . snd) orStates
-          <*> mapM (namesToIxs . snd) orFormulae
+  second length . runIdentity . runHashConsT $
+    (,,,)
+      <$> namesToIxs (orize init)
+      <*> namesToIxs (orize final)
+      <*> mapM (namesToIxs . snd) orStates
+      <*> mapM (namesToIxs . snd) orFormulae
   where
     orize [] = Fix SFalse
     orize xs = foldr1 (Fix .: SOr) xs
 
-    (u -> init, u -> final, u -> states, u -> formulae) =
-      execWriter $
-        for defs $ \case
-          DFormula name dterm -> tell (mempty, mempty, mempty, Endo ((name, dterm) :))
-          DState name dterm -> tell (mempty, mempty, Endo ((name, dterm) :), mempty)
-          DInitialStates dterm -> tell (Endo (dterm :), mempty, mempty, mempty)
-          DFinalStates dterm -> tell (mempty, Endo (dterm :), mempty, mempty)
+    (u -> init, u -> final, u -> states, u -> formulae) = execWriter $
+      for defs $ \case
+        DFormula name dterm -> tell (mempty, mempty, mempty, Endo ((name, dterm) :))
+        DState name dterm -> tell (mempty, mempty, Endo ((name, dterm) :), mempty)
+        DInitialStates dterm -> tell (Endo (dterm :), mempty, mempty, mempty)
+        DFinalStates dterm -> tell (mempty, Endo (dterm :), mempty, mempty)
 
     orFormulaeHM = HM.fromListWith (Fix .: SOr) formulae
     orFormulae = HM.toList orFormulaeHM
@@ -141,7 +138,7 @@ enumerate defs =
             Nothing -> do
               modify $ first (HM.insert name Nothing)
               let formula = orFormulaeHM HM.! name
-              let fRecAll rRec = unFix >>> appMTFol mtfol0 {mtfolF = Ap . fRec, mtfolR = rRec}
+              let fRecAll rRec = unFix >>> appMTFol mtfol0{mtfolF = Ap . fRec, mtfolR = rRec}
               getAp $ recur fRecAll formula
               modify $ \(m, i) -> (HM.insert name (Just i) m, i + 1)
     qNameToIx = HM.fromList $ zip (map fst orStates) [0 ..]
@@ -151,10 +148,10 @@ enumerate defs =
       unFix
         >>> appMTTra
           MTTra
-            { mttraV = hashCons',
-              mttraQ = return . (qNameToIx HM.!),
-              mttraF = return . fromJust . (fNameToIx HM.!),
-              mttraR = namesToIxs
+            { mttraV = hashCons'
+            , mttraQ = return . (qNameToIx HM.!)
+            , mttraF = return . fromJust . (fNameToIx HM.!)
+            , mttraR = namesToIxs
             }
         >>> fmap Fix
 
@@ -162,9 +159,9 @@ expr :: Parser (Fix STermStr)
 expr = buildExpressionParser table term <?> "expression"
   where
     table =
-      [ [Prefix $ Fix . SNot <$ char '!'],
-        [Infix (Fix .: SAnd <$ char '&') AssocLeft],
-        [Infix (Fix .: SOr <$ char '|') AssocLeft]
+      [ [Prefix $ Fix . SNot <$ char '!']
+      , [Infix (Fix .: SAnd <$ char '&') AssocLeft]
+      , [Infix (Fix .: SOr <$ char '|') AssocLeft]
       ]
 
 identifier = Parsec.takeWhile (\case '_' -> True; x -> isAlphaNum x)
@@ -184,38 +181,37 @@ convertFormulae ::
   Int ->
   Int ->
   Int ->
-  ( Array Int (Bool, Int),
-    [Free (BTerm.Term Int) Int],
-    [Free (MTerm.Term (Free (BTerm.Term Int) Int) Int) Int]
+  ( Array Int (Bool, Int)
+  , [Free (BTerm.Term Int) Int]
+  , [Free (MTerm.Term (Free (BTerm.Term Int) Int) Int) Int]
   )
 convertFormulae formulae fcount qcount acount = runST action
   where
     action :: forall s. ST s (Array Int (Bool, Int), [Free (BTerm.Term Int) Int], [Free (MTerm.Term (Free (BTerm.Term Int) Int) Int) Int])
     action = do
       let formulaeArr = listArray (0, fcount - 1) formulae
-      ((ixMap0, fbterms0), fmterms0) <- runNoConsTFrom qcount $
-        runNoConsTFrom (4 + acount) $
-          ($ formulaeArr) $
-            cataScanT' @(LLSTArray s)
-              (\rec -> cataT recursiveTraversal $ fmap Fix . appMTTra mttra0 {mttraF = rec})
-              $ \f -> do
-                let f' = ($f) $
-                      cataRecursive $ \case
-                        STrue -> Left $ Pure 0
-                        SFalse -> Left $ Pure 1
-                        SState q -> Right $ Pure q
-                        SFormula (False, i) -> Left $ Pure i
-                        SFormula (True, i) -> Right $ Pure i
-                        SVar v -> Left $ Pure (v + 4)
-                        SNot (Left x) -> Left $ Free $ BTerm.Not x
-                        SNot (Right _) -> error "negation above states"
-                        SAnd (Left x) (Left y) -> Left $ Free $ BTerm.And $ x :| [y]
-                        SOr (Left x) (Left y) -> Left $ Free $ BTerm.Or $ x :| [y]
-                        SAnd x y -> Right $ Free $ MTerm.And $ NE.map asRight $ x :| [y]
-                        SOr x y -> Right $ Free $ MTerm.Or $ NE.map asRight $ x :| [y]
-                case f' of
-                  Left bterm -> (False,) <$> nocons bterm
-                  Right mterm -> (True,) <$> lift (nocons mterm)
+      ((ixMap0, fbterms0), fmterms0) <- runNoConsTFrom qcount . runNoConsTFrom (4 + acount) $
+        ($ formulaeArr) $
+          cataScanT' @(LLSTArray s)
+            (\rec -> cataT recursiveTraversal $ fmap Fix . appMTTra mttra0{mttraF = rec})
+            $ \f -> do
+              let f' = ($ f) $
+                    cataRecursive $ \case
+                      STrue -> Left $ Pure 0
+                      SFalse -> Left $ Pure 1
+                      SState q -> Right $ Pure q
+                      SFormula (False, i) -> Left $ Pure i
+                      SFormula (True, i) -> Right $ Pure i
+                      SVar v -> Left $ Pure (v + 4)
+                      SNot (Left x) -> Left $ Free $ BTerm.Not x
+                      SNot (Right _) -> error "negation above states"
+                      SAnd (Left x) (Left y) -> Left $ Free $ BTerm.And $ x :| [y]
+                      SOr (Left x) (Left y) -> Left $ Free $ BTerm.Or $ x :| [y]
+                      SAnd x y -> Right $ Free $ MTerm.And $ NE.map asRight $ x :| [y]
+                      SOr x y -> Right $ Free $ MTerm.Or $ NE.map asRight $ x :| [y]
+              case f' of
+                Left bterm -> (False,) <$> nocons bterm
+                Right mterm -> (True,) <$> lift (nocons mterm)
       return (ixMap0, fbterms0, fmterms0)
 
 asRight (Left x) = Free $ MTerm.Predicate x
@@ -235,18 +231,18 @@ toAfa qcount fcount acount init final states formulae =
     BoolAfa
       { boolTerms =
           listArray' $
-            [ Free BTerm.LTrue,
-              Free BTerm.LFalse,
-              Free $ BTerm.Predicate qcount,
-              Free $ BTerm.Not $ Pure 2
+            [ Free BTerm.LTrue
+            , Free BTerm.LFalse
+            , Free $ BTerm.Predicate qcount
+            , Free $ BTerm.Not $ Pure 2
             ]
               ++ map (Free . BTerm.Predicate) [qcount + 1 .. qcount + acount]
-              ++ fbterms,
-        Afa.Bool.afa =
+              ++ fbterms
+      , Afa.Bool.afa =
           Afa
-            { terms = listArray' $ extendedStates ++ fmterms,
-              states = states'',
-              initState = init''
+            { terms = listArray' $ extendedStates ++ fmterms
+            , states = states''
+            , initState = init''
             }
       }
   where
@@ -284,8 +280,8 @@ toAfa qcount fcount acount init final states formulae =
           ^.. folded . \add -> (`freeModChilds` pure) $ \rec ->
             BTerm.modChilds
               BTerm.ChildMod
-                { BTerm.lP = \p -> p <$ add (p, ()),
-                  BTerm.lT = rec
+                { BTerm.lP = \p -> p <$ add (p, ())
+                , BTerm.lT = rec
                 }
 
     extendedStates
@@ -310,7 +306,7 @@ toAfa qcount fcount acount init final states formulae =
     freeJust (Free t) = Just t
     freeJust _ = Nothing
 
-    modPT lP lT = MTerm.modChilds MTerm.pureChildMod {MTerm.lT = lT, MTerm.lP = lP}
+    modPT lP lT = MTerm.modChilds MTerm.pureChildMod{MTerm.lT = lT, MTerm.lP = lP}
 
     flattenFree fn = either (return . Pure) $ return . Free . fn freeJust
 
@@ -345,8 +341,8 @@ toAfa qcount fcount acount init final states formulae =
 
     (init'', states'') = case nonsimpleFinal'' of
       Just finalTrans ->
-        ( qcount,
-          listArray (0, qcount + 1) $
+        ( qcount
+        , listArray (0, qcount + 1) $
             states'
               ++ [Free $ MTerm.And $ init' :| [Free $ MTerm.State $ qcount + 1], finalTrans]
         )
@@ -374,16 +370,16 @@ finalSplitSimple qcount final =
           Right (qs, Compose $ unsimplify2 b ++ nonSimples)
         SAnd a b ->
           Right
-            ( [],
-              Compose
+            ( []
+            , Compose
                 [SAnd (Fix $ Compose $ unsimplify2 a) (Fix $ Compose $ unsimplify2 b)]
             )
         STrue -> Right ([], Compose [])
         SFalse -> Right ([], Compose [SFalse])
         SOr a b ->
           Right
-            ( [],
-              Compose
+            ( []
+            , Compose
                 [SOr (Fix $ Compose $ unsimplify2 a) (Fix $ Compose $ unsimplify2 b)]
             )
         x -> error $ "non-exhaustive patterns " ++ show x
@@ -407,8 +403,8 @@ finalSplitSimple qcount final =
 formatAfa :: BoolAfaUnswallowed Int -> T.Text
 formatAfa (swallow -> BoolAfa bterms (Afa mterms states init)) =
   T.unlines $
-    [ [i|@kInitialFormula: s#{init}|],
-      let finals = map (\q -> [i|!s#{q}|]) $ Data.Array.indices states
+    [ [i|@kInitialFormula: s#{init}|]
+    , let finals = map (\q -> [i|!s#{q}|]) $ Data.Array.indices states
        in [i|@kFinalFormula: #{T.intercalate " & " finals}|]
     ]
       ++ map (\(j, t) -> [i|@fBool#{j}: #{fromBTermTree t}|]) (assocs bterms)
@@ -458,33 +454,33 @@ data STerm q f v r
 -- MFun --------------------------------------------------------------------------------
 
 data MFun q f v r q' f' v' r' = MFun
-  { mfunSTrue :: forall q' f' v' r'. STerm q' f' v' r',
-    mfunSFalse :: forall q' f' v' r'. STerm q' f' v' r',
-    mfunSState :: forall f' v' r'. q -> STerm q' f' v' r',
-    mfunSFormula :: forall q' v' r'. f -> STerm q' f' v' r',
-    mfunSVar :: forall q' f' r'. v -> STerm q' f' v' r',
-    mfunSNot :: forall q' f' v'. r -> STerm q' f' v' r',
-    mfunSAnd :: forall q' f' v'. r -> r -> STerm q' f' v' r',
-    mfunSOr :: forall q' f' v'. r -> r -> STerm q' f' v' r'
+  { mfunSTrue :: forall q' f' v' r'. STerm q' f' v' r'
+  , mfunSFalse :: forall q' f' v' r'. STerm q' f' v' r'
+  , mfunSState :: forall f' v' r'. q -> STerm q' f' v' r'
+  , mfunSFormula :: forall q' v' r'. f -> STerm q' f' v' r'
+  , mfunSVar :: forall q' f' r'. v -> STerm q' f' v' r'
+  , mfunSNot :: forall q' f' v'. r -> STerm q' f' v' r'
+  , mfunSAnd :: forall q' f' v'. r -> r -> STerm q' f' v' r'
+  , mfunSOr :: forall q' f' v'. r -> r -> STerm q' f' v' r'
   }
 
 {-# INLINE mfun0 #-}
 mfun0 :: MFun q f v r q f v r
 mfun0 =
   MFun
-    { mfunSTrue = STrue,
-      mfunSFalse = SFalse,
-      mfunSState = SState,
-      mfunSFormula = SFormula,
-      mfunSVar = SVar,
-      mfunSNot = SNot,
-      mfunSAnd = SAnd,
-      mfunSOr = SOr
+    { mfunSTrue = STrue
+    , mfunSFalse = SFalse
+    , mfunSState = SState
+    , mfunSFormula = SFormula
+    , mfunSVar = SVar
+    , mfunSNot = SNot
+    , mfunSAnd = SAnd
+    , mfunSOr = SOr
     }
 
 {-# INLINE appMFun #-}
 appMFun :: MFun q f v r q' f' v' r' -> STerm q f v r -> STerm q' f' v' r'
-appMFun MFun {..} = \case
+appMFun MFun{..} = \case
   STrue -> mfunSTrue
   SFalse -> mfunSFalse
   SState q -> mfunSState q
@@ -495,10 +491,10 @@ appMFun MFun {..} = \case
   SOr r1 r2 -> mfunSOr r1 r2
 
 data MTFun q f v r q' f' v' r' = MTFun
-  { mtfunQ :: q -> q',
-    mtfunF :: f -> f',
-    mtfunV :: v -> v',
-    mtfunR :: r -> r'
+  { mtfunQ :: q -> q'
+  , mtfunF :: f -> f'
+  , mtfunV :: v -> v'
+  , mtfunR :: r -> r'
   }
 
 {-# INLINE mtfun0 #-}
@@ -507,14 +503,14 @@ mtfun0 = MTFun id id id id
 
 {-# INLINE fromMTFun #-}
 fromMTFun :: MTFun q f v r q' f' v' r' -> MFun q f v r q' f' v' r'
-fromMTFun MTFun {..} =
+fromMTFun MTFun{..} =
   mfun0
-    { mfunSState = SState . mtfunQ,
-      mfunSFormula = SFormula . mtfunF,
-      mfunSVar = SVar . mtfunV,
-      mfunSNot = SNot . mtfunR,
-      mfunSAnd = \r1 r2 -> SAnd (mtfunR r1) (mtfunR r2),
-      mfunSOr = \r1 r2 -> SOr (mtfunR r1) (mtfunR r2)
+    { mfunSState = SState . mtfunQ
+    , mfunSFormula = SFormula . mtfunF
+    , mfunSVar = SVar . mtfunV
+    , mfunSNot = SNot . mtfunR
+    , mfunSAnd = \r1 r2 -> SAnd (mtfunR r1) (mtfunR r2)
+    , mfunSOr = \r1 r2 -> SOr (mtfunR r1) (mtfunR r2)
     }
 
 {-# INLINE appMTFun #-}
@@ -524,33 +520,33 @@ appMTFun = appMFun . fromMTFun
 -- MFol --------------------------------------------------------------------------------
 
 data MFol q f v r m = MFol
-  { mfolSTrue :: m,
-    mfolSFalse :: m,
-    mfolSState :: q -> m,
-    mfolSFormula :: f -> m,
-    mfolSVar :: v -> m,
-    mfolSNot :: r -> m,
-    mfolSAnd :: r -> r -> m,
-    mfolSOr :: r -> r -> m
+  { mfolSTrue :: m
+  , mfolSFalse :: m
+  , mfolSState :: q -> m
+  , mfolSFormula :: f -> m
+  , mfolSVar :: v -> m
+  , mfolSNot :: r -> m
+  , mfolSAnd :: r -> r -> m
+  , mfolSOr :: r -> r -> m
   }
 
 {-# INLINE mfol0 #-}
 mfol0 :: Monoid m => MFol q f v r m
 mfol0 =
   MFol
-    { mfolSTrue = mempty,
-      mfolSFalse = mempty,
-      mfolSState = const mempty,
-      mfolSFormula = const mempty,
-      mfolSVar = const mempty,
-      mfolSNot = const mempty,
-      mfolSAnd = \_ _ -> mempty,
-      mfolSOr = \_ _ -> mempty
+    { mfolSTrue = mempty
+    , mfolSFalse = mempty
+    , mfolSState = const mempty
+    , mfolSFormula = const mempty
+    , mfolSVar = const mempty
+    , mfolSNot = const mempty
+    , mfolSAnd = \_ _ -> mempty
+    , mfolSOr = \_ _ -> mempty
     }
 
 {-# INLINE appMFol #-}
 appMFol :: MFol q f v r m -> STerm q f v r -> m
-appMFol MFol {..} = \case
+appMFol MFol{..} = \case
   STrue -> mfolSTrue
   SFalse -> mfolSFalse
   SState q -> mfolSState q
@@ -561,10 +557,10 @@ appMFol MFol {..} = \case
   SOr r1 r2 -> mfolSOr r1 r2
 
 data MTFol q f v r m = MTFol
-  { mtfolQ :: q -> m,
-    mtfolF :: f -> m,
-    mtfolV :: v -> m,
-    mtfolR :: r -> m
+  { mtfolQ :: q -> m
+  , mtfolF :: f -> m
+  , mtfolV :: v -> m
+  , mtfolR :: r -> m
   }
 
 {-# INLINE mtfol0 #-}
@@ -573,14 +569,14 @@ mtfol0 = MTFol (const mempty) (const mempty) (const mempty) (const mempty)
 
 {-# INLINE fromMTFol #-}
 fromMTFol :: Monoid m => MTFol q f v r m -> MFol q f v r m
-fromMTFol MTFol {..} =
+fromMTFol MTFol{..} =
   mfol0
-    { mfolSState = mtfolQ,
-      mfolSFormula = mtfolF,
-      mfolSVar = mtfolV,
-      mfolSNot = mtfolR,
-      mfolSAnd = \r1 r2 -> mtfolR r1 <> mtfolR r2,
-      mfolSOr = \r1 r2 -> mtfolR r1 <> mtfolR r2
+    { mfolSState = mtfolQ
+    , mfolSFormula = mtfolF
+    , mfolSVar = mtfolV
+    , mfolSNot = mtfolR
+    , mfolSAnd = \r1 r2 -> mtfolR r1 <> mtfolR r2
+    , mfolSOr = \r1 r2 -> mtfolR r1 <> mtfolR r2
     }
 
 {-# INLINE appMTFol #-}
@@ -590,33 +586,33 @@ appMTFol = appMFol . fromMTFol
 -- MTra --------------------------------------------------------------------------------
 
 data MTra q f v r q' f' v' r' m = MTra
-  { mtraSTrue :: forall q' f' v' r'. m (STerm q' f' v' r'),
-    mtraSFalse :: forall q' f' v' r'. m (STerm q' f' v' r'),
-    mtraSState :: forall f' v' r'. q -> m (STerm q' f' v' r'),
-    mtraSFormula :: forall q' v' r'. f -> m (STerm q' f' v' r'),
-    mtraSVar :: forall q' f' r'. v -> m (STerm q' f' v' r'),
-    mtraSNot :: forall q' f' v'. r -> m (STerm q' f' v' r'),
-    mtraSAnd :: forall q' f' v'. r -> r -> m (STerm q' f' v' r'),
-    mtraSOr :: forall q' f' v'. r -> r -> m (STerm q' f' v' r')
+  { mtraSTrue :: forall q' f' v' r'. m (STerm q' f' v' r')
+  , mtraSFalse :: forall q' f' v' r'. m (STerm q' f' v' r')
+  , mtraSState :: forall f' v' r'. q -> m (STerm q' f' v' r')
+  , mtraSFormula :: forall q' v' r'. f -> m (STerm q' f' v' r')
+  , mtraSVar :: forall q' f' r'. v -> m (STerm q' f' v' r')
+  , mtraSNot :: forall q' f' v'. r -> m (STerm q' f' v' r')
+  , mtraSAnd :: forall q' f' v'. r -> r -> m (STerm q' f' v' r')
+  , mtraSOr :: forall q' f' v'. r -> r -> m (STerm q' f' v' r')
   }
 
 {-# INLINE mtra0 #-}
 mtra0 :: Applicative m => MTra q f v r q f v r m
 mtra0 =
   MTra
-    { mtraSTrue = pure STrue,
-      mtraSFalse = pure SFalse,
-      mtraSState = pure . SState,
-      mtraSFormula = pure . SFormula,
-      mtraSVar = pure . SVar,
-      mtraSNot = pure . SNot,
-      mtraSAnd = pure .: SAnd,
-      mtraSOr = pure .: SOr
+    { mtraSTrue = pure STrue
+    , mtraSFalse = pure SFalse
+    , mtraSState = pure . SState
+    , mtraSFormula = pure . SFormula
+    , mtraSVar = pure . SVar
+    , mtraSNot = pure . SNot
+    , mtraSAnd = pure .: SAnd
+    , mtraSOr = pure .: SOr
     }
 
 {-# INLINE appMTra #-}
 appMTra :: MTra q f v r q' f' v' r' m -> STerm q f v r -> m (STerm q' f' v' r')
-appMTra MTra {..} = \case
+appMTra MTra{..} = \case
   STrue -> mtraSTrue
   SFalse -> mtraSFalse
   SState q -> mtraSState q
@@ -627,10 +623,10 @@ appMTra MTra {..} = \case
   SOr r1 r2 -> mtraSOr r1 r2
 
 data MTTra q f v r q' f' v' r' m = MTTra
-  { mttraQ :: q -> m q',
-    mttraF :: f -> m f',
-    mttraV :: v -> m v',
-    mttraR :: r -> m r'
+  { mttraQ :: q -> m q'
+  , mttraF :: f -> m f'
+  , mttraV :: v -> m v'
+  , mttraR :: r -> m r'
   }
 
 {-# INLINE mttra0 #-}
@@ -639,14 +635,14 @@ mttra0 = MTTra pure pure pure pure
 
 {-# INLINE fromMTTra #-}
 fromMTTra :: Applicative m => MTTra q f v r q' f' v' r' m -> MTra q f v r q' f' v' r' m
-fromMTTra MTTra {..} =
+fromMTTra MTTra{..} =
   mtra0
-    { mtraSState = fmap SState . mttraQ,
-      mtraSFormula = fmap SFormula . mttraF,
-      mtraSVar = fmap SVar . mttraV,
-      mtraSNot = fmap SNot . mttraR,
-      mtraSAnd = \r1 r2 -> SAnd <$> mttraR r1 <*> mttraR r2,
-      mtraSOr = \r1 r2 -> SOr <$> mttraR r1 <*> mttraR r2
+    { mtraSState = fmap SState . mttraQ
+    , mtraSFormula = fmap SFormula . mttraF
+    , mtraSVar = fmap SVar . mttraV
+    , mtraSNot = fmap SNot . mttraR
+    , mtraSAnd = \r1 r2 -> SAnd <$> mttraR r1 <*> mttraR r2
+    , mtraSOr = \r1 r2 -> SOr <$> mttraR r1 <*> mttraR r2
     }
 
 {-# INLINE appMTTra #-}

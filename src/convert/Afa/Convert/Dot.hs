@@ -1,14 +1,14 @@
-{-# LANGUAGE NamedFieldPuns #-}
-{-# LANGUAGE QuasiQuotes #-}
 {-# LANGUAGE ExtendedDefaultRules #-}
+{-# LANGUAGE NamedFieldPuns #-}
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE QuasiQuotes #-}
 
 module Afa.Convert.Dot (toDot) where
 
+import Data.Array
 import Data.Foldable
 import Data.String.Interpolate.IsString
 import qualified Data.Text as T
-import Data.Array
 
 import Afa
 import Afa.Bool
@@ -16,18 +16,19 @@ import qualified Afa.Term.Bool as BTerm
 import qualified Afa.Term.Mix as MTerm
 
 toDot :: Bool -> BoolAfaUnswallowed Int -> T.Text
-toDot cyclic (BoolAfa bterms (Afa mterms states init)) = T.unlines
-  [ "digraph afa {"
-  , "  graph [nodesep=0.2];"
-  , "  node [fontsize=20];"
-  , T.unlines [[i|  b#{j} -> #{c};|] | (j, t) <- assocs bterms, c <- bchilds t]
-  , T.unlines [[i|  m#{j} -> #{c};|] | (j, t) <- assocs mterms, c <- mchilds t]
-  , T.unlines [[i|  q#{j} -> m#{q}|] | (j, q) <- assocs states]
-  , T.unlines [[i|  q#{j} [style=filled, fillcolor=pink]|] | (j, _) <- assocs states]
-  , T.unlines [[i|  b#{j} [style=filled, #{bstyle j t}]|] | (j, t) <- assocs bterms]
-  , T.unlines [[i|  m#{j} [style=filled, #{mstyle j t}]|] | (j, t) <- assocs mterms]
-  , "}"
-  ]
+toDot cyclic (BoolAfa bterms (Afa mterms states init)) =
+  T.unlines
+    [ "digraph afa {"
+    , "  graph [nodesep=0.2];"
+    , "  node [fontsize=20];"
+    , T.unlines [[i|  b#{j} -> #{c};|] | (j, t) <- assocs bterms, c <- bchilds t]
+    , T.unlines [[i|  m#{j} -> #{c};|] | (j, t) <- assocs mterms, c <- mchilds t]
+    , T.unlines [[i|  q#{j} -> m#{q}|] | (j, q) <- assocs states]
+    , T.unlines [[i|  q#{j} [style=filled, fillcolor=pink]|] | (j, _) <- assocs states]
+    , T.unlines [[i|  b#{j} [style=filled, #{bstyle j t}]|] | (j, t) <- assocs bterms]
+    , T.unlines [[i|  m#{j} [style=filled, #{mstyle j t}]|] | (j, t) <- assocs mterms]
+    , "}"
+    ]
   where
     bchilds t = [[i|b#{c}|] | c <- toList t]
     mchilds t = case t of

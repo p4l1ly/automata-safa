@@ -33,11 +33,11 @@ import Data.Void
 import Debug.Trace
 
 distributeTopOrs :: Show p => Afa p -> Maybe (Afa p)
-distributeTopOrs afa@Afa {qterms, states} = traceShow afa $ do
+distributeTopOrs afa@Afa{qterms, states} = traceShow afa $ do
   scanResult <&> \(ixMap, qterms') ->
     afa
-      { qterms = listArray' qterms',
-        states = (`fmap` states) $
+      { qterms = listArray' qterms'
+      , states = (`fmap` states) $
           concatMap $ \case
             (a, Just t) -> case ixMap ! t of
               Left xs -> map (\x -> (a, Just x)) xs
@@ -55,7 +55,7 @@ distributeTopOrs afa@Afa {qterms, states} = traceShow afa $ do
     alg = \case
       MTerm.Or ts -> Left . NE.toList <$> assertRights ts
       MTerm.And ts -> assertRights ts >>= fmap Right . nocons . MTerm.And
-      x -> fmap Right $ nocons $ MTerm.appMTFun MTerm.mtfun0 {MTerm.mtfunT = undefined} x
+      x -> fmap Right $ nocons $ MTerm.appMTFun MTerm.mtfun0{MTerm.mtfunT = undefined} x
       where
         assertRights = lift . MaybeT . return . mapM (either (const Nothing) Just)
 
@@ -85,17 +85,17 @@ newPhantomState epsilon transitions = do
   return tq
 
 epsilonize :: Afa Int -> Afa Int
-epsilonize afa@Afa {aterms, qterms, states} =
+epsilonize afa@Afa{aterms, qterms, states} =
   afa
-    { aterms = aterms',
-      qterms = listArray' qterms',
-      states =
+    { aterms = aterms'
+    , qterms = listArray' qterms'
+    , states =
         listArray (0, stateCount - 1) $
           elems oldStates' ++ newStates
     }
   where
     acount = snd (bounds aterms) + 1
-    epsilonP = getMax $ 1 + foldMap (BTerm.appMTFol BTerm.mtfol0 {BTerm.mtfolP = Max}) aterms
+    epsilonP = getMax $ 1 + foldMap (BTerm.appMTFol BTerm.mtfol0{BTerm.mtfolP = Max}) aterms
     epsilon = acount
     nepsilon = 1 + epsilon
     bOffset = 1 + nepsilon
@@ -103,9 +103,9 @@ epsilonize afa@Afa {aterms, qterms, states} =
       listArray
         (0, acount * 2 + 1)
         $ concat
-          [ elems aterms,
-            [BTerm.Predicate epsilonP, BTerm.Not epsilon],
-            map (\x -> BTerm.And $ x :| [nepsilon]) [0 .. acount - 1]
+          [ elems aterms
+          , [BTerm.Predicate epsilonP, BTerm.Not epsilon]
+          , map (\x -> BTerm.And $ x :| [nepsilon]) [0 .. acount - 1]
           ]
 
     (((oldStates', stateCount), (`appEndo` []) -> newStates), qterms') = runST action
