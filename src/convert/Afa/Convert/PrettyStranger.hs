@@ -43,7 +43,7 @@ import qualified Data.Attoparsec.Text as Parsec
 import Data.Char
 import Data.Composition ((.:))
 import Data.Fix hiding (cata)
-import Data.Functor.Classes
+import Data.Functor.Classes (Eq1, Show1)
 import Data.Functor.Compose
 import qualified Data.HashMap.Strict as HM
 import Data.List.NonEmpty (NonEmpty ((:|)))
@@ -55,7 +55,7 @@ import qualified Data.Text as T
 import qualified Data.Text.Read as TR
 import Data.Traversable
 import Debug.Trace
-import GHC.Generics hiding (Infix, Prefix)
+import GHC.Generics (Generic, Generic1)
 import Generic.Data (Generically1 (..))
 import Generic.Data.Orphans ()
 
@@ -99,6 +99,27 @@ parseOne name value = case T.uncons name of
     _ -> error [i|unknown keyowrd #{keyword}|]
   Just (t, _) -> error [i|unknown type #{t}|]
   Nothing -> error "empty identifier"
+
+expr :: Parser (Fix STermStr)
+expr = buildExpressionParser table term <?> "expression"
+  where
+    table =
+      [ [Prefix $ Fix . SNot <$ char '!']
+      , [Infix (Fix .: SAnd <$ char '&') AssocLeft]
+      , [Infix (Fix .: SOr <$ char '|') AssocLeft]
+      ]
+
+identifier = Parsec.takeWhile (\case '_' -> True; x -> isAlphaNum x)
+
+term :: Parser (Fix STermStr)
+term =
+  "(" *> expr <* ")"
+    <|> (Fix . SState <$> ("s" *> identifier))
+    <|> (Fix . SFormula <$> ("f" *> identifier))
+    <|> (Fix STrue <$ "True")
+    <|> (Fix SFalse <$ "False")
+    <|> (Fix . SVar <$> identifier)
+    <?> "expected a term"
 
 u :: Endo [a] -> [a]
 u = (`appEndo` [])
@@ -155,64 +176,67 @@ enumerate defs =
             }
         >>> fmap Fix
 
-expr :: Parser (Fix STermStr)
-expr = buildExpressionParser table term <?> "expression"
-  where
-    table =
-      [ [Prefix $ Fix . SNot <$ char '!']
-      , [Infix (Fix .: SAnd <$ char '&') AssocLeft]
-      , [Infix (Fix .: SOr <$ char '|') AssocLeft]
-      ]
+formatAfa :: BoolAfaUnswallowed Int -> T.Text
+formatAfa (swallow -> BoolAfa bterms (Afa mterms states init)) =
+  T.unlines $
+    [ [i|@kInitialFormula: s#{init}|]
+    , let finals = map (\q -> [i|!s#{q}|]) $ Data.Array.indices states
+       in [i|@kFinalFormula: #{T.intercalate " & " finals}|]
+    ]
+      ++ map (\(j, t) -> [i|@fBool#{j}: #{fromBTermTree t}|]) (assocs bterms)
+      ++ map (\(j, t) -> [i|@fMix#{j}: #{fromMTermTree t}|]) (assocs mterms)
+      ++ map (\(j, t) -> [i|@s#{j}: #{fromMTermTree t}|]) (assocs states)
 
-identifier = Parsec.takeWhile (\case '_' -> True; x -> isAlphaNum x)
+fromBTermTree :: BoolTermIFree Int -> T.Text
+fromBTermTree = iter fromBTerm . fmap (\j -> [i|fBool#{j}|])
 
-term :: Parser (Fix STermStr)
-term =
-  "(" *> expr <* ")"
-    <|> (Fix . SState <$> ("s" *> identifier))
-    <|> (Fix . SFormula <$> ("f" *> identifier))
-    <|> (Fix STrue <$ "True")
-    <|> (Fix SFalse <$ "False")
-    <|> (Fix . SVar <$> identifier)
-    <?> "expected a term"
+fromBTerm :: BTerm.Term Int T.Text -> T.Text
+fromBTerm BTerm.LTrue = "kTrue"
+fromBTerm BTerm.LFalse = "kFalse"
+fromBTerm (BTerm.Predicate p) = [i|a#{p}|]
+fromBTerm (BTerm.Not x) = [i|!#{x}|]
+fromBTerm (BTerm.And (x :| [])) = x
+fromBTerm (BTerm.Or (x :| [])) = x
+fromBTerm (BTerm.And xs) = [i|(#{T.intercalate " & "$ NE.toList xs})|]
+fromBTerm (BTerm.Or xs) = [i|(#{T.intercalate " | "$ NE.toList xs})|]
 
-convertFormulae ::
-  [Fix STerm'] ->
-  Int ->
-  Int ->
-  Int ->
-  ( Array Int (Bool, Int)
-  , [Free (BTerm.Term Int) Int]
-  , [Free (MTerm.Term (Free (BTerm.Term Int) Int) Int) Int]
-  )
-convertFormulae formulae fcount qcount acount = runST action
-  where
-    action :: forall s. ST s (Array Int (Bool, Int), [Free (BTerm.Term Int) Int], [Free (MTerm.Term (Free (BTerm.Term Int) Int) Int) Int])
-    action = do
-      let formulaeArr = listArray (0, fcount - 1) formulae
-      ((ixMap0, fbterms0), fmterms0) <- runNoConsTFrom qcount . runNoConsTFrom (4 + acount) $
-        ($ formulaeArr) $
-          cataScanT' @(LLSTArray s)
-            (\rec -> cataT recursiveTraversal $ fmap Fix . appMTTra mttra0{mttraF = rec})
-            $ \f -> do
-              let f' = ($ f) $
-                    cataRecursive $ \case
-                      STrue -> Left $ Pure 0
-                      SFalse -> Left $ Pure 1
-                      SState q -> Right $ Pure q
-                      SFormula (False, i) -> Left $ Pure i
-                      SFormula (True, i) -> Right $ Pure i
-                      SVar v -> Left $ Pure (v + 4)
-                      SNot (Left x) -> Left $ Free $ BTerm.Not x
-                      SNot (Right _) -> error "negation above states"
-                      SAnd (Left x) (Left y) -> Left $ Free $ BTerm.And $ x :| [y]
-                      SOr (Left x) (Left y) -> Left $ Free $ BTerm.Or $ x :| [y]
-                      SAnd x y -> Right $ Free $ MTerm.And $ NE.map asRight $ x :| [y]
-                      SOr x y -> Right $ Free $ MTerm.Or $ NE.map asRight $ x :| [y]
-              case f' of
-                Left bterm -> (False,) <$> nocons bterm
-                Right mterm -> (True,) <$> lift (nocons mterm)
-      return (ixMap0, fbterms0, fmterms0)
+fromMTermTree :: MixTermIFree (BoolTermIFree Int) -> T.Text
+fromMTermTree = iter fromMTerm . fmap (\j -> [i|fMix#{j}|])
+
+fromMTerm :: MTerm.Term (BoolTermIFree Int) Int T.Text -> T.Text
+fromMTerm MTerm.LTrue = "kTrue"
+fromMTerm (MTerm.Predicate p) = fromBTermTree p
+fromMTerm (MTerm.State q) = [i|s#{q}|]
+fromMTerm (MTerm.And (x :| [])) = x
+fromMTerm (MTerm.Or (x :| [])) = x
+fromMTerm (MTerm.And xs) = [i|(#{T.intercalate " & "$ NE.toList xs})|]
+fromMTerm (MTerm.Or xs) = [i|(#{T.intercalate " | "$ NE.toList xs})|]
+
+---- TODO REMOVE
+
+-- import Afa
+-- import Afa.Bool
+-- import Afa.Finalful.STerm
+-- import Afa.Lib (listArray')
+-- import Afa.Lib.Free
+-- import Afa.Lib.LiftArray (LLSTArray)
+-- import qualified Afa.Term.Bool as BTerm
+-- import qualified Afa.Term.Bool.Simplify as BTerm
+-- import qualified Afa.Term.Mix as MTerm
+-- import qualified Afa.Term.Mix.Simplify as MTerm
+-- import Control.Arrow ((&&&), (>>>))
+-- import Control.Lens
+-- import Control.Monad.Free
+-- import Control.Monad.ST
+-- import Control.Monad.Trans (lift)
+-- import Control.RecursionSchemes.Lens (cataRecursive, cataScanT', cataT, recursiveTraversal)
+-- import Control.RecursionSchemes.Utils.NoCons (nocons, runNoConsTFrom)
+-- import Data.Array
+-- import Data.Fix
+-- import Data.Functor.Compose
+-- import Data.List.NonEmpty (NonEmpty ((:|)))
+-- import qualified Data.List.NonEmpty as NE
+-- import Data.Maybe
 
 asRight (Left x) = Free $ MTerm.Predicate x
 asRight (Right x) = x
@@ -249,11 +273,10 @@ toAfa qcount fcount acount init final states formulae =
     (simpleNonfinal, nonsimpleFinal) = finalSplitSimple qcount final
 
     nonsimpleFinal' =
-      (nonsimpleFinal <&>) $
-        cataRecursive $
-          getCompose >>> \case
-            [x] -> alg x
-            xs -> Free $ BTerm.And $ NE.fromList $ xs <&> alg
+      (nonsimpleFinal <&>) . cataRecursive $
+        getCompose >>> \case
+          [x] -> alg x
+          xs -> Free $ BTerm.And $ NE.fromList $ xs <&> alg
       where
         alg = \case
           SState q
@@ -269,10 +292,9 @@ toAfa qcount fcount acount init final states formulae =
 
     nonsimpleFinal'' =
       nonsimpleFinal' <&> \fq ->
-        Free $
-          MTerm.Or $
-            Free (MTerm.And $ Free (MTerm.State $ qcount + 1) :| [Free $ MTerm.Predicate $ Pure 3])
-              :| [Free $ MTerm.And $ Free (MTerm.Predicate $ Pure 2) :| [Free $ MTerm.Predicate fq]]
+        Free . MTerm.Or $
+          Free (MTerm.And $ Free (MTerm.State $ qcount + 1) :| [Free $ MTerm.Predicate $ Pure 3])
+            :| [Free $ MTerm.And $ Free (MTerm.Predicate $ Pure 2) :| [Free $ MTerm.Predicate fq]]
 
     qsInNonsimpleFinal =
       accumArray (\_ _ -> True) False (0, qcount - 1) $
@@ -290,18 +312,15 @@ toAfa qcount fcount acount init final states formulae =
         [0 .. qcount - 1] <&> \i ->
           case (simpleNonfinal ! i, qsInNonsimpleFinal ! i) of
             (True, _) ->
-              Free $
-                MTerm.And $
-                  Free (MTerm.State i) :| [Free $ MTerm.Predicate $ Pure 3]
+              Free . MTerm.And $
+                Free (MTerm.State i) :| [Free $ MTerm.Predicate $ Pure 3]
             (_, False) ->
-              Free $
-                MTerm.Or $
-                  Free (MTerm.State i) :| [Free $ MTerm.Predicate $ Pure 2]
+              Free . MTerm.Or $
+                Free (MTerm.State i) :| [Free $ MTerm.Predicate $ Pure 2]
             _ ->
-              Free $
-                MTerm.Or $
-                  Free (MTerm.State i)
-                    :| [Free $ MTerm.Predicate $ Free $ BTerm.And $ Pure 2 :| [Free $ BTerm.Predicate i]]
+              Free . MTerm.Or $
+                Free (MTerm.State i)
+                  :| [Free $ MTerm.Predicate $ Free $ BTerm.And $ Pure 2 :| [Free $ BTerm.Predicate i]]
 
     freeJust (Free t) = Just t
     freeJust _ = Nothing
@@ -319,23 +338,22 @@ toAfa qcount fcount acount init final states formulae =
               (freeTraversal $ modPT $ cataT (freeTraversal traversed) (flattenFree BTerm.flatten0))
               (flattenFree MTerm.flatten0)
 
-    (fIxMap, fbterms, fmterms) = convertFormulae formulae fcount qcount acount
+    (fIxMap, fbterms, fmterms) = convertFormulae formulae
 
-    convertTransition = (asRight .) $
-      cataRecursive $ \case
-        STrue -> Left $ Pure 0
-        SFalse -> Left $ Pure 1
-        SState q -> Right $ Pure q
-        SFormula f -> case fIxMap ! f of
-          (False, f) -> Left $ Pure f
-          (True, f) -> Right $ Pure f
-        SVar v -> Left $ Pure (v + 4)
-        SNot (Left x) -> Left $ Free $ BTerm.Not x
-        SAnd (Left x) (Left y) -> Left $ Free $ BTerm.And $ x :| [y]
-        SOr (Left x) (Left y) -> Left $ Free $ BTerm.Or $ x :| [y]
-        SAnd x y -> Right $ Free $ MTerm.And $ NE.map asRight $ x :| [y]
-        SOr x y -> Right $ Free $ MTerm.Or $ NE.map asRight $ x :| [y]
-        x -> error $ "non-exhaustive patterns " ++ show x
+    convertTransition = (asRight .) . cataRecursive $ \case
+      STrue -> Left $ Pure 0
+      SFalse -> Left $ Pure 1
+      SState q -> Right $ Pure q
+      SFormula f -> case fIxMap ! f of
+        (False, f) -> Left $ Pure f
+        (True, f) -> Right $ Pure f
+      SVar v -> Left $ Pure (v + 4)
+      SNot (Left x) -> Left $ Free $ BTerm.Not x
+      SAnd (Left x) (Left y) -> Left $ Free $ BTerm.And $ x :| [y]
+      SOr (Left x) (Left y) -> Left $ Free $ BTerm.Or $ x :| [y]
+      SAnd x y -> Right $ Free $ MTerm.And $ NE.map asRight $ x :| [y]
+      SOr x y -> Right $ Free $ MTerm.Or $ NE.map asRight $ x :| [y]
+      x -> error $ "non-exhaustive patterns " ++ show x
 
     init' = convertTransition init >>= Free . MTerm.State
 
@@ -349,6 +367,41 @@ toAfa qcount fcount acount init final states formulae =
       Nothing -> case init' of
         Free (MTerm.State q) -> (q, listArray (0, qcount - 1) states')
         _ -> (qcount, listArray (0, qcount) $ states' ++ [init'])
+
+    convertFormulae ::
+      [Fix STerm'] ->
+      ( Array Int (Bool, Int)
+      , [Free (BTerm.Term Int) Int]
+      , [Free (MTerm.Term (Free (BTerm.Term Int) Int) Int) Int]
+      )
+    convertFormulae formulae = runST action
+      where
+        action :: forall s. ST s (Array Int (Bool, Int), [Free (BTerm.Term Int) Int], [Free (MTerm.Term (Free (BTerm.Term Int) Int) Int) Int])
+        action = do
+          let formulaeArr = listArray (0, fcount - 1) formulae
+          ((ixMap0, fbterms0), fmterms0) <- runNoConsTFrom qcount . runNoConsTFrom (4 + acount) $
+            ($ formulaeArr) $
+              cataScanT' @(LLSTArray s)
+                (\rec -> cataT recursiveTraversal $ fmap Fix . appMTTra mttra0{mttraF = rec})
+                $ \f -> do
+                  let f' = ($ f) $
+                        cataRecursive $ \case
+                          STrue -> Left $ Pure 0
+                          SFalse -> Left $ Pure 1
+                          SState q -> Right $ Pure q
+                          SFormula (False, i) -> Left $ Pure i
+                          SFormula (True, i) -> Right $ Pure i
+                          SVar v -> Left $ Pure (v + 4)
+                          SNot (Left x) -> Left $ Free $ BTerm.Not x
+                          SNot (Right _) -> error "negation above states"
+                          SAnd (Left x) (Left y) -> Left $ Free $ BTerm.And $ x :| [y]
+                          SOr (Left x) (Left y) -> Left $ Free $ BTerm.Or $ x :| [y]
+                          SAnd x y -> Right $ Free $ MTerm.And $ asRight <$> x :| [y]
+                          SOr x y -> Right $ Free $ MTerm.Or $ asRight <$> x :| [y]
+                  case f' of
+                    Left bterm -> (False,) <$> nocons bterm
+                    Right mterm -> (True,) <$> lift (nocons mterm)
+          return (ixMap0, fbterms0, fmterms0)
 
 finalSplitSimple :: Int -> Fix STerm' -> (Array Int Bool, Maybe (Fix (Compose [] STerm')))
 finalSplitSimple qcount final =
@@ -400,44 +453,13 @@ finalSplitSimple qcount final =
     unsimplify2 (Left (q, True)) = [SNot $ Fix $ Compose [SState q]]
     unsimplify2 (Right (qs, Compose nonSimples)) = map unsimplify qs ++ nonSimples
 
-formatAfa :: BoolAfaUnswallowed Int -> T.Text
-formatAfa (swallow -> BoolAfa bterms (Afa mterms states init)) =
-  T.unlines $
-    [ [i|@kInitialFormula: s#{init}|]
-    , let finals = map (\q -> [i|!s#{q}|]) $ Data.Array.indices states
-       in [i|@kFinalFormula: #{T.intercalate " & " finals}|]
-    ]
-      ++ map (\(j, t) -> [i|@fBool#{j}: #{fromBTermTree t}|]) (assocs bterms)
-      ++ map (\(j, t) -> [i|@fMix#{j}: #{fromMTermTree t}|]) (assocs mterms)
-      ++ map (\(j, t) -> [i|@s#{j}: #{fromMTermTree t}|]) (assocs states)
+-- TODO Remove
 
-fromBTermTree :: BoolTermIFree Int -> T.Text
-fromBTermTree = iter fromBTerm . fmap (\j -> [i|fBool#{j}|])
-
-fromBTerm :: BTerm.Term Int T.Text -> T.Text
-fromBTerm BTerm.LTrue = "kTrue"
-fromBTerm BTerm.LFalse = "kFalse"
-fromBTerm (BTerm.Predicate p) = [i|a#{p}|]
-fromBTerm (BTerm.Not x) = [i|!#{x}|]
-fromBTerm (BTerm.And (x :| [])) = x
-fromBTerm (BTerm.Or (x :| [])) = x
-fromBTerm (BTerm.And xs) = [i|(#{T.intercalate " & "$ NE.toList xs})|]
-fromBTerm (BTerm.Or xs) = [i|(#{T.intercalate " | "$ NE.toList xs})|]
-
-fromMTermTree :: MixTermIFree (BoolTermIFree Int) -> T.Text
-fromMTermTree = iter fromMTerm . fmap (\j -> [i|fMix#{j}|])
-
-fromMTerm :: MTerm.Term (BoolTermIFree Int) Int T.Text -> T.Text
-fromMTerm MTerm.LTrue = "kTrue"
-fromMTerm (MTerm.Predicate p) = fromBTermTree p
-fromMTerm (MTerm.State q) = [i|s#{q}|]
-fromMTerm (MTerm.And (x :| [])) = x
-fromMTerm (MTerm.Or (x :| [])) = x
-fromMTerm (MTerm.And xs) = [i|(#{T.intercalate " & "$ NE.toList xs})|]
-fromMTerm (MTerm.Or xs) = [i|(#{T.intercalate " | "$ NE.toList xs})|]
-
-----------------------------------------------------------------------------------------
--- STerm and its plate (boilerplate) ---------------------------------------------------
+-- import Data.Composition ((.:))
+-- import Data.Functor.Classes (Eq1, Show1)
+-- import GHC.Generics (Generic, Generic1)
+-- import Generic.Data (Generically1 (..))
+-- import Generic.Data.Orphans ()
 
 data STerm q f v r
   = STrue
@@ -653,6 +675,3 @@ appMTTra ::
   STerm q f v r ->
   m (STerm q' f' v' r')
 appMTTra = appMTra . fromMTTra
-
-----------------------------------------------------------------------------------------
-----------------------------------------------------------------------------------------
