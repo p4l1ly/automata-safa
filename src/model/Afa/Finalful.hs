@@ -16,7 +16,7 @@
 
 module Afa.Finalful where
 
-import Afa.Finalful.STerm (MFun (..), Term (..))
+import Afa.Finalful.STerm (MFun (..), MTra (..), Term (..))
 import Control.Lens (itraverse, (&))
 import Control.Monad
 import Control.Monad.Free
@@ -27,6 +27,7 @@ import Data.Fix
 import Data.Foldable (toList)
 import Data.Functor ((<&>))
 import Data.Monoid
+import Data.Traversable (for)
 import DepDict (DepDict ((:|:)), (:||:))
 import qualified DepDict as D
 import Lift (Lift)
@@ -43,7 +44,7 @@ type DRec d rec m = Name "rec" (Rec (Tag rec d) m) :+: LiftTags d
 -- split finals; partition states to final, nonfinal and complex;
 -- build a corresponding term t_q for each state;
 -- redirect (State q) to t_q in all terms;
-type RemoveFinalsD d q v r m r' fun =
+type RemoveFinalsD d q v r m r' fun fun2 =
   D.Name
     "splitF"
     ( D.Name "" (RecRecur [d|lock|] r (Term q v r) (SplitFinalsR r q) m)
@@ -60,6 +61,8 @@ type RemoveFinalsD d q v r m r' fun =
           "functorRecur"
           ( FunRecur [d|fun|] r r' fun m
           , Create (SyncQs q `Q` SyncVar q v `V` E q v r) fun
+          , FunRecur [d|fun2|] r' r' fun2 m
+          , Create ( 'MTra (r' `R` E (SyncQs q) (SyncVar q v) r') m) fun2
           )
     :|: D.Name -- TODO build2 and any2 are ugly
           "finalConstr"
@@ -68,6 +71,7 @@ type RemoveFinalsD d q v r m r' fun =
           )
     -- D.Name "build" (BuildFixD d (Term q (SyncVar q v)) r' m)
     :|: D.Name "newState" (Transform [d|newState|] (SyncQs q, r' -> m r') r' m)
+    :|: D.Name "read" (Transform [d|read|] r' (Term (SyncQs q) (SyncVar q v) r') m)
     :|: D.End
 
 -- |
@@ -80,14 +84,14 @@ type RemoveFinalsD d q v r m r' fun =
 --    vybuildit constraint na koncovy symbol
 -- 5. (Nezachovavajucim) premapovanim vieme presmerovat r(State q) na qsub!q
 removeFinals ::
-  forall d q v r m r' fun.
-  ( D.ToConstraint (RemoveFinalsD d q v r m r' fun)
+  forall d q v r m r' fun fun2.
+  ( D.ToConstraint (RemoveFinalsD d q v r m r' fun fun2)
   ) =>
   r ->
   r ->
-  (Int, Int -> q, q -> Int) ->
-  m (r', (Int, Int -> SyncQs q, SyncQs q -> Int))
-removeFinals init final (qCount, i2q, q2i) = do
+  (Int, Int -> q, Int -> r, q -> Int) ->
+  m (r', (Int, Int -> SyncQs q, Int -> r', SyncQs q -> Int))
+removeFinals init final (qCount, i2q, i2r, q2i) = do
   -- split finals; partition states to final, nonfinal and complex;
   ((_, (`appEndo` []) -> nonfinals), complex) <- [d|recur|lock|] (splitFinals @(DRec d "lock" m)) final
   complexFinals <- case complex of
@@ -122,10 +126,17 @@ removeFinals init final (qCount, i2q, q2i) = do
                   (Fix $ And (Fix $ Var FVar) (Fix $ Var $ QVar q))
             Nonfinal -> buildFix @(Name "build" [d|build2|] :+: d) $ Fix $ And (Fix $ State $ QState q) (Fix $ Not $ Fix $ Var FVar)
 
+  let mfun2 = create @MTra @( 'MTra (r' `R` E (SyncQs q) (SyncVar q v) r') m) @fun2 $ \r ->
+        [d|transform|read|] r <&> \case
+          State (QState q) -> (qsubs ! q2i q)
+          _ -> r
+  convert' <- [d|funRecur|fun2|] mfun2 :: m (r' -> m r')
+
   case finalConstraint of
     Nothing -> do
       init' <- convert init
-      return (init', (qCount, QState . i2q, \(QState q) -> q2i q))
+      qrmap <- listArray (0, qCount - 1) <$> mapM (convert' <=< convert . i2r) [0 .. qCount - 1]
+      return (init', (qCount, QState . i2q, (qrmap !), \(QState q) -> q2i q))
     Just finalConstraint -> do
       syncState <- [d|transform|newState|] . (SyncState,) $ \syncState ->
         buildFree @(Name "build" [d|build2|] :+: d) $
@@ -137,7 +148,8 @@ removeFinals init final (qCount, i2q, q2i) = do
       let qCount' = qCount + 1
       let i2q' = \case 0 -> SyncState; i -> QState $ i2q $ i - 1
       let q2i' = \case SyncState -> 0; QState q -> q2i q + 1
-      return (init'', (qCount', i2q', q2i'))
+      qrmap <- listArray (0, qCount) . (syncState :) <$> mapM (convert' <=< convert . i2r) [0 .. qCount - 1]
+      return (init'', (qCount', i2q', (qrmap !), q2i'))
 
 type BuildFinalConstraintD d q v r m =
   D.Name "build" (Transform [d|build|] (Term (SyncQs q) (SyncVar q v) r) r m)

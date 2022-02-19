@@ -17,6 +17,15 @@ import GHC.Generics (Generic, Generic1)
 import Generic.Data (Generically1 (..))
 import Generic.Data.Orphans ()
 
+type family Fst (t :: (*, *, *)) :: * where
+  Fst '(a, b, c) = a
+
+type family Snd (t :: (*, *, *)) :: * where
+  Snd '(a, b, c) = b
+
+type family Trd (t :: (*, *, *)) :: * where
+  Trd '(a, b, c) = c
+
 data Term q v r
   = LTrue
   | LFalse
@@ -40,15 +49,6 @@ infixr 9 `Q`
 infixr 9 `V`
 infixr 9 `R`
 
-type family Fst (t :: (*, *, *)) :: * where
-  Fst '(a, b, c) = a
-
-type family Snd (t :: (*, *, *)) :: * where
-  Snd '(a, b, c) = b
-
-type family Trd (t :: (*, *, *)) :: * where
-  Trd '(a, b, c) = c
-
 type family Out (fun :: MFun) :: (*, *, *) where
   Out (E q v r) = '(q, v, r)
   Out (Q q fun) = '(q, Snd (Out fun), Trd (Out fun))
@@ -59,3 +59,16 @@ type instance Apply (E _ _ _) result = result
 type instance Apply (Q q fun) result = (Fst (Out fun) -> q) -> Apply fun result
 type instance Apply (V v fun) result = (Snd (Out fun) -> v) -> Apply fun result
 type instance Apply (R r fun) result = (Trd (Out fun) -> r) -> Apply fun result
+
+data MTra = MTra MFun (* -> *)
+
+type family InTra (fun :: MTra) :: * where
+  InTra ( 'MTra mfun _) = In mfun
+
+type family OutTra (fun :: MTra) :: (*, *, *) where
+  OutTra ( 'MTra mfun _) = Out mfun
+
+type instance Apply ( 'MTra (E _ _ _) m) result = result
+type instance Apply ( 'MTra (Q q fun) m) result = (Fst (Out fun) -> m q) -> Apply fun result
+type instance Apply ( 'MTra (V v fun) m) result = (Snd (Out fun) -> m v) -> Apply fun result
+type instance Apply ( 'MTra (R r fun) m) result = (Trd (Out fun) -> m r) -> Apply fun result
