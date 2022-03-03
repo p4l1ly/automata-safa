@@ -24,56 +24,28 @@ import Create
 import Data.Array
 import Data.Composition ((.:))
 import Data.Fix
-import Data.Foldable (toList)
+import Data.Foldable (toList, fold)
 import Data.Functor ((<&>))
 import Data.Monoid
 import Data.Traversable (for)
 import DepDict (DepDict ((:|:)), (:||:))
 import qualified DepDict as D
 import Lift (Lift)
-import Shaper (Ask (ask), FunRecur (funRecur), Rec, RecRecur, Recur (recur), Transform (transform))
-import TypeDict (Get, Name, Tag, TypeDict (LiftTags, (:+:)), d)
+import Shaper (FRecK, FunRecur (funRecur), MfnK, MonadFn (monadfn), MonadFn', RecK, RecRecur, Recur (recur), ask)
+import TypeDict (Get, Name, Tag, TypeDict (End, LiftTags, (:+:)), d, d', g, g')
 
 data SyncVar q v = VVar v | FVar | QVar q deriving (Eq, Show)
 data SyncQs q = QState q | SyncState deriving (Eq, Show)
 data Finalness = Final | Complex | Nonfinal deriving (Eq, Show, Ord)
 
-type DRec d rec m = Name "rec" (Rec (Tag rec d) m) :+: LiftTags d
+type DRec d rec = Name "rec" rec :+: LiftTags d
+
+type QVR d (q :: *) (v :: *) (r :: *) = (q ~ [g|q|], v ~ [g|v|], r ~ [g|r|])
 
 -- |
 -- split finals; partition states to final, nonfinal and complex;
 -- build a corresponding term t_q for each state;
 -- redirect (State q) to t_q in all terms;
-type RemoveFinalsD d q v r m r' fun fun2 =
-  D.Name
-    "splitF"
-    ( D.Name "" (RecRecur [d|lock|] r (Term q v r) (SplitFinalsR r q) m)
-        :|: D.Name "" (D.Remove "rec" (SplitFinalsD d q v r m))
-        :|: D.End
-    )
-    :|: D.Name
-          "findQs"
-          ( D.Name "" (Recur [d|any|] r (Term q v r) (Endo [q]) m)
-              :|: D.Name "" (D.Remove "rec" (FindQsD d q r m))
-              :|: D.End
-          )
-    :|: D.Name
-          "functorRecur"
-          ( FunRecur [d|fun|] r r' fun m
-          , Create (SyncQs q `Q` SyncVar q v `V` E q v r) fun
-          , FunRecur [d|fun2|] r' r' fun2 m
-          , Create ( 'MTra (r' `R` E (SyncQs q) (SyncVar q v) r') m) fun2
-          )
-    :|: D.Name -- TODO build2 and any2 are ugly
-          "finalConstr"
-          ( D.Name "" (RecRecur [d|any2|] r' (Term (SyncQs q) (SyncVar q v) r') r' m)
-              :|: D.Remove "rec" (BuildFinalConstraintD (Name "build" [d|build2|] :+: d) q v r' m)
-          )
-    -- D.Name "build" (BuildFixD d (Term q (SyncVar q v)) r' m)
-    :|: D.Name "newState" (Transform [d|newState|] (SyncQs q, r' -> m r') r' m)
-    :|: D.Name "read" (Transform [d|read|] r' (Term (SyncQs q) (SyncVar q v) r') m)
-    :|: D.End
-
 -- |
 -- existuje mnozstvo typov rekurzie a budeme vyberat taku ktora splna presne to co od nej potrebujeme
 -- 1. Rekurzia pri splitovani koncovych stavov je neuplna a vyuziva self (lockuje modifikacie)
@@ -83,118 +55,193 @@ type RemoveFinalsD d q v r m r' fun fun2 =
 --    (tj. bez self, presnejsie, self sa da pouzivat ak nemame pod sebou stav)
 --    vybuildit constraint na koncovy symbol
 -- 5. (Nezachovavajucim) premapovanim vieme presmerovat r(State q) na qsub!q
+type RemoveFinalsD d m = RemoveFinalsD_ d m
+  (RemoveFinalsA d [g|q|] [g|v|] [g|r|] [g|r'|] m)
+  [g|q|] [g|v|] [g|r|] [g|r'|]
+type RemoveFinalsA d q v r r' m =
+  RemoveFinalsA1 d
+    ( Name "term" (Term q v r)
+        :+: Name "term'" (Term (SyncQs q) (SyncVar q v) r')
+        :+: Name "termF'" (Term (SyncQs q) (SyncVar q v))
+        :+: Name "alphabetK" (SyncQs q `Q` SyncVar q v `V` E q v r)
+        :+: Name "redirectK" ( 'MTra (r' `R` E (SyncQs q) (SyncVar q v) r') m)
+        :+: End
+    ) q r r'
+type RemoveFinalsA1 d d' q r r' =
+  RemoveFinalsA2 d
+    ( Name "build" (MfnK [d|build|] [g'|term|] r)
+      :+: Name "build'" (MfnK [d|build|] [g'|term'|] r')
+      :+: Name "deref" (MfnK [d|deref|] r [g'|term|])
+      :+: Name "deref'" (MfnK [d|deref|] r' [g'|term'|])
+      :+: Name "alphabetF" ([g|fun|] ([g'|alphabetK|] :: MFun) :: *)
+      :+: Name "redirectF" ([g|tra|] ([g'|redirectK|] :: MTra) :: *)
+      :+: d'
+    ) q r r'
+type RemoveFinalsA2 d d' q r r' =
+  RemoveFinalsA3 d
+    ( Name "refdeD" (Name "build" [d'|build|] :+: Name "deref" [d'|deref|] :+: d)
+      :+: Name "refdeD'" (Name "build" [d'|build'|] :+: Name "deref" [d'|deref'|] :+: d)
+      :+: d'
+    ) q r r'
+type RemoveFinalsA3 d d' q r r' =
+  Name "splitF" (RecK [d|lock|] r [g'|term|] (SplitFinalsR r q))
+    :+: Name "findQs" (RecK [d|any|] r [g'|term|] (Endo [q]))
+    :+: Name "alphabet" (FRecK [d|funr|] r r' [g'|alphabetF|])
+    :+: Name "finalConstr" (RecK [d|any|] r' [g'|term'|] r')
+    :+: Name "finalConstrD" (Name "r" r' :+: [g'|refdeD'|])
+    :+: Name "redirect" (FRecK [d|funr|] r' r' [g'|redirectF|])
+    :+: d'
+type RemoveFinalsD_ d m d' q v r r' =
+  D.Name "aliases" (QVR d q v r, d' ~ RemoveFinalsA d q v r r' m, r' ~ [g|r'|])
+    :|: D.Name "splitF" (D.Name "" (RecRecur [d'|splitF|] m) :|: D.Remove "rec" (SplitFinalsD [g'|refdeD|] m))
+    :|: D.Name "findQs" (D.Name "" (Recur [d'|findQs|] m) :|: D.Remove "rec" (FindQsD d m))
+    :|: D.Name
+          "functorRecur"
+          ( FunRecur [d'|alphabet|] m
+          , Create ([g'|alphabetK|] :: MFun) [g'|alphabetF|]
+          , FunRecur [d'|redirect|] m
+          , Create ([g'|redirectK|] :: MTra) [g'|redirectF|]
+          )
+    :|: D.Name
+          "finalConstr"
+          ( D.Name "" (RecRecur [d'|finalConstr|] m)
+              :|: D.Remove "rec" (BuildFinalConstraintD [g'|finalConstrD|] m)
+          )
+    :|: D.Name "buildD'" (BuildD [g'|refdeD'|] [g'|termF'|] r' m)
+    :|: D.Name "deref'" (MonadFn [d'|deref'|] m)
+    :|: D.End
 removeFinals ::
-  forall d q v r m r' fun fun2.
-  ( D.ToConstraint (RemoveFinalsD d q v r m r' fun fun2)
-  ) =>
+  forall d q v r r' m d'.
+  D.ToConstraint (RemoveFinalsD_ d m d' q v r r') =>
   r ->
   r ->
   (Int, Int -> q, Int -> r, q -> Int) ->
   m (r', (Int, Int -> SyncQs q, Int -> r', SyncQs q -> Int))
 removeFinals init final (qCount, i2q, i2r, q2i) = do
   -- split finals; partition states to final, nonfinal and complex;
-  ((_, (`appEndo` []) -> nonfinals), complex) <- [d|recur|lock|] (splitFinals @(DRec d "lock" m)) final
+  ((_, (`appEndo` []) -> nonfinals), complex) <-
+    [d'|recur|splitF|] (splitFinals @(DRec [g'|refdeD|] [d'|splitF|])) final
   complexFinals <- case complex of
     Nothing -> return []
-    Just complex -> [d|recur|any|] (findQs @(DRec d "any" m)) complex <&> (`appEndo` [])
+    Just complex -> [d'|recur|findQs|] (findQs @(DRec d [d'|findQs|]) @q @v @r) complex <&> (`appEndo` [])
   let finalnesses =
         accumArray max Final (1, qCount) $
           map (\q -> (q2i q, Nonfinal)) nonfinals
             ++ map (\q -> (q2i q, Complex)) complexFinals
 
   -- adapt the type, so that new symbols and state could be added
-  let mfun = create @MFun @(SyncQs q `Q` SyncVar q v `V` E q v r) @fun QState VVar
-  convert <- [d|funRecur|fun|] mfun :: m (r -> m r')
+  let mfun = create @MFun @([g'|alphabetK|] :: MFun) @[g'|alphabetF|] QState VVar
+  changeAlphabet <- [d'|funRecur|alphabet|] mfun
 
   -- create a final constraint
   finalConstraint <- case complex of
     Nothing -> return Nothing
     Just complex -> do
-      complex' <- convert complex
-      Just <$> [d|recur|any2|] (buildFinalConstraint @(DRec (Name "build" [d|build2|] :+: d) "any2" m) @q) complex'
+      complex' <- changeAlphabet complex
+      Just
+        <$> [d'|recur|finalConstr|]
+          (buildFinalConstraint @(DRec [g'|finalConstrD|] [d'|finalConstr|]))
+          complex'
 
   -- build a corresponding term t_q for each state;
   qsubs <-
     finalnesses & itraverse \i ->
       let q = i2q i
        in \case
-            Final -> buildFix @(Name "build" [d|build2|] :+: d) $ Fix $ Or (Fix $ State $ QState q) (Fix $ Var FVar)
+            Final -> buildFix @[g'|refdeD'|] $ Fix $ Or (Fix $ State $ QState q) (Fix $ Var FVar)
             Complex ->
-              buildFix @(Name "build" [d|build2|] :+: d) $
+              buildFix @[g'|refdeD'|] $
                 (Fix .: Or)
                   (Fix $ And (Fix $ Not (Fix $ Var FVar)) (Fix $ State $ QState q))
                   (Fix $ And (Fix $ Var FVar) (Fix $ Var $ QVar q))
-            Nonfinal -> buildFix @(Name "build" [d|build2|] :+: d) $ Fix $ And (Fix $ State $ QState q) (Fix $ Not $ Fix $ Var FVar)
+            Nonfinal -> buildFix @[g'|refdeD'|] $ Fix $ And (Fix $ State $ QState q) (Fix $ Not $ Fix $ Var FVar)
 
-  let mfun2 = create @MTra @( 'MTra (r' `R` E (SyncQs q) (SyncVar q v) r') m) @fun2 $ \r ->
-        [d|transform|read|] r <&> \case
+  let mtra = create @MTra @([g'|redirectK|] :: MTra) @[g'|redirectF|] $ \r ->
+        [d'|monadfn|deref'|] r <&> \case
           State (QState q) -> (qsubs ! q2i q)
           _ -> r
-  convert' <- [d|funRecur|fun2|] mfun2 :: m (r' -> m r')
+  redirect <- [d'|funRecur|redirect|] mtra :: m (r' -> m r')
+  qTransitions <- mapM (redirect <=< changeAlphabet . i2r) [0 .. qCount - 1]
 
   case finalConstraint of
     Nothing -> do
-      init' <- convert init
-      qrmap <- listArray (0, qCount - 1) <$> mapM (convert' <=< convert . i2r) [0 .. qCount - 1]
+      init' <- changeAlphabet init
+      let qrmap = listArray (0, qCount - 1) qTransitions
       return (init', (qCount, QState . i2q, (qrmap !), \(QState q) -> q2i q))
     Just finalConstraint -> do
-      syncState <- [d|transform|newState|] . (SyncState,) $ \syncState ->
-        buildFree @(Name "build" [d|build2|] :+: d) $
-          (Free .: Or)
-            (Free $ And (Free $ Not (Free $ Var FVar)) (Pure syncState))
-            (Free $ And (Free $ Var FVar) (Pure finalConstraint))
-      init' <- convert init
-      init'' <- [d|transform|build2|] (And syncState init')
+      syncQRef <- [g'|monadfn|build'|] (State SyncState)
+      syncQTrans <- buildFree @[g'|refdeD'|] $
+        (Free .: Or)
+          (Free $ And (Free $ Not (Free $ Var FVar)) (Pure syncQRef))
+          (Free $ And (Free $ Var FVar) (Pure finalConstraint))
+      init' <- changeAlphabet init
+      init'' <- [d'|monadfn|build'|] (And syncQRef init')
       let qCount' = qCount + 1
       let i2q' = \case 0 -> SyncState; i -> QState $ i2q $ i - 1
       let q2i' = \case SyncState -> 0; QState q -> q2i q + 1
-      qrmap <- listArray (0, qCount) . (syncState :) <$> mapM (convert' <=< convert . i2r) [0 .. qCount - 1]
+      let qrmap = listArray (0, qCount) $ syncQTrans : qTransitions
       return (init'', (qCount', i2q', (qrmap !), q2i'))
 
-type BuildFinalConstraintD d q v r m =
-  D.Name "build" (Transform [d|build|] (Term (SyncQs q) (SyncVar q v) r) r m)
+
+type BuildFinalConstraintD d m =
+  BuildFinalConstraintD_ d m (BuildFinalConstraintA d m [g|r|]) [g|q|] [g|v|] [g|r|]
+type BuildFinalConstraintA d m r =  -- keyword aliases
+  Name "self" (MfnK [d|rec|] () r)
+    :+: Name "rec" (MfnK [d|rec|] r r)
+    :+: End
+type BuildFinalConstraintD_ d m d' q v r =  -- dependencies
+  D.Name "aliases" (QVR d q v r, d' ~ BuildFinalConstraintA d m r)
     :|: D.Name
           "rec"
-          ( D.Name "self" (Ask [d|rec|] r m)
-              :|: D.Name "rec" (Transform [d|rec|] r r m)
+          ( D.Name "self" (MonadFn [d'|self|] m)
+              :|: D.Name "rec" (MonadFn [d'|rec|] m)
               :|: D.End
           )
-    :|: D.End
+    :|: BuildD d (Term (SyncQs q) (SyncVar q v)) r m
 buildFinalConstraint ::
-  forall d q v r m.
-  D.ToConstraint (BuildFinalConstraintD d q v r m) =>
+  forall d q v r m d'.
+  D.ToConstraint (BuildFinalConstraintD_ d m d' q v r) =>
   Term (SyncQs q) (SyncVar q v) r ->
   m r
-buildFinalConstraint (State (QState q)) = [d|transform|build|] $ Var (QVar q)
+buildFinalConstraint (State (QState q)) = [d|monadfn|build|] $ Var (QVar q)
 buildFinalConstraint (And a b) =
-  [d|transform|build|]
-    =<< And <$> [d|transform|rec|] a <*> [d|transform|rec|] b
+  [d|monadfn|build|]
+    =<< And <$> [d'|monadfn|rec|] a <*> [d'|monadfn|rec|] b
 buildFinalConstraint (Or a b) =
-  [d|transform|build|]
-    =<< Or <$> [d|transform|rec|] a <*> [d|transform|rec|] b
-buildFinalConstraint (Not a) = [d|transform|build|] . Not =<< [d|transform|rec|] a
-buildFinalConstraint _ = [d|ask|rec|]
+  [d|monadfn|build|]
+    =<< Or <$> [d'|monadfn|rec|] a <*> [d'|monadfn|rec|] b
+buildFinalConstraint (Not a) = [d|monadfn|build|] . Not =<< [d'|monadfn|rec|] a
+buildFinalConstraint _ = [d'|ask|self|]
 
-type BuildFixD d f r m = D.Name "build" (Transform [d|build|] (f r) r m) :|: D.End
+
+type BuildD d f r m = D.Name "build" (MonadFn' [d|build|] (f r) r m) :|: D.End
 buildFix ::
   forall d f r m.
-  (D.ToConstraint (BuildFixD d f r m), Traversable f) =>
+  (D.ToConstraint (BuildD d f r m), Traversable f) =>
   Fix f ->
   m r
-buildFix (Fix fa) = traverse (buildFix @d) fa >>= [d|transform|build|]
+buildFix (Fix fa) = traverse (buildFix @d) fa >>= [d|monadfn|build|]
 
-type BuildFreeD d f r m = D.Name "build" (Transform [d|build|] (f r) r m) :|: D.End
 buildFree ::
   forall d f r m.
-  (D.ToConstraint (BuildFixD d f r m), Traversable f) =>
+  (D.ToConstraint (BuildD d f r m), Traversable f) =>
   Free f r ->
   m r
-buildFree = iterM ([d|transform|build|] <=< sequence)
+buildFree = iterM ([d|monadfn|build|] <=< sequence)
 
-type FindQsD d q r m = D.Name "rec" (Transform [d|rec|] r (Endo [q]) m) :|: D.End
-findQs :: forall d q r v m. D.ToConstraint (FindQsD d q r m) => Term q v r -> m (Endo [q])
+
+type FindQsD d m = FindQsD_ d m (FindQsA d [g|q|] [g|r|]) [g|q|] [g|v|] [g|r|]
+type FindQsA d q r = Name "rec" (MfnK [d|rec|] r (Endo [q])) :+: End
+type FindQsD_ d m d' q v r =
+  D.Name "aliases" (QVR d q v r, d' ~ FindQsA d q r)
+  :|: D.Name "rec" (MonadFn [d'|rec|] m) :|: D.End
+findQs ::
+  forall d q v r m d'.
+  D.ToConstraint (FindQsD_ d m d' q v r)
+  => Term q v r -> m (Endo [q])
 findQs (State q) = return $ Endo (q :)
-findQs _ = return $ Endo id
+findQs f = fold <$> mapM [d'|monadfn|rec|] f
+
 
 -- | Find states, negations of which are in conjunction with the rest.
 -- >>> :set -XPartialTypeSignatures
@@ -219,36 +266,41 @@ findQs _ = return $ Endo id
 -- :}
 -- ([1,2],Just (Fix (Or (Fix (Not (Fix (State 3)))) (Fix (Not (Fix (State 4)))))))
 type SplitFinalsR r q = ((Any, Endo [q]), Maybe r)
-
-type SplitFinalsD d q v r m =
-  D.Name "deref" (Transform [d|deref|] r (Term q v r) m)
-    :|: D.Name "build" (Transform [d|build|] (Term q v r) r m)
+type SplitFinalsD d m = SplitFinalsD_ d m (SplitFinalsA d m [g|q|] [g|r|]) [g|q|] [g|v|] [g|r|]
+type SplitFinalsA d m q r =
+  Name "self" (MfnK [d|rec|] () r)
+    :+: Name "rec" (MfnK [d|rec|] r (SplitFinalsR r q))
+    :+: End
+type SplitFinalsD_ d m d' q v r =
+  D.Name "aliases" (QVR d q v r, d' ~ SplitFinalsA d m q r)
+    :|: D.Name "deref" (MonadFn' [d|deref|] r (Term q v r) m)
+    :|: D.Name "build" (MonadFn' [d|build|] (Term q v r) r m)
     :|: D.Name
           "rec"
-          ( D.Name "self" (Ask [d|rec|] r m)
-              :|: D.Name "rec" (Transform [d|rec|] r (SplitFinalsR r q) m)
+          ( D.Name "self" (MonadFn [d'|self|] m)
+              :|: D.Name "rec" (MonadFn [d'|rec|] m)
               :|: D.End
           )
-    :|: D.End
+    :|: BuildD d (Term q v) r m
 splitFinals ::
-  forall d q v r m.
-  (D.ToConstraint (SplitFinalsD d q v r m)) =>
+  forall d q v r m d'.
+  D.ToConstraint (SplitFinalsD_ d m d' q v r) =>
   Term q v r ->
   m (SplitFinalsR r q)
 splitFinals = \case
   Not r -> do
-    child <- [d|transform|deref|] r
+    child <- [d|monadfn|deref|] r
     case child of State q -> return ((Any True, Endo (q :)), Nothing); _ -> self'
   And r1 r2 -> do
-    (qs1, mcomplex1) <- [d|transform|rec|] r1
-    (qs2, mcomplex2) <- [d|transform|rec|] r2
+    (qs1, mcomplex1) <- [d'|monadfn|rec|] r1
+    (qs2, mcomplex2) <- [d'|monadfn|rec|] r2
     (qs1 <> qs2,) <$> case (mcomplex1, mcomplex2) of
       (Nothing, Nothing) -> return Nothing
       (Nothing, Just complex2) -> return $ Just complex2
       (Just complex1, Nothing) -> return $ Just complex1
       (Just complex1, Just complex2)
-        | getAny (fst qs1) && getAny (fst qs2) -> Just <$> [d|ask|rec|]
-        | otherwise -> Just <$> [d|transform|build|] (And complex1 complex2)
+        | getAny (fst qs1) && getAny (fst qs2) -> Just <$> [d'|ask|self|]
+        | otherwise -> Just <$> [d|monadfn|build|] (And complex1 complex2)
   _ -> self'
   where
-    self' = [d|ask|rec|] <&> \s -> ((Any False, Endo id), Just s)
+    self' = [d'|ask|self|] <&> \s -> ((Any False, Endo id), Just s)

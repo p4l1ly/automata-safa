@@ -72,21 +72,20 @@ deserializeNfa (AfaC.Range16Nfa states (fromIntegral -> initial) finals) =
         else Free $ MTerm.And $ nonfinalSym :| [mkState initial]
 
 convertRange :: AfaC.Range16 -> BoolTermIFree Int
-convertRange (AfaC.Range16 0x0000 0xffff) = Pure 35
+convertRange (AfaC.Range16 0x0000 0xffff) = Pure 35 -- True
 convertRange (AfaC.Range16 begin end) = Free $ BTerm.And $ diff' :| map byBeg common
   where
     {-# INLINE getBeg #-}
-    getBeg = testBit begin
+    getBeg = testBit begin -- get bit from the range's start
     {-# INLINE getEnd #-}
-    getEnd = testBit end
-
-    pos i = Pure i
-    neg i = Pure $ i + 16
+    getEnd = testBit end -- get bit from the range's end
+    pos i = Pure i -- positive variable: v_i
+    neg i = Pure $ i + 16 -- negative variable: NOT(v_i)
     byBeg i = if getBeg i then pos i else neg i
     (common, diff) = span (\i -> getBeg i == getEnd i) [15, 14 .. 0]
 
     diff' = case diff of
-      [] -> Pure 35
+      [] -> Pure 35 -- True
       x : rest ->
         Free $
           BTerm.Or $
@@ -97,10 +96,9 @@ convertRange (AfaC.Range16 begin end) = Free $ BTerm.And $ diff' :| map byBeg co
       if getBeg x
         then Free $ BTerm.And $ pos x :| [gte rest]
         else Free $ BTerm.Or $ pos x :| [gte rest]
-    gte [] = Pure 35
-
+    gte [] = Pure 35 -- True
     lte (x : rest) =
       if getEnd x
         then Free $ BTerm.Or $ neg x :| [lte rest]
         else Free $ BTerm.And $ neg x :| [lte rest]
-    lte [] = Pure 35
+    lte [] = Pure 35 -- True

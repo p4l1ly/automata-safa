@@ -2,15 +2,18 @@
 {-# LANGUAGE DeriveGeneric #-}
 {-# LANGUAGE DeriveTraversable #-}
 {-# LANGUAGE DerivingVia #-}
+{-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE GADTs #-}
+{-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE PolyKinds #-}
 {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE TypeFamilies #-}
+{-# LANGUAGE TypeOperators #-}
 {-# LANGUAGE UndecidableInstances #-}
 
 module Afa.Finalful.STerm where
 
-import Create (Apply)
+import Create (Apply, Create (create))
 import Data.Composition ((.:))
 import Data.Functor.Classes (Eq1, Show1)
 import GHC.Generics (Generic, Generic1)
@@ -39,8 +42,8 @@ data Term q v r
 
 data MFun = E * * * | Q * MFun | V * MFun | R * MFun
 
-type family In (fun :: MFun) :: * where
-  In (E q v r) = (q, v, r)
+type family In (fun :: MFun) :: (*, *, *) where
+  In (E q v r) = '(q, v, r)
   In (Q _ fun) = In fun
   In (V _ fun) = In fun
   In (R _ fun) = In fun
@@ -62,13 +65,39 @@ type instance Apply (R r fun) result = (Trd (Out fun) -> r) -> Apply fun result
 
 data MTra = MTra MFun (* -> *)
 
-type family InTra (fun :: MTra) :: * where
+type family InTra (fun :: MTra) :: (*, *, *) where
   InTra ( 'MTra mfun _) = In mfun
 
 type family OutTra (fun :: MTra) :: (*, *, *) where
   OutTra ( 'MTra mfun _) = Out mfun
 
+type family MonadTra (fun :: MTra) :: (* -> *) where
+  MonadTra ( 'MTra _ m) = m
+
 type instance Apply ( 'MTra (E _ _ _) m) result = result
 type instance Apply ( 'MTra (Q q fun) m) result = (Fst (Out fun) -> m q) -> Apply fun result
 type instance Apply ( 'MTra (V v fun) m) result = (Snd (Out fun) -> m v) -> Apply fun result
 type instance Apply ( 'MTra (R r fun) m) result = (Trd (Out fun) -> m r) -> Apply fun result
+
+-- instances (for now, very incomplete)
+
+data PerVarMFun fun
+  = PerVarMFun
+      (Fst (In fun) -> Fst (Out fun))
+      (Snd (In fun) -> Snd (Out fun))
+      (Trd (In fun) -> Trd (Out fun))
+instance Create (q' `Q` v' `V` E q v r) (PerVarMFun (q' `Q` v' `V` E q v r)) where
+  create qfn vfn = PerVarMFun qfn vfn id
+
+data PerVarMTra fun
+  = PerVarMTra
+      (Fst (InTra fun) -> MonadTra fun (Fst (OutTra fun)))
+      (Snd (InTra fun) -> MonadTra fun (Snd (OutTra fun)))
+      (Trd (InTra fun) -> MonadTra fun (Trd (OutTra fun)))
+instance
+  Applicative m =>
+  Create
+    ( 'MTra (r' `R` E q v r) m)
+    (PerVarMTra ( 'MTra (r' `R` E q v r) m))
+  where
+  create rfn = PerVarMTra pure pure rfn

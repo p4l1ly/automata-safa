@@ -20,6 +20,7 @@ library
     Afa.Term.Bool
     Afa.Term.Bool.Simplify
     Afa.Bool
+    Afa.STRef
     Afa.Finalful
     Afa.Finalful.STerm
     Afa.Lib
@@ -60,6 +61,7 @@ library
     capability ^>=0.4.0.0,
     primitive ^>=0.7.1.0,
     composition ^>=1.0.2.2,
+    composition-extra ^>=2.0.0,
     template-haskell ^>=2.16.0.0,
     th-abstraction ^>=0.4.3.0,
     ghc-prim ^>=0.6.1,

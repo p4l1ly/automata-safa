@@ -5,7 +5,8 @@
 {-# LANGUAGE DerivingVia #-}
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE FlexibleInstances #-}
-{-# LANGUAGE FunctionalDependencies #-}
+{-# LANGUAGE InstanceSigs #-}
+{-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE PolyKinds #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TemplateHaskell #-}
@@ -20,33 +21,69 @@ import Control.Monad.Reader (Reader, ReaderT (ReaderT, runReaderT), asks, local,
 import Control.Monad.Trans (MonadTrans (lift))
 import Data.Fix (Fix (Fix))
 import Data.Kind (Constraint)
+import Lift (Lift)
 import LiftTH (makeLiftable)
 
-class Monad m => Ask (k :: *) a m | k m -> a where
-  ask :: m a
-makeLiftable ''Ask
+type family Ref (k :: *) (x :: *) :: *
 
-class Monad m => Transform (k :: *) a b m | k m -> a b where
-  transform :: a -> m b
-makeLiftable ''Transform
+type family MfnA (k :: *) :: *
+type family MfnB (k :: *) :: *
 
-type family RecTrans (k :: *) (m :: * -> *) :: * -> (* -> *) -> * -> *
-data Rec (k :: *) m
+type instance MfnA (Lift k) = MfnA k
+type instance MfnB (Lift k) = MfnB k
+
+data MfnK (k :: *) (a :: *) (b :: *)
+type instance MfnA (MfnK _ a _) = a
+type instance MfnB (MfnK _ _ b) = b
+
+class Monad m => MonadFn (k :: *) (m :: * -> *) where
+  monadfn :: MfnA k -> m (MfnB k)
+makeLiftable ''MonadFn
+
+type MonadFn' k a b m = (MonadFn k m, b ~ MfnB k, a ~ MfnA k)
+type Ask k a m = MonadFn' k () a m
+
+ask :: forall k a m. (Ask k a m) => m a
+ask = monadfn @k ()
+
+type family RecTrans (k :: *) :: * -> (* -> *) -> * -> *
+type family RecRef (k :: *) :: *
+type family RecFun (k :: *) :: *
+type family RecVal (k :: *) :: *
+
+data RecK (k :: *) (r :: *) (fr :: *) (a :: *)
+type instance RecRef (RecK _ r _ _) = r
+type instance RecFun (RecK _ _ fr _) = fr
+type instance RecVal (RecK _ _ _ a) = a
+
 class
-  ( Transform (Rec k m) r a (RecTrans k m a m)
-  , MonadTrans (RecTrans k m a)
-  , Monad (RecTrans k m a m)
+  ( MonadFn (MfnK k (RecRef k) (RecVal k)) (RecTrans k (RecVal k) m)
+  , MonadTrans (RecTrans k (RecVal k))
+  , Monad (RecTrans k (RecVal k) m)
   , Monad m
   ) =>
-  Recur (k :: *) r fr a m
-    | k m r -> fr a
+  Recur (k :: *) (m :: * -> *)
   where
-  recur :: (fr -> RecTrans k m a m a) -> r -> m a
+  recur :: (RecFun k -> RecTrans k (RecVal k) m (RecVal k)) -> RecRef k -> m (RecVal k)
 
-type RecRecur k r fr a m = (Ask (Rec k m) r (RecTrans k m a m), Recur k r fr a m)
+type RecRecur k m =
+  ( MonadFn (MfnK k () (RecRef k)) (RecTrans k (RecVal k) m)
+  , Recur k m
+  )
 
-class FunRecur (k :: *) r r' fun m | k m r -> fun r' where
-  funRecur :: fun -> m (r -> m r')
+type family FRecRef (k :: *) :: *
+type family FRecRef' (k :: *) :: *
+type family FRecFun (k :: *) :: *
+
+data FRecK (k :: *) (r :: *) (r' :: *) (fun :: *)
+type instance FRecRef (FRecK _ r _ _) = r
+type instance FRecRef' (FRecK _ _ r' _) = r'
+type instance FRecFun (FRecK _ _ _ fun) = fun
+
+class FunRecur (k :: *) (m :: * -> *) where
+  funRecur :: FRecFun k -> m (FRecRef k -> m (FRecRef' k))
+
+----------------------------------------------------------------------------------------
 
 type FixRecurBody f a m = ReaderT (f (Fix f) -> FixRecurT f a m a, Fix f) m
 newtype FixRecurT f a m r = FixRecurT (FixRecurBody f a m r)
