@@ -16,11 +16,11 @@
 
 module Afa.Finalful where
 
-import Afa.Finalful.STerm (MFun (..), MTra (..), Term (..))
+import Afa.Finalful.STerm (Term (..), (:&:)(..), Create(..), Creation, OneshotFun, OneshotTra)
+import qualified Afa.Finalful.STerm as Term
 import Control.Lens (itraverse, (&))
 import Control.Monad
 import Control.Monad.Free
-import Create
 import Data.Array
 import Data.Composition ((.:))
 import Data.Fix
@@ -28,7 +28,7 @@ import Data.Foldable (toList, fold)
 import Data.Functor ((<&>))
 import Data.Monoid
 import Data.Traversable (for)
-import DepDict (DepDict ((:|:)), (:||:))
+import DepDict (DepDict ((:|:)))
 import qualified DepDict as D
 import Lift (Lift)
 import Shaper (FRecK, FunRecur (funRecur), MfnK, MonadFn (monadfn), MonadFn', RecK, RecRecur, Recur (recur), ask)
@@ -63,18 +63,18 @@ type RemoveFinalsA d q v r r' m =
     ( Name "term" (Term q v r)
         :+: Name "term'" (Term (SyncQs q) (SyncVar q v) r')
         :+: Name "termF'" (Term (SyncQs q) (SyncVar q v))
-        :+: Name "alphabetK" (SyncQs q `Q` SyncVar q v `V` E q v r)
-        :+: Name "redirectK" ( 'MTra (r' `R` E (SyncQs q) (SyncVar q v) r') m)
         :+: End
-    ) q r r'
-type RemoveFinalsA1 d d' q r r' =
+    ) q v r r' m
+type RemoveFinalsA1 d d' q v r r' m =
   RemoveFinalsA2 d
     ( Name "build" (MfnK [d|build|] [g'|term|] r)
       :+: Name "build'" (MfnK [d|build|] [g'|term'|] r')
       :+: Name "deref" (MfnK [d|deref|] r [g'|term|])
       :+: Name "deref'" (MfnK [d|deref|] r' [g'|term'|])
-      :+: Name "alphabetF" ([g|fun|] ([g'|alphabetK|] :: MFun) :: *)
-      :+: Name "redirectF" ([g|tra|] ([g'|redirectK|] :: MTra) :: *)
+      :+: Name "alphabetF" ([g|fun|] [Term.Q, Term.V] :: *)  -- TODO there's some ambiguity problem if OneshotFun/OneshotTra are taken from d
+      :+: Name "alphabetFn" ((q -> SyncQs q) :&: (v -> SyncVar q v))
+      :+: Name "redirectF" ([g|tra|] '[Term.R] :: *)
+      :+: Name "redirectFn" (r' -> m r')
       :+: d'
     ) q r r'
 type RemoveFinalsA2 d d' q r r' =
@@ -86,10 +86,10 @@ type RemoveFinalsA2 d d' q r r' =
 type RemoveFinalsA3 d d' q r r' =
   Name "splitF" (RecK [d|lock|] r [g'|term|] (SplitFinalsR r q))
     :+: Name "findQs" (RecK [d|any|] r [g'|term|] (Endo [q]))
-    :+: Name "alphabet" (FRecK [d|funr|] r r' [g'|alphabetF|])
+    :+: Name "alphabet" (FRecK [d|funr|] r r' (Creation [g'|alphabetF|] [g'|alphabetFn|]))
     :+: Name "finalConstr" (RecK [d|any|] r' [g'|term'|] r')
     :+: Name "finalConstrD" (Name "r" r' :+: [g'|refdeD'|])
-    :+: Name "redirect" (FRecK [d|funr|] r' r' [g'|redirectF|])
+    :+: Name "redirect" (FRecK [d|funr|] r' r' (Creation [g'|redirectF|] [g'|redirectFn|]))
     :+: d'
 type RemoveFinalsD_ d m d' q v r r' =
   D.Name "aliases" (QVR d q v r, d' ~ RemoveFinalsA d q v r r' m, r' ~ [g|r'|])
@@ -98,9 +98,9 @@ type RemoveFinalsD_ d m d' q v r r' =
     :|: D.Name
           "functorRecur"
           ( FunRecur [d'|alphabet|] m
-          , Create ([g'|alphabetK|] :: MFun) [g'|alphabetF|]
+          , Create [g'|alphabetF|] [g'|alphabetFn|]
           , FunRecur [d'|redirect|] m
-          , Create ([g'|redirectK|] :: MTra) [g'|redirectF|]
+          , Create [g'|redirectF|] [g'|redirectFn|]
           )
     :|: D.Name
           "finalConstr"
@@ -130,7 +130,7 @@ removeFinals init final (qCount, i2q, i2r, q2i) = do
             ++ map (\q -> (q2i q, Complex)) complexFinals
 
   -- adapt the type, so that new symbols and state could be added
-  let mfun = create @MFun @([g'|alphabetK|] :: MFun) @[g'|alphabetF|] QState VVar
+  let mfun = create @[g'|alphabetF|] (QState :&: VVar :: [g'|alphabetFn|])
   changeAlphabet <- [d'|funRecur|alphabet|] mfun
 
   -- create a final constraint
@@ -156,10 +156,11 @@ removeFinals init final (qCount, i2q, i2r, q2i) = do
                   (Fix $ And (Fix $ Var FVar) (Fix $ Var $ QVar q))
             Nonfinal -> buildFix @[g'|refdeD'|] $ Fix $ And (Fix $ State $ QState q) (Fix $ Not $ Fix $ Var FVar)
 
-  let mtra = create @MTra @([g'|redirectK|] :: MTra) @[g'|redirectF|] $ \r ->
+  let redirect = \r ->
         [d'|monadfn|deref'|] r <&> \case
           State (QState q) -> (qsubs ! q2i q)
           _ -> r
+  let mtra = create @[g'|redirectF|] (redirect :: [g'|redirectFn|])
   redirect <- [d'|funRecur|redirect|] mtra :: m (r' -> m r')
   qTransitions <- mapM (redirect <=< changeAlphabet . i2r) [0 .. qCount - 1]
 

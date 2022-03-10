@@ -71,6 +71,7 @@ ROOT=$1
 export LD_LIBRARY_PATH=$HOME/.local/lib:$PWD/target/release
 
 resetDir() {
+  echo resetting $ROOT/$1
   rm $ROOT/$1/*
   mkdir -p $ROOT/$1
 }

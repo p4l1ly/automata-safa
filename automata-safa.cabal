@@ -20,7 +20,7 @@ library
     Afa.Term.Bool
     Afa.Term.Bool.Simplify
     Afa.Bool
-    Afa.STRef
+    Afa.IORef
     Afa.Finalful
     Afa.Finalful.STerm
     Afa.Lib
@@ -96,6 +96,7 @@ library convert
     Afa.Convert.Dot
     Afa.Convert.Stranger
     Afa.Convert.PrettyStranger
+    Afa.Convert.PrettyStranger2
     Afa.Convert.Smv
     Afa.Convert.Ada
     Afa.Convert.CnfAfa

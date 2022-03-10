@@ -2,6 +2,7 @@
 {-# LANGUAGE DerivingVia #-}
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE InstanceSigs #-}
+{-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE PartialTypeSignatures #-}
 {-# LANGUAGE ScopedTypeVariables #-}
@@ -9,16 +10,16 @@
 {-# LANGUAGE TypeFamilies #-}
 {-# LANGUAGE TypeOperators #-}
 
-module Afa.STRef where
+module Afa.IORef where
 
 import Afa.Finalful
 import Afa.Finalful.STerm as STerm
 import Control.Monad.Free
 import Control.Monad.Reader
 import Control.Monad.State (StateT (runStateT), get, put)
+import Data.Functor ((<&>))
 import qualified Data.HashMap.Strict as HM
 import Data.IORef
-import Data.STRef
 import qualified Shaper
 import System.Mem.StableName
 import TypeDict
@@ -27,10 +28,12 @@ type FR f = f (Ref f)
 type R f = IORef (FR f)
 type SN f = StableName (R f)
 type S f = (SN f, R f)
-data Ref f = Ref (S f) | Subtree (FR f) -- TODO heterogeneous recursion => no subtree needed, use Free (but there are no real benefits in this case)
+data Ref f = Ref (S f) | Subtree (FR f)
 data Anyrec
 data Funrec
 data Build
+data BuildTree
+data ShareTree
 data Deref
 
 -- Anyrec
@@ -65,10 +68,16 @@ instance
     AnyT $ local (const r) action
 
 instance
-  (r ~ Ref f, Monad m) =>
-  Shaper.MonadFn (Shaper.MfnK (Shaper.RecK Anyrec (Ref f) (FR f) a) () r) (AnyT f a m)
+  Monad m =>
+  Shaper.MonadFn (Shaper.MfnK (Shaper.RecK Anyrec (Ref f) ff a) () (Ref f)) (AnyT f a m)
   where
   monadfn () = AnyT ask
+
+instance
+  Monad m =>
+  Shaper.MonadFn (Shaper.MfnK (Shaper.IsTree (Shaper.RecK Anyrec (Ref f) ff a)) () Bool) (AnyT f a m)
+  where
+  monadfn () = AnyT $ ask <&> \case Subtree _ -> True; _ -> False
 
 instance MonadIO m => Shaper.Recur (Shaper.RecK Anyrec (Ref f) (f (Ref f)) a) m where
   recur action r = do
@@ -85,12 +94,18 @@ instance MonadIO m => Shaper.MonadFn (Shaper.MfnK Deref (Ref f) (f (Ref f))) m w
   monadfn (Ref (_, ioref)) = liftIO $ readIORef ioref
   monadfn (Subtree f) = return f
 
--- TODO heterogeneous recursion would allow interleaving trees and dags
 instance MonadIO m => Shaper.MonadFn (Shaper.MfnK Build (f (Ref f)) (Ref f)) m where
   monadfn f = do
     ioref <- liftIO $ newIORef f
     name <- liftIO $ makeStableName ioref
     return $ Ref (name, ioref)
+
+instance MonadIO m => Shaper.MonadFn (Shaper.MfnK BuildTree (f (Ref f)) (Ref f)) m where
+  monadfn f = return $ Subtree f
+
+instance MonadIO m => Shaper.MonadFn (Shaper.MfnK ShareTree (Ref f) (Ref f)) m where
+  monadfn (Subtree f) = Shaper.monadfn @(Shaper.MfnK Build (f (Ref f)) (Ref f)) f
+  monadfn r = return r
 
 instance
   Shaper.FunRecur
@@ -98,11 +113,11 @@ instance
         Funrec
         (Ref (Term q v))
         (Ref (Term q' v'))
-        (PerVarMFun (q' `Q` v' `V` E q v r))
+        (QVFun q v q' v')
     )
     IO
   where
-  funRecur (PerVarMFun qfn vfn _) = do
+  funRecur (QVFun qfn vfn) = do
     old2new <- newIORef (HM.empty :: HM.HashMap (SN (Term q v)) (Ref (Term q' v')))
 
     let convert (State q) = return (State (qfn q))
@@ -135,11 +150,11 @@ instance
         Funrec
         (Ref (Term q v))
         (Ref (Term q v))
-        (PerVarMTra ( 'MTra (Ref (Term q v) `STerm.R` E q v (Ref (Term q v))) IO))
+        (RTra IO (Ref (Term q v)) (Ref (Term q v)))
     )
     IO
   where
-  funRecur (PerVarMTra _ _ rfn) = do
+  funRecur (RTra rfn) = do
     old2new <- newIORef (HM.empty :: HM.HashMap (SN (Term q v)) (Ref (Term q v)))
 
     let convert (State q) = return (State q)
@@ -179,9 +194,10 @@ removeFinals ::
             :+: Name "any" Anyrec
             :+: Name "funr" Funrec
             :+: Name "build" Build
+            :+: Name "build" BuildTree
             :+: Name "deref" Deref
-            :+: Name "fun" PerVarMFun
-            :+: Name "tra" PerVarMTra
+            :+: Name "fun" STerm.OneshotFun
+            :+: Name "tra" STerm.OneshotTra
             :+: End
         )
   ) =>

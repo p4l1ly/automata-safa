@@ -1,33 +1,27 @@
+{-# LANGUAGE AllowAmbiguousTypes #-}
 {-# LANGUAGE DataKinds #-}
 {-# LANGUAGE DeriveGeneric #-}
 {-# LANGUAGE DeriveTraversable #-}
 {-# LANGUAGE DerivingVia #-}
 {-# LANGUAGE FlexibleInstances #-}
-{-# LANGUAGE GADTs #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
-{-# LANGUAGE PolyKinds #-}
 {-# LANGUAGE RankNTypes #-}
+{-# LANGUAGE TypeApplications #-}
 {-# LANGUAGE TypeFamilies #-}
 {-# LANGUAGE TypeOperators #-}
 {-# LANGUAGE UndecidableInstances #-}
 
 module Afa.Finalful.STerm where
 
-import Create (Apply, Create (create))
-import Data.Composition ((.:))
 import Data.Functor.Classes (Eq1, Show1)
 import GHC.Generics (Generic, Generic1)
 import Generic.Data (Generically1 (..))
 import Generic.Data.Orphans ()
 
-type family Fst (t :: (*, *, *)) :: * where
-  Fst '(a, b, c) = a
+type family Creation (way :: *) (input :: *) :: *
 
-type family Snd (t :: (*, *, *)) :: * where
-  Snd '(a, b, c) = b
-
-type family Trd (t :: (*, *, *)) :: * where
-  Trd '(a, b, c) = c
+class Create (way :: *) (input :: *) where
+  create :: input -> Creation way input
 
 data Term q v r
   = LTrue
@@ -40,64 +34,70 @@ data Term q v r
   deriving (Functor, Foldable, Traversable, Show, Eq, Generic, Generic1)
   deriving (Eq1, Show1) via (Generically1 (Term q v))
 
-data MFun = E * * * | Q * MFun | V * MFun | R * MFun
+data QVR = Q | V | R
 
-type family In (fun :: MFun) :: (*, *, *) where
-  In (E q v r) = '(q, v, r)
-  In (Q _ fun) = In fun
-  In (V _ fun) = In fun
-  In (R _ fun) = In fun
+type Ctx = (Maybe *, Maybe *, Maybe *)
+data ConstFn (x :: *) (y :: Ctx -> Ctx -> *) (inctx :: Ctx) (outctx :: Ctx)
 
-infixr 9 `Q`
-infixr 9 `V`
-infixr 9 `R`
+type family OneshotNext (inctx :: Ctx) (ctx :: Ctx) (f :: [QVR]) (x :: Ctx -> Ctx -> *) :: * where
+  OneshotNext inctx ctx '[] x = FunSelector (x inctx ctx)
+-- q
+  OneshotNext inctx '(Just q, v, r) (Q ': f) (ConstFn (q -> q') x') = OneshotNext inctx '(Just q', v, r) f x'
+  OneshotNext '(_, v0, r0) '(Nothing, v, r) (Q ': f) (ConstFn (q -> q') x') = OneshotNext '(Just q, v0, r0) '(Just q', v, r) f x'
+-- v
+  OneshotNext inctx '(q, Just v, r) (V ': f) (ConstFn (v -> v') x') = OneshotNext inctx '(q, Just v', r) f x'
+  OneshotNext '(q0, _, r0) '(q, Nothing, r) (V ': f) (ConstFn (v -> v') x') = OneshotNext '(q0, Just v, r0) '(q, Just v', r) f x'
+-- r
+  OneshotNext inctx '(q, v, Just r) (R ': f) (ConstFn (r -> r') x') = OneshotNext inctx '(q, v, Just r') f x'
+  OneshotNext '(q0, v0, _) '(q, v, Nothing) (R ': f) (ConstFn (r -> r') x') = OneshotNext '(q0, v0, Just r) '(q, v, Just r') f x'
 
-type family Out (fun :: MFun) :: (*, *, *) where
-  Out (E q v r) = '(q, v, r)
-  Out (Q q fun) = '(q, Snd (Out fun), Trd (Out fun))
-  Out (V v fun) = '(Fst (Out fun), v, Trd (Out fun))
-  Out (R r fun) = '(Fst (Out fun), Snd (Out fun), r)
+type family FunSelector (x :: *) :: *
 
-type instance Apply (E _ _ _) result = result
-type instance Apply (Q q fun) result = (Fst (Out fun) -> q) -> Apply fun result
-type instance Apply (V v fun) result = (Snd (Out fun) -> v) -> Apply fun result
-type instance Apply (R r fun) result = (Trd (Out fun) -> r) -> Apply fun result
+data OneshotFunSelector (inctx :: Ctx) (outctx :: Ctx)
+data OneshotTraSelector (m :: * -> *) (inctx :: Ctx) (outctx :: Ctx)
 
-data MTra = MTra MFun (* -> *)
+type family OneshotFunInput (input :: *) :: Ctx -> Ctx -> * where
+  OneshotFunInput (fn :&: c) = ConstFn fn (OneshotFunInput c)
+  OneshotFunInput fn = ConstFn fn OneshotFunSelector
 
-type family InTra (fun :: MTra) :: (*, *, *) where
-  InTra ( 'MTra mfun _) = In mfun
+type family OneshotTraInput (input :: *) :: Ctx -> Ctx -> * where
+  OneshotTraInput ((a -> m b) :&: c) = ConstFn (a -> b) (OneshotTraInput c)
+  OneshotTraInput (a -> m b) = ConstFn (a -> b) (OneshotTraSelector m)
 
-type family OutTra (fun :: MTra) :: (*, *, *) where
-  OutTra ( 'MTra mfun _) = Out mfun
+data OneshotFun (mfun :: [QVR])
+data OneshotTra (mfun :: [QVR])
 
-type family MonadTra (fun :: MTra) :: (* -> *) where
-  MonadTra ( 'MTra _ m) = m
+type instance
+  Creation (OneshotFun (mfun :: [QVR])) input =
+    OneshotNext '(Nothing, Nothing, Nothing) '(Nothing, Nothing, Nothing) mfun (OneshotFunInput input)
 
-type instance Apply ( 'MTra (E _ _ _) m) result = result
-type instance Apply ( 'MTra (Q q fun) m) result = (Fst (Out fun) -> m q) -> Apply fun result
-type instance Apply ( 'MTra (V v fun) m) result = (Snd (Out fun) -> m v) -> Apply fun result
-type instance Apply ( 'MTra (R r fun) m) result = (Trd (Out fun) -> m r) -> Apply fun result
+type instance
+  Creation (OneshotTra (mfun :: [QVR])) input =
+    OneshotNext '(Nothing, Nothing, Nothing) '(Nothing, Nothing, Nothing) mfun (OneshotTraInput input)
 
--- instances (for now, very incomplete)
+data a :&: b = a :&: b
+infixr 0 :&:
 
-data PerVarMFun fun
-  = PerVarMFun
-      (Fst (In fun) -> Fst (Out fun))
-      (Snd (In fun) -> Snd (Out fun))
-      (Trd (In fun) -> Trd (Out fun))
-instance Create (q' `Q` v' `V` E q v r) (PerVarMFun (q' `Q` v' `V` E q v r)) where
-  create qfn vfn = PerVarMFun qfn vfn id
+data QVFun q v q' v' = QVFun (q -> q') (v -> v')
+newtype RTra (m :: * -> *) (r :: *) (r' :: *) = RTra (r -> m r')
 
-data PerVarMTra fun
-  = PerVarMTra
-      (Fst (InTra fun) -> MonadTra fun (Fst (OutTra fun)))
-      (Snd (InTra fun) -> MonadTra fun (Snd (OutTra fun)))
-      (Trd (InTra fun) -> MonadTra fun (Trd (OutTra fun)))
-instance
-  Applicative m =>
-  Create
-    ( 'MTra (r' `R` E q v r) m)
-    (PerVarMTra ( 'MTra (r' `R` E q v r) m))
-  where
-  create rfn = PerVarMTra pure pure rfn
+type instance
+  FunSelector
+    (OneshotFunSelector '(Just q, Just v, Nothing) '(Just q', Just v', Nothing)) =
+    QVFun q v q' v'
+type instance
+  FunSelector
+    (OneshotTraSelector m '(Nothing, Nothing, Just r) '(Nothing, Nothing, Just r')) =
+    RTra m r r'
+
+instance Create (OneshotFun [Q, V]) ((q -> q') :&: (v -> v')) where
+  create (qfn :&: vfn) = QVFun qfn vfn
+
+instance Create (OneshotTra '[R]) (r -> m r') where
+  create rfn = RTra rfn
+
+testFun :: Num b => QVFun a String b Bool
+testFun = create @(OneshotFun [Q, V]) $ const 5 :&: (== "foo")
+
+testTra :: forall m r. Monad m => RTra m r r
+testTra = create @(OneshotTra '[R]) return

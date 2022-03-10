@@ -75,15 +75,15 @@ export EXTERNAL=true
 #   zsh reconvert ../data/m13
 # )
 
-(
-  export MODELCHECK=true
-  export BASIC=true
-  export GOBLIN3=true
-  export GOBLIN4=true
-  export ABC=true
-  echo abc
-  zsh reconvert ../data/email75-abcd-abcdd
-)
+# (
+#   export MODELCHECK=true
+#   export BASIC=true
+#   export GOBLIN3=true
+#   export GOBLIN4=true
+#   export ABC=true
+#   echo abc
+#   zsh reconvert ../data/email75-abcd-abcdd
+# )
 
 # (
 #   export GENERATE=true
@@ -122,3 +122,19 @@ export EXTERNAL=true
 #   echo abc
 #   zsh reconvert ../data/email75-abcd-abcdd
 # )
+
+(
+  # export GENERATE=true
+  export MODELCHECK=true
+  export TIMEOUT=120
+  export BASIC=true
+  # export ZERO=true
+  # export SUCCINCT=true
+  # export ABC_REV_ASGN=true
+  export AFASAT=true
+  export DANTONI=true
+  zsh -x reconvert ../data/cox/filter/inclusion-sat
+  zsh -x reconvert ../data/cox/filter/inclusion-unsat
+  zsh -x reconvert ../data/cox/filter/intersection-sat
+  zsh -x reconvert ../data/cox/filter/intersection-unsat
+)

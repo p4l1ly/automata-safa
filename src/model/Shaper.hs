@@ -24,6 +24,8 @@ import Data.Kind (Constraint)
 import Lift (Lift)
 import LiftTH (makeLiftable)
 
+data IsTree (k :: *)
+
 type family Ref (k :: *) (x :: *) :: *
 
 type family MfnA (k :: *) :: *

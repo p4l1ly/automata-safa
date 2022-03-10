@@ -52,9 +52,7 @@ import Data.Maybe (fromJust, isNothing)
 import Data.Monoid (Ap (..), Endo (..))
 import Data.String.Interpolate.IsString
 import qualified Data.Text as T
-import qualified Data.Text.Read as TR
 import Data.Traversable
-import Debug.Trace
 import GHC.Generics (Generic, Generic1)
 import Generic.Data (Generically1 (..))
 import Generic.Data.Orphans ()
@@ -71,13 +69,38 @@ parseWhole parser str = case parse parser str of
 parseAfa :: T.Text -> BoolAfaUnswallowed Int
 parseAfa str = toAfa (length states) (length formulae) acount init final states formulae
   where
+    ((init, final, states, formulae), acount) = enumerate $ parseDefinitions str
+
+parseDefinitions :: T.Text -> [Definition]
+parseDefinitions str = definitions
+  where
     str' = T.filter (not . isSpace) str
     parser =
       many $
         parseOne
           <$> (char '@' *> Parsec.takeWhile (/= ':') <* char ':')
           <*> Parsec.takeWhile (/= '@')
-    ((init, final, states, formulae), acount) = enumerate $ parseWhole parser str'
+    definitions = parseWhole parser str'
+
+    u = (`appEndo` [])
+    (u -> init, u -> final, u -> states, u -> formulae) = execWriter $
+      for definitions $ \case
+        DFormula name dterm -> tell (mempty, mempty, mempty, Endo ((name, dterm) :))
+        DState name dterm -> tell (mempty, mempty, Endo ((name, dterm) :), mempty)
+        DInitialStates dterm -> tell (Endo (dterm :), mempty, mempty, mempty)
+        DFinalStates dterm -> tell (mempty, Endo (dterm :), mempty, mempty)
+
+    orize [] = Fix SFalse
+    orize xs = foldr1 (Fix .: SOr) xs
+
+    orFormulaeHM = HM.fromListWith (Fix .: SOr) formulae
+    orFormulae = HM.toList orFormulaeHM
+    orStates = HM.toList $ HM.fromListWith (Fix .: SOr) states
+
+parseGeneric :: T.Text -> (r, r, (Int, Int -> T.Text, Int -> r, T.Text -> Int))
+parseGeneric str = undefined
+  where
+    definitions = parseDefinitions str
 
 data Definition
   = DInitialStates {dterm :: Fix STermStr}
