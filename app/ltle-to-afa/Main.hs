@@ -23,6 +23,9 @@ import qualified Afa.Convert.Separated.Model as Sep
 import qualified Afa.Convert.Separated.ToDnf as ToDnf
 import Afa.Convert.Smv
 import qualified Afa.Convert.Stranger as Stranger
+import qualified Afa.Finalful as Finalful
+import qualified Afa.Finalful.STerm
+import qualified Afa.IORef
 import qualified Afa.Ops.Boolean as Ops
 import Afa.Ops.Compound
 import Afa.Ops.Randomize (randomizeIO)
@@ -354,7 +357,8 @@ main :: IO ()
 main = do
   txt <- getContents
   (init, final, qs) <- PrettyStranger2.parseIORef (T.pack txt)
-  txt' <- PrettyStranger2.formatIORef init final qs
+  (init', qs') <- Afa.IORef.removeFinals init final qs
+  txt' <- PrettyStranger2.formatIORef init' (Afa.IORef.Subtree Afa.Finalful.STerm.LFalse) qs'
   TIO.putStr txt'
 
 -- (Opts readers writers) <-

@@ -168,9 +168,9 @@ instance
 
     let convert (State q) = return (State q)
         convert (Var v) = return (Var v)
-        convert (And a b) = And <$> rfn a <*> rfn b
-        convert (Or a b) = Or <$> rfn a <*> rfn b
-        convert (Not a) = Not <$> rfn a
+        convert (And a b) = And <$> (convert' a >>= rfn) <*> (convert' b >>= rfn)
+        convert (Or a b) = Or <$> (convert' a >>= rfn) <*> (convert' b >>= rfn)
+        convert (Not a) = Not <$> (convert' a >>= rfn)
         convert LTrue = pure LTrue
         convert LFalse = pure LFalse
 

@@ -115,7 +115,7 @@ removeFinals init final (qCount, i2q, i2r, q2i) = do
     Nothing -> return []
     Just complex -> ([d'|recur|findQs|] (findQs @(DRec d [d'|findQs|]) @q @v @r) >>= ($ complex)) <&> (`appEndo` [])
   let finalnesses =
-        accumArray max Final (1, qCount) $
+        accumArray max Final (0, qCount - 1) $
           map (\q -> (q2i q, Nonfinal)) nonfinals
             ++ map (\q -> (q2i q, Complex)) complexFinals
 
@@ -155,11 +155,11 @@ removeFinals init final (qCount, i2q, i2r, q2i) = do
                 buildFix @[g'|refdeDTree'|]
                   (Fix $ And (Fix $ State $ QState q) (Fix $ Not $ Fix $ Var FVar))
 
-  let redirect = \r ->
+  let redirectFn = \r ->
         [d'|monadfn|deref'|] r <&> \case
           State (QState q) -> (qsubs ! q2i q)
           _ -> r
-  let mtra = create @[g'|redirectF|] (redirect :: [g'|redirectFn|])
+  let mtra = create @[g'|redirectF|] (redirectFn :: [g'|redirectFn|])
   redirect <- [d'|funRecur|redirect|] mtra :: m (r' -> m r')
   qTransitions <- mapM (redirect <=< changeAlphabet . i2r) [0 .. qCount - 1]
 

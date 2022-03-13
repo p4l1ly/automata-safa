@@ -21,6 +21,7 @@
 
 module Afa.Convert.PrettyStranger2 where
 
+import Afa.Finalful
 import Afa.Finalful.STerm (Term (..))
 import Afa.IORef
 import Afa.Lib (listArray')
@@ -164,12 +165,6 @@ orize defs =
         DInitialStates dterm -> tell (Endo (dterm :), mempty, mempty, mempty)
         DFinalStates dterm -> tell (mempty, Endo (dterm :), mempty, mempty)
 
-class ShowT a where
-  showT :: a -> T.Text
-
-instance ShowT T.Text where
-  showT = id
-
 type FormatD d m =
   FormatD_ d m (FormatA d (Term [g|q|] [g|v|] [g|r|]) [g|r|]) [g|q|] [g|v|] [g|r|]
 type FormatM m = StateT Int (WriterT (Endo [T.Text]) m)
@@ -232,12 +227,29 @@ parseIORef ::
 parseIORef = Afa.Convert.PrettyStranger2.parse @d
 
 formatIORef ::
-  forall s r r' d result.
-  ( r ~ Afa.IORef.Ref (Term T.Text T.Text)
-  , d ~ IORefRemoveFinalsD T.Text T.Text r r'
+  forall s q v r r' d result.
+  ( r ~ Afa.IORef.Ref (Term q v)
+  , d ~ IORefRemoveFinalsD q v r r'
+  , ShowT q
+  , ShowT v
   ) =>
   r ->
   r ->
-  (Int, Int -> T.Text, Int -> r, T.Text -> Int) ->
+  (Int, Int -> q, Int -> r, q -> Int) ->
   IO T.Text
 formatIORef = Afa.Convert.PrettyStranger2.format @d
+
+class ShowT a where
+  showT :: a -> T.Text
+
+instance ShowT T.Text where
+  showT = id
+
+instance ShowT q => ShowT (SyncQs q) where
+  showT (QState q) = [i|Q#{showT q}|]
+  showT SyncState = "Sync"
+
+instance (ShowT q, ShowT v) => ShowT (SyncVar q v) where
+  showT (VVar v) = [i|V#{showT v}|]
+  showT (QVar v) = [i|Q#{showT v}|]
+  showT FVar = "F"
