@@ -19,20 +19,20 @@ module Afa.Finalful where
 import Afa.Finalful.STerm (Term (..), (:&:)(..), Create(..), Creation, OneshotFun, OneshotTra)
 import qualified Afa.Finalful.STerm as Term
 import Control.Lens (itraverse, (&))
-import Control.Monad
-import Control.Monad.Free
-import Data.Array
+import Control.Monad ( (<=<) )
+import Control.Monad.Free ( Free(Pure, Free) )
+import Data.Array ( (!), accumArray, listArray )
 import Data.Composition ((.:))
-import Data.Fix
+import Data.Fix ( Fix(Fix) )
 import Data.Foldable (toList, fold)
 import Data.Functor ((<&>))
-import Data.Monoid
+import Data.Monoid ( Any(..), Endo(..) )
 import Data.Traversable (for)
 import DepDict (DepDict ((:|:)))
 import qualified DepDict as D
-import Lift (Lift)
-import Shaper (FRecK, FunRecur (funRecur), MfnK, MonadFn (monadfn), MonadFn', RecK, RecRecur, Recur (recur), ask)
-import TypeDict (Get, Name, Tag, TypeDict (End, LiftTags, (:+:)), d, d', g, g')
+import Shaper (FRecK, FunRecur (funRecur), MfnK, Mk, MkN, MonadFn (monadfn), MonadFn', RecK, RecRecur, Recur0 (recur), Recur, ask, IsTree)
+import Shaper.Helpers (BuildInheritShareD, BuildD, buildInheritShare, buildFix, buildFree)
+import TypeDict (Named(Name), TypeDict (End, LiftTags, (:+:)), d, d', g, g')
 
 data SyncVar q v = VVar v | FVar | QVar q deriving (Eq, Show)
 data SyncQs q = QState q | SyncState deriving (Eq, Show)
@@ -42,19 +42,6 @@ type DRec d rec = Name "rec" rec :+: LiftTags d
 
 type QVR d (q :: *) (v :: *) (r :: *) = (q ~ [g|q|], v ~ [g|v|], r ~ [g|r|])
 
--- |
--- split finals; partition states to final, nonfinal and complex;
--- build a corresponding term t_q for each state;
--- redirect (State q) to t_q in all terms;
--- |
--- existuje mnozstvo typov rekurzie a budeme vyberat taku ktora splna presne to co od nej potrebujeme
--- 1. Rekurzia pri splitovani koncovych stavov je neuplna a vyuziva self (lockuje modifikacie)
--- 2. Rekurzia pri findQs je neuplna
--- 3. Nasledne premapujeme vsetky q, v a to je rekurzia zachovavajuca referencie a meniaca typ.
--- 4. Kedze realne nic nemodifikujeme, mozeme O(1) premapovat complex referenciu z 1. a kopirujuc
---    (tj. bez self, presnejsie, self sa da pouzivat ak nemame pod sebou stav)
---    vybuildit constraint na koncovy symbol
--- 5. (Nezachovavajucim) premapovanim vieme presmerovat r(State q) na qsub!q
 type RemoveFinalsD d m = RemoveFinalsD_ d m
   (RemoveFinalsA d [g|q|] [g|v|] [g|r|] [g|r'|] m)
   [g|q|] [g|v|] [g|r|] [g|r'|]
@@ -67,11 +54,13 @@ type RemoveFinalsA d q v r r' m =
     ) q v r r' m
 type RemoveFinalsA1 d d' q v r r' m =
   RemoveFinalsA2 d
-    ( Name "build" (MfnK [d|build|] [g'|term|] r)
-      :+: Name "build'" (MfnK [d|build|] [g'|term'|] r')
-      :+: Name "deref" (MfnK [d|deref|] r [g'|term|])
-      :+: Name "deref'" (MfnK [d|deref|] r' [g'|term'|])
-      :+: Name "alphabetF" ([g|fun|] [Term.Q, Term.V] :: *)  -- TODO there's some ambiguity problem if OneshotFun/OneshotTra are taken from d
+    ( Name "buildTree" (Mk (MfnK [g'|term|] r) [d|buildTree|])
+      :+: Name "buildTree'" (Mk (MfnK [g'|term'|] r') [d|buildTree|])
+      :+: Name "shareTree" (Mk (MfnK r r) [d|shareTree|])
+      :+: Name "shareTree'" (Mk (MfnK r' r') [d|shareTree|])
+      :+: Name "deref" (Mk (MfnK r [g'|term|]) [d|deref|])
+      :+: Name "deref'" (Mk (MfnK r' [g'|term'|]) [d|deref|])
+      :+: Name "alphabetF" ([g|fun|] [Term.Q, Term.V] :: *)
       :+: Name "alphabetFn" ((q -> SyncQs q) :&: (v -> SyncVar q v))
       :+: Name "redirectF" ([g|tra|] '[Term.R] :: *)
       :+: Name "redirectFn" (r' -> m r')
@@ -79,17 +68,18 @@ type RemoveFinalsA1 d d' q v r r' m =
     ) q r r'
 type RemoveFinalsA2 d d' q r r' =
   RemoveFinalsA3 d
-    ( Name "refdeD" (Name "build" [d'|build|] :+: Name "deref" [d'|deref|] :+: d)
-      :+: Name "refdeD'" (Name "build" [d'|build'|] :+: Name "deref" [d'|deref'|] :+: d)
+    ( Name "refdeD" (Name "buildTree" [d'|buildTree|] :+: Name "shareTree" [d'|shareTree|] :+: Name "deref" [d'|deref|] :+: d)
+      :+: Name "refdeD'" (Name "buildTree" [d'|buildTree'|] :+: Name "shareTree" [d'|shareTree'|] :+: Name "deref" [d'|deref'|] :+: d)
+      :+: Name "refdeDTree'" (Name "build" [d'|buildTree'|] :+: Name "deref" [d'|deref'|] :+: d)
       :+: d'
     ) q r r'
 type RemoveFinalsA3 d d' q r r' =
-  Name "splitF" (RecK [d|lock|] r [g'|term|] (SplitFinalsR r q))
-    :+: Name "findQs" (RecK [d|any|] r [g'|term|] (Endo [q]))
-    :+: Name "alphabet" (FRecK [d|funr|] r r' (Creation [g'|alphabetF|] [g'|alphabetFn|]))
-    :+: Name "finalConstr" (RecK [d|any|] r' [g'|term'|] r')
+  Name "splitF" (MkN (RecK r [g'|term|] (SplitFinalsR r q)) [d|lock|])
+    :+: Name "findQs" (MkN (RecK r [g'|term|] (Endo [q])) [d|any|])
+    :+: Name "alphabet" (Mk (FRecK r r' (Creation [g'|alphabetF|] [g'|alphabetFn|])) [d|funr|])
+    :+: Name "finalConstr" (MkN (RecK r' [g'|term'|] r') [d|any|])
     :+: Name "finalConstrD" (Name "r" r' :+: [g'|refdeD'|])
-    :+: Name "redirect" (FRecK [d|funr|] r' r' (Creation [g'|redirectF|] [g'|redirectFn|]))
+    :+: Name "redirect" (Mk (FRecK r' r' (Creation [g'|redirectF|] [g'|redirectFn|])) [d|funr|])
     :+: d'
 type RemoveFinalsD_ d m d' q v r r' =
   D.Name "aliases" (QVR d q v r, d' ~ RemoveFinalsA d q v r r' m, r' ~ [g|r'|])
@@ -107,7 +97,7 @@ type RemoveFinalsD_ d m d' q v r r' =
           ( D.Name "" (RecRecur [d'|finalConstr|] m)
               :|: D.Remove "rec" (BuildFinalConstraintD [g'|finalConstrD|] m)
           )
-    :|: D.Name "buildD'" (BuildD [g'|refdeD'|] [g'|termF'|] r' m)
+    :|: D.Name "buildD'" (BuildD [g'|refdeDTree'|] [g'|termF'|] r' m)
     :|: D.Name "deref'" (MonadFn [d'|deref'|] m)
     :|: D.End
 removeFinals ::
@@ -120,10 +110,10 @@ removeFinals ::
 removeFinals init final (qCount, i2q, i2r, q2i) = do
   -- split finals; partition states to final, nonfinal and complex;
   ((_, (`appEndo` []) -> nonfinals), complex) <-
-    [d'|recur|splitF|] (splitFinals @(DRec [g'|refdeD|] [d'|splitF|])) final
+    [d'|recur|splitF|] (splitFinals @(DRec [g'|refdeD|] [d'|splitF|])) >>= ($ final)
   complexFinals <- case complex of
     Nothing -> return []
-    Just complex -> [d'|recur|findQs|] (findQs @(DRec d [d'|findQs|]) @q @v @r) complex <&> (`appEndo` [])
+    Just complex -> ([d'|recur|findQs|] (findQs @(DRec d [d'|findQs|]) @q @v @r) >>= ($ complex)) <&> (`appEndo` [])
   let finalnesses =
         accumArray max Final (1, qCount) $
           map (\q -> (q2i q, Nonfinal)) nonfinals
@@ -139,22 +129,31 @@ removeFinals init final (qCount, i2q, i2r, q2i) = do
     Just complex -> do
       complex' <- changeAlphabet complex
       Just
-        <$> [d'|recur|finalConstr|]
-          (buildFinalConstraint @(DRec [g'|finalConstrD|] [d'|finalConstr|]))
-          complex'
+        <$>
+          ([d'|recur|finalConstr|]
+            (buildFinalConstraint @(DRec [g'|finalConstrD|] [d'|finalConstr|]))
+            >>= ($ complex')
+          )
 
   -- build a corresponding term t_q for each state;
   qsubs <-
     finalnesses & itraverse \i ->
       let q = i2q i
        in \case
-            Final -> buildFix @[g'|refdeD'|] $ Fix $ Or (Fix $ State $ QState q) (Fix $ Var FVar)
-            Complex ->
-              buildFix @[g'|refdeD'|] $
+            Final ->
+              [d'|monadfn|shareTree'|] =<<
+                buildFix @[g'|refdeDTree'|]
+                  (Fix $ Or (Fix $ State $ QState q) (Fix $ Var FVar))
+            Complex -> do
+              tree <- buildFix @[g'|refdeDTree'|] $
                 (Fix .: Or)
                   (Fix $ And (Fix $ Not (Fix $ Var FVar)) (Fix $ State $ QState q))
                   (Fix $ And (Fix $ Var FVar) (Fix $ Var $ QVar q))
-            Nonfinal -> buildFix @[g'|refdeD'|] $ Fix $ And (Fix $ State $ QState q) (Fix $ Not $ Fix $ Var FVar)
+              [d'|monadfn|shareTree'|] tree
+            Nonfinal ->
+              [d'|monadfn|shareTree'|] =<<
+                buildFix @[g'|refdeDTree'|]
+                  (Fix $ And (Fix $ State $ QState q) (Fix $ Not $ Fix $ Var FVar))
 
   let redirect = \r ->
         [d'|monadfn|deref'|] r <&> \case
@@ -170,13 +169,13 @@ removeFinals init final (qCount, i2q, i2r, q2i) = do
       let qrmap = listArray (0, qCount - 1) qTransitions
       return (init', (qCount, QState . i2q, (qrmap !), \(QState q) -> q2i q))
     Just finalConstraint -> do
-      syncQRef <- [g'|monadfn|build'|] (State SyncState)
-      syncQTrans <- buildFree @[g'|refdeD'|] $
+      syncQRef <- [d'|monadfn|buildTree'|] (State SyncState) >>= [d'|monadfn|shareTree'|]
+      syncQTrans <- buildFree @[g'|refdeDTree'|] $
         (Free .: Or)
           (Free $ And (Free $ Not (Free $ Var FVar)) (Pure syncQRef))
           (Free $ And (Free $ Var FVar) (Pure finalConstraint))
       init' <- changeAlphabet init
-      init'' <- [d'|monadfn|build'|] (And syncQRef init')
+      init'' <- [d'|monadfn|buildTree'|] (And syncQRef init')
       let qCount' = qCount + 1
       let i2q' = \case 0 -> SyncState; i -> QState $ i2q $ i - 1
       let q2i' = \case SyncState -> 0; QState q -> q2i q + 1
@@ -187,8 +186,8 @@ removeFinals init final (qCount, i2q, i2r, q2i) = do
 type BuildFinalConstraintD d m =
   BuildFinalConstraintD_ d m (BuildFinalConstraintA d m [g|r|]) [g|q|] [g|v|] [g|r|]
 type BuildFinalConstraintA d m r =  -- keyword aliases
-  Name "self" (MfnK [d|rec|] () r)
-    :+: Name "rec" (MfnK [d|rec|] r r)
+  Name "self" (Mk (MfnK () r) [d|rec|])
+    :+: Name "rec" (Mk (MfnK r r) [d|rec|])
     :+: End
 type BuildFinalConstraintD_ d m d' q v r =  -- dependencies
   D.Name "aliases" (QVR d q v r, d' ~ BuildFinalConstraintA d m r)
@@ -196,43 +195,29 @@ type BuildFinalConstraintD_ d m d' q v r =  -- dependencies
           "rec"
           ( D.Name "self" (MonadFn [d'|self|] m)
               :|: D.Name "rec" (MonadFn [d'|rec|] m)
+              :|: D.Name "isTree" (MonadFn (Mk IsTree [d|rec|]) m)
               :|: D.End
           )
-    :|: BuildD d (Term (SyncQs q) (SyncVar q v)) r m
+    :|: D.Name "build" (D.Remove "isTree" (BuildInheritShareD d (Term (SyncQs q) (SyncVar q v) r) r m))
+    :|: D.End
 buildFinalConstraint ::
   forall d q v r m d'.
   D.ToConstraint (BuildFinalConstraintD_ d m d' q v r) =>
   Term (SyncQs q) (SyncVar q v) r ->
   m r
-buildFinalConstraint (State (QState q)) = [d|monadfn|build|] $ Var (QVar q)
+buildFinalConstraint (State (QState q)) = buildInheritShare @d $ Var (QVar q)
 buildFinalConstraint (And a b) =
-  [d|monadfn|build|]
+  buildInheritShare @d
     =<< And <$> [d'|monadfn|rec|] a <*> [d'|monadfn|rec|] b
 buildFinalConstraint (Or a b) =
-  [d|monadfn|build|]
+  buildInheritShare @d
     =<< Or <$> [d'|monadfn|rec|] a <*> [d'|monadfn|rec|] b
-buildFinalConstraint (Not a) = [d|monadfn|build|] . Not =<< [d'|monadfn|rec|] a
+buildFinalConstraint (Not a) = buildInheritShare @d . Not =<< [d'|monadfn|rec|] a
 buildFinalConstraint _ = [d'|ask|self|]
 
 
-type BuildD d f r m = D.Name "build" (MonadFn' [d|build|] (f r) r m) :|: D.End
-buildFix ::
-  forall d f r m.
-  (D.ToConstraint (BuildD d f r m), Traversable f) =>
-  Fix f ->
-  m r
-buildFix (Fix fa) = traverse (buildFix @d) fa >>= [d|monadfn|build|]
-
-buildFree ::
-  forall d f r m.
-  (D.ToConstraint (BuildD d f r m), Traversable f) =>
-  Free f r ->
-  m r
-buildFree = iterM ([d|monadfn|build|] <=< sequence)
-
-
 type FindQsD d m = FindQsD_ d m (FindQsA d [g|q|] [g|r|]) [g|q|] [g|v|] [g|r|]
-type FindQsA d q r = Name "rec" (MfnK [d|rec|] r (Endo [q])) :+: End
+type FindQsA d q r = Name "rec" (Mk (MfnK r (Endo [q])) [d|rec|]) :+: End
 type FindQsD_ d m d' q v r =
   D.Name "aliases" (QVR d q v r, d' ~ FindQsA d q r)
   :|: D.Name "rec" (MonadFn [d'|rec|] m) :|: D.End
@@ -269,20 +254,21 @@ findQs f = fold <$> mapM [d'|monadfn|rec|] f
 type SplitFinalsR r q = ((Any, Endo [q]), Maybe r)
 type SplitFinalsD d m = SplitFinalsD_ d m (SplitFinalsA d m [g|q|] [g|r|]) [g|q|] [g|v|] [g|r|]
 type SplitFinalsA d m q r =
-  Name "self" (MfnK [d|rec|] () r)
-    :+: Name "rec" (MfnK [d|rec|] r (SplitFinalsR r q))
+  Name "self" (Mk (MfnK () r) [d|rec|])
+    :+: Name "rec" (Mk (MfnK r (SplitFinalsR r q)) [d|rec|])
     :+: End
 type SplitFinalsD_ d m d' q v r =
   D.Name "aliases" (QVR d q v r, d' ~ SplitFinalsA d m q r)
     :|: D.Name "deref" (MonadFn' [d|deref|] r (Term q v r) m)
-    :|: D.Name "build" (MonadFn' [d|build|] (Term q v r) r m)
     :|: D.Name
           "rec"
           ( D.Name "self" (MonadFn [d'|self|] m)
               :|: D.Name "rec" (MonadFn [d'|rec|] m)
+              :|: D.Name "isTree" (MonadFn (Mk IsTree [d|rec|]) m)
               :|: D.End
           )
-    :|: BuildD d (Term q v) r m
+    :|: D.Name "build" (D.Remove "isTree" (BuildInheritShareD d (Term q v r) r m))
+    :|: D.End
 splitFinals ::
   forall d q v r m d'.
   D.ToConstraint (SplitFinalsD_ d m d' q v r) =>
@@ -301,7 +287,7 @@ splitFinals = \case
       (Just complex1, Nothing) -> return $ Just complex1
       (Just complex1, Just complex2)
         | getAny (fst qs1) && getAny (fst qs2) -> Just <$> [d'|ask|self|]
-        | otherwise -> Just <$> [d|monadfn|build|] (And complex1 complex2)
+        | otherwise -> Just <$> buildInheritShare @d (And complex1 complex2)
   _ -> self'
   where
     self' = [d'|ask|self|] <&> \s -> ((Any False, Endo id), Just s)

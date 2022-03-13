@@ -17,6 +17,7 @@ import Afa.Convert.CnfAfa (tseytin')
 import Afa.Convert.Dot
 import Afa.Convert.Ltle
 import qualified Afa.Convert.PrettyStranger as PrettyStranger
+import qualified Afa.Convert.PrettyStranger2 as PrettyStranger2
 import qualified Afa.Convert.Separated as Sep
 import qualified Afa.Convert.Separated.Model as Sep
 import qualified Afa.Convert.Separated.ToDnf as ToDnf
@@ -351,16 +352,21 @@ timeoutMicro = 500 * 1000000
 
 main :: IO ()
 main = do
-  (Opts readers writers) <-
-    execParser $
-      info (optParser <**> helper) $
-        fullDesc
-          <> progDesc
-            "Convert LTLe to a symbolic alternating finite automaton, possibly \
-            \preprocess the automaton and output it somewhere further."
-          <> header "ltle-to-afa: symbolic alternating finite automata preprocessing"
+  txt <- getContents
+  (init, final, qs) <- PrettyStranger2.parseIORef (T.pack txt)
+  txt' <- PrettyStranger2.formatIORef init final qs
+  TIO.putStr txt'
 
-  applyWritersAndReaders writers readers
+-- (Opts readers writers) <-
+--   execParser $
+--     info (optParser <**> helper) $
+--       fullDesc
+--         <> progDesc
+--           "Convert LTLe to a symbolic alternating finite automaton, possibly \
+--           \preprocess the automaton and output it somewhere further."
+--         <> header "ltle-to-afa: symbolic alternating finite automata preprocessing"
+
+-- applyWritersAndReaders writers readers
 
 applyWritersAndReaders (writer : writers) (Fix (Compose action)) =
   action >>= \case

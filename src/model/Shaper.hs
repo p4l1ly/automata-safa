@@ -5,11 +5,9 @@
 {-# LANGUAGE DerivingVia #-}
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE FlexibleInstances #-}
-{-# LANGUAGE InstanceSigs #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE PolyKinds #-}
 {-# LANGUAGE ScopedTypeVariables #-}
-{-# LANGUAGE TemplateHaskell #-}
 {-# LANGUAGE TypeApplications #-}
 {-# LANGUAGE TypeFamilies #-}
 {-# LANGUAGE UndecidableInstances #-}
@@ -21,28 +19,49 @@ import Control.Monad.Reader (Reader, ReaderT (ReaderT, runReaderT), asks, local,
 import Control.Monad.Trans (MonadTrans (lift))
 import Data.Fix (Fix (Fix))
 import Data.Kind (Constraint)
-import Lift (Lift)
-import LiftTH (makeLiftable)
+import DepDict (DepDict ((:|:)))
+import qualified DepDict as D
+import Lift (K (K), LiftCount, Pean (Succ, Zero), Unwrap, Wrap)
+import TypeDict (d)
 
-data IsTree (k :: *)
+class MLift (n :: Pean) (m' :: * -> *) (m :: * -> *) where
+  mlift :: m a -> m' a
 
-type family Ref (k :: *) (x :: *) :: *
+instance (MLift n m' m, MonadTrans mt, Monad m') => MLift (Succ n) (mt m') m where
+  mlift (ma :: m a) = lift (mlift @n @m' @m ma :: m' a)
+
+instance MLift n m m where
+  mlift = id
+
+type family Mk (mk :: * -> *) (k :: K) :: K where
+  Mk mk k = 'K (LiftCount k) (mk (Unwrap k))
+
+type family MkN (mk :: Pean -> * -> *) (k :: K) :: K where
+  MkN mk k = 'K Zero (mk (LiftCount k) (Unwrap k))
+
+type family Ref (k :: K) (x :: *) :: *
 
 type family MfnA (k :: *) :: *
 type family MfnB (k :: *) :: *
 
-type instance MfnA (Lift k) = MfnA k
-type instance MfnB (Lift k) = MfnB k
+data MfnK (a :: *) (b :: *) (k :: *)
+type instance MfnA (MfnK a _ _) = a
+type instance MfnB (MfnK _ b _) = b
 
-data MfnK (k :: *) (a :: *) (b :: *)
-type instance MfnA (MfnK _ a _) = a
-type instance MfnB (MfnK _ _ b) = b
+data IsTree (k :: *)
+type instance MfnA (IsTree _) = ()
+type instance MfnB (IsTree _) = Bool
 
-class Monad m => MonadFn (k :: *) (m :: * -> *) where
-  monadfn :: MfnA k -> m (MfnB k)
-makeLiftable ''MonadFn
+class Monad m => MonadFn (k :: K) (m :: * -> *) where
+  monadfn :: MfnA (Unwrap k) -> m (MfnB (Unwrap k))
 
-type MonadFn' k a b m = (MonadFn k m, b ~ MfnB k, a ~ MfnA k)
+instance
+  (MonadFn ( 'K n k) m, MonadTrans mt, Monad m, Monad (mt m)) =>
+  MonadFn ( 'K (Succ n) k) (mt m)
+  where
+  monadfn p1 = lift (monadfn @( 'K n k) p1)
+
+type MonadFn' k a b m = (MonadFn k m, b ~ MfnB (Unwrap k), a ~ MfnA (Unwrap k))
 type Ask k a m = MonadFn' k () a m
 
 ask :: forall k a m. (Ask k a m) => m a
@@ -53,23 +72,31 @@ type family RecRef (k :: *) :: *
 type family RecFun (k :: *) :: *
 type family RecVal (k :: *) :: *
 
-data RecK (k :: *) (r :: *) (fr :: *) (a :: *)
-type instance RecRef (RecK _ r _ _) = r
-type instance RecFun (RecK _ _ fr _) = fr
-type instance RecVal (RecK _ _ _ a) = a
+data RecK (r :: *) (fr :: *) (a :: *) (n :: Pean) (k :: *)
+type instance RecRef (RecK r _ _ _ _) = r
+type instance RecFun (RecK _ fr _ _ _) = fr
+type instance RecVal (RecK _ _ a _ _) = a
 
-class
-  ( MonadFn (MfnK k (RecRef k) (RecVal k)) (RecTrans k (RecVal k) m)
-  , MonadTrans (RecTrans k (RecVal k))
-  , Monad (RecTrans k (RecVal k) m)
+class Recur0 (k :: K) (m :: * -> *) where
+  recur ::
+    ( RecFun (Unwrap k) ->
+      RecTrans (Unwrap k) (RecVal (Unwrap k)) m (RecVal (Unwrap k))
+    ) ->
+    m (RecRef (Unwrap k) -> m (RecVal (Unwrap k)))
+
+type Recur (k :: K) (m :: * -> *) = Recur1 k m (Unwrap k)
+type Recur1 (k :: K) (m :: * -> *) (x :: *) =
+  ( MonadFn ( 'K Zero (MfnK (RecRef x) (RecVal x) x)) (RecTrans x (RecVal x) m)
+  , MonadTrans (RecTrans x (RecVal x))
+  , Monad (RecTrans x (RecVal x) m)
   , Monad m
-  ) =>
-  Recur (k :: *) (m :: * -> *)
-  where
-  recur :: (RecFun k -> RecTrans k (RecVal k) m (RecVal k)) -> RecRef k -> m (RecVal k)
+  , Recur0 k m
+  )
 
-type RecRecur k m =
-  ( MonadFn (MfnK k () (RecRef k)) (RecTrans k (RecVal k) m)
+type RecRecur (k :: K) (m :: * -> *) = RecRecur1 k m (Unwrap k)
+type RecRecur1 (k :: K) (m :: * -> *) (x :: *) =
+  ( MonadFn ( 'K Zero (MfnK () (RecRef x) x)) (RecTrans x (RecVal x) m)
+  , MonadFn ( 'K Zero (IsTree x)) (RecTrans x (RecVal x) m)
   , Recur k m
   )
 
@@ -77,13 +104,13 @@ type family FRecRef (k :: *) :: *
 type family FRecRef' (k :: *) :: *
 type family FRecFun (k :: *) :: *
 
-data FRecK (k :: *) (r :: *) (r' :: *) (fun :: *)
-type instance FRecRef (FRecK _ r _ _) = r
-type instance FRecRef' (FRecK _ _ r' _) = r'
-type instance FRecFun (FRecK _ _ _ fun) = fun
+data FRecK (r :: *) (r' :: *) (fun :: *) (k :: *)
+type instance FRecRef (FRecK r _ _ _) = r
+type instance FRecRef' (FRecK _ r' _ _) = r'
+type instance FRecFun (FRecK _ _ fun _) = fun
 
-class FunRecur (k :: *) (m :: * -> *) where
-  funRecur :: FRecFun k -> m (FRecRef k -> m (FRecRef' k))
+class FunRecur (k :: K) (m :: * -> *) where
+  funRecur :: FRecFun (Unwrap k) -> m (FRecRef (Unwrap k) -> m (FRecRef' (Unwrap k)))
 
 ----------------------------------------------------------------------------------------
 

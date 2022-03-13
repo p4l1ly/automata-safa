@@ -1,5 +1,7 @@
+{-# LANGUAGE BlockArguments #-}
 {-# LANGUAGE DataKinds #-}
 {-# LANGUAGE DerivingVia #-}
+{-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE InstanceSigs #-}
 {-# LANGUAGE LambdaCase #-}
@@ -20,6 +22,7 @@ import Control.Monad.State (StateT (runStateT), get, put)
 import Data.Functor ((<&>))
 import qualified Data.HashMap.Strict as HM
 import Data.IORef
+import Lift
 import qualified Shaper
 import System.Mem.StableName
 import TypeDict
@@ -45,75 +48,74 @@ newtype AnyT f a (m :: * -> *) x = AnyT (ReaderT (Ref f) (AnyTReaderT f a m m) x
 instance MonadTrans (AnyT f a) where
   lift = AnyT . lift . lift
 
-type instance Shaper.RecTrans (Shaper.RecK Anyrec (Ref f) (FR f) a) = AnyT f
+type instance Shaper.RecTrans (Shaper.RecK (Ref f) (FR f) a n Anyrec) = AnyT f
 
 instance
-  MonadIO m =>
-  Shaper.MonadFn (Shaper.MfnK (Shaper.RecK Anyrec (Ref f) (FR f) a) (Ref f) a) (AnyT f a m)
+  {-# OVERLAPPING #-}
+  (Monad m, Shaper.MLift n m IO) =>
+  Shaper.MonadFn ( 'K Zero (Shaper.MfnK (Ref f) a (Shaper.RecK (Ref f) (FR f) a n Anyrec))) (AnyT f a m)
   where
   monadfn r@(Ref (name, ioref)) = do
     (cacheIoref, recur) <- AnyT (lift ask)
-    cache <- lift $ liftIO $ readIORef cacheIoref
+    cache <- lift $ Shaper.mlift @n $ readIORef cacheIoref
     case HM.lookup name cache of
       Just a -> return a
       Nothing -> do
-        f <- lift $ liftIO $ readIORef ioref
+        f <- lift $ Shaper.mlift @n $ readIORef ioref
         let AnyT action = recur f
         a <- AnyT $ local (const r) action
-        lift $ liftIO $ writeIORef cacheIoref (HM.insert name a cache)
+        lift $ Shaper.mlift @n $ writeIORef cacheIoref (HM.insert name a cache)
         return a
   monadfn r@(Subtree f) = do
     (_, recur) <- AnyT (lift ask)
     let AnyT action = recur f
     AnyT $ local (const r) action
 
-instance
-  Monad m =>
-  Shaper.MonadFn (Shaper.MfnK (Shaper.RecK Anyrec (Ref f) ff a) () (Ref f)) (AnyT f a m)
-  where
+instance Monad m => Shaper.MonadFn ( 'K Zero (Shaper.MfnK () (Ref f) (Shaper.RecK (Ref f) ff a n Anyrec))) (AnyT f a m) where
   monadfn () = AnyT ask
 
-instance
-  Monad m =>
-  Shaper.MonadFn (Shaper.MfnK (Shaper.IsTree (Shaper.RecK Anyrec (Ref f) ff a)) () Bool) (AnyT f a m)
-  where
+instance Monad m => Shaper.MonadFn ( 'K Zero (Shaper.IsTree (Shaper.RecK (Ref f) ff a n Anyrec))) (AnyT f a m) where
   monadfn () = AnyT $ ask <&> \case Subtree _ -> True; _ -> False
 
-instance MonadIO m => Shaper.Recur (Shaper.RecK Anyrec (Ref f) (f (Ref f)) a) m where
-  recur action r = do
-    cacheIoref <- liftIO $ newIORef HM.empty
-    let AnyT reader =
-          Shaper.monadfn
-            @(Shaper.MfnK (Shaper.RecK Anyrec (Ref f) (f (Ref f)) a) (Ref f) a)
-            r
-    runReaderT (runReaderT reader r) (cacheIoref, action)
+instance (Monad m, Shaper.MLift n m IO) => Shaper.Recur0 ( 'K Zero (Shaper.RecK (Ref f) (f (Ref f)) a n Anyrec)) m where
+  recur action = do
+    cacheIoref <- Shaper.mlift @n (newIORef HM.empty)
+    return \r -> do
+      let AnyT reader =
+            Shaper.monadfn
+              @( 'K Zero (Shaper.MfnK (Ref f) a (Shaper.RecK (Ref f) (FR f) a n Anyrec)))
+              r
+      runReaderT (runReaderT reader r) (cacheIoref, action)
 
 --- /Anyrec
 
-instance MonadIO m => Shaper.MonadFn (Shaper.MfnK Deref (Ref f) (f (Ref f))) m where
+instance Shaper.MonadFn ( 'K Zero (Shaper.MfnK (Ref f) (f (Ref f)) Deref)) IO where
   monadfn (Ref (_, ioref)) = liftIO $ readIORef ioref
   monadfn (Subtree f) = return f
 
-instance MonadIO m => Shaper.MonadFn (Shaper.MfnK Build (f (Ref f)) (Ref f)) m where
+instance Shaper.MonadFn ( 'K Zero (Shaper.MfnK (f (Ref f)) (Ref f) Build)) IO where
   monadfn f = do
     ioref <- liftIO $ newIORef f
     name <- liftIO $ makeStableName ioref
     return $ Ref (name, ioref)
 
-instance MonadIO m => Shaper.MonadFn (Shaper.MfnK BuildTree (f (Ref f)) (Ref f)) m where
+instance Shaper.MonadFn ( 'K Zero (Shaper.MfnK (f (Ref f)) (Ref f) BuildTree)) IO where
   monadfn f = return $ Subtree f
 
-instance MonadIO m => Shaper.MonadFn (Shaper.MfnK ShareTree (Ref f) (Ref f)) m where
-  monadfn (Subtree f) = Shaper.monadfn @(Shaper.MfnK Build (f (Ref f)) (Ref f)) f
+instance Shaper.MonadFn ( 'K Zero (Shaper.MfnK (Ref f) (Ref f) ShareTree)) IO where
+  monadfn (Subtree f) = Shaper.monadfn @(Shaper.Mk (Shaper.MfnK (f (Ref f)) (Ref f)) ( 'K Zero Build)) f
   monadfn r = return r
 
 instance
   Shaper.FunRecur
-    ( Shaper.FRecK
-        Funrec
-        (Ref (Term q v))
-        (Ref (Term q' v'))
-        (QVFun q v q' v')
+    ( 'K
+        n
+        ( Shaper.FRecK
+            (Ref (Term q v))
+            (Ref (Term q' v'))
+            (QVFun q v q' v')
+            Funrec
+        )
     )
     IO
   where
@@ -145,17 +147,24 @@ instance
     return convert'
 
 instance
+  (Monad m, Shaper.MLift n m IO) =>
   Shaper.FunRecur
-    ( Shaper.FRecK
-        Funrec
-        (Ref (Term q v))
-        (Ref (Term q v))
-        (RTra IO (Ref (Term q v)) (Ref (Term q v)))
+    ( 'K
+        n
+        ( Shaper.FRecK
+            (Ref (Term q v))
+            (Ref (Term q v))
+            (RTra m (Ref (Term q v)) (Ref (Term q v)))
+            Funrec
+        )
     )
-    IO
+    m
   where
   funRecur (RTra rfn) = do
-    old2new <- newIORef (HM.empty :: HM.HashMap (SN (Term q v)) (Ref (Term q v)))
+    let mlift :: IO a -> m a
+        mlift = Shaper.mlift @n
+
+    old2new <- Shaper.mlift @n $ newIORef (HM.empty :: HM.HashMap (SN (Term q v)) (Ref (Term q v)))
 
     let convert (State q) = return (State q)
         convert (Var v) = return (Var v)
@@ -165,41 +174,42 @@ instance
         convert LTrue = pure LTrue
         convert LFalse = pure LFalse
 
-        convert' :: Ref (Term q v) -> IO (Ref (Term q v))
+        convert' :: Ref (Term q v) -> m (Ref (Term q v))
         convert' (Ref (name, ioref)) = do
-          hmap <- readIORef old2new
+          hmap <- mlift $ readIORef old2new
           case HM.lookup name hmap of
             Just r' -> return r'
             Nothing -> do
-              f' <- readIORef ioref >>= convert
-              ioref' <- newIORef f'
-              name' <- makeStableName ioref'
+              f' <- mlift (readIORef ioref) >>= convert
+              ioref' <- mlift $ newIORef f'
+              name' <- mlift $ makeStableName ioref'
               let r' = Ref (name', ioref')
-              writeIORef old2new (HM.insert name r' hmap)
+              mlift $ writeIORef old2new (HM.insert name r' hmap)
               return r'
         convert' (Subtree f) = Subtree <$> convert f
 
     return convert'
 
+type IORefRemoveFinalsD q v r r' =
+  Name "q" q
+    :+: Name "v" v
+    :+: Name "r" r
+    :+: Name "r'" r'
+    :+: Name "lock" (Wrap Anyrec)
+    :+: Name "any" (Wrap Anyrec)
+    :+: Name "funr" (Wrap Funrec)
+    :+: Name "buildTree" (Wrap BuildTree)
+    :+: Name "shareTree" (Wrap ShareTree)
+    :+: Name "deref" (Wrap Deref)
+    :+: Name "fun" STerm.OneshotFun
+    :+: Name "tra" STerm.OneshotTra
+    :+: End
+
 removeFinals ::
   forall s q v r r' d result.
   ( r ~ Ref (Term q v)
   , r' ~ Ref (Term (SyncQs q) (SyncVar q v))
-  , d
-      ~ ( Name "q" q
-            :+: Name "v" v
-            :+: Name "r" r
-            :+: Name "r'" r'
-            :+: Name "lock" Anyrec
-            :+: Name "any" Anyrec
-            :+: Name "funr" Funrec
-            :+: Name "build" Build
-            :+: Name "build" BuildTree
-            :+: Name "deref" Deref
-            :+: Name "fun" STerm.OneshotFun
-            :+: Name "tra" STerm.OneshotTra
-            :+: End
-        )
+  , d ~ IORefRemoveFinalsD q v r r'
   ) =>
   r ->
   r ->

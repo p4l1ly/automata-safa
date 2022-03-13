@@ -7,36 +7,32 @@
 {-# LANGUAGE TypeOperators #-}
 {-# LANGUAGE UndecidableInstances #-}
 
-module TypeDict (Name, TypeDict (..), Tag, Get, NotFound, d, d', g, g') where
+module TypeDict where
 
 import Data.Functor ((<&>))
 import GHC.TypeLits (Symbol)
 import Language.Haskell.TH (Exp (AppTypeE, VarE), TyLit (StrTyLit), Type (AppT, ConT, LitT, VarT), lookupTypeName, lookupValueName)
 import Language.Haskell.TH.Quote (QuasiQuoter (..))
-import Lift (Lift)
+import Lift (Inc, K (K), LiftCount, Pean (Zero), Unwrap)
 
 data NotFound (k :: Symbol)
-data Named (a :: Symbol) (b :: k) = Named
-
-type family Name (a :: Symbol) (b :: k) :: Named a b where
-  Name a b = 'Named
+data Named x = Name Symbol x
 
 data TypeDict where
   End :: TypeDict
-  (:+:) :: Named a b -> TypeDict -> TypeDict
+  (:+:) :: Named x -> TypeDict -> TypeDict
   LiftTags :: TypeDict -> TypeDict
 infixr 1 :+:
 
-type family Tag (sym :: Symbol) (dict :: TypeDict) :: * where
-  Tag sym End = NotFound sym
-  Tag sym (LiftTags rest) = Lift (Tag sym rest)
-  Tag sym ((_ :: Named sym val) :+: rest) = val
+type family Tag (sym :: Symbol) (dict :: TypeDict) :: K where
+  Tag sym (LiftTags rest) = Inc (Tag sym rest)
+  Tag sym (Name sym val :+: rest) = val
   Tag sym (_ :+: rest) = Tag sym rest
 
 type family Get (sym :: Symbol) (dict :: TypeDict) :: k where
   Get sym End = NotFound sym
   Get sym (LiftTags rest) = Get sym rest
-  Get sym ((_ :: Named sym val) :+: rest) = val
+  Get sym (Name sym val :+: rest) = val
   Get sym (_ :+: rest) = Get sym rest
 
 d :: QuasiQuoter

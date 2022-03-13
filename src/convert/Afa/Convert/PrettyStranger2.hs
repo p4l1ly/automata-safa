@@ -1,4 +1,5 @@
 {-# LANGUAGE AllowAmbiguousTypes #-}
+{-# LANGUAGE BlockArguments #-}
 {-# LANGUAGE ConstraintKinds #-}
 {-# LANGUAGE DataKinds #-}
 {-# LANGUAGE DeriveGeneric #-}
@@ -13,14 +14,15 @@
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TupleSections #-}
 {-# LANGUAGE TypeApplications #-}
-{-# LANGUAGE TypeFamilies #-}
+{-# LANGUAGE TypeFamilyDependencies #-}
 {-# LANGUAGE TypeOperators #-}
+{-# LANGUAGE UndecidableInstances #-}
 {-# LANGUAGE ViewPatterns #-}
 
 module Afa.Convert.PrettyStranger2 where
 
-import Afa.Finalful (BuildD, buildFree) -- TODO these are generic methods, they shouldn't be in Afa.Finalful
 import Afa.Finalful.STerm (Term (..))
+import Afa.IORef
 import Afa.Lib (listArray')
 import Control.Applicative
 import Control.Monad.Free
@@ -37,18 +39,19 @@ import qualified Data.HashMap.Strict as HM
 import Data.List.NonEmpty (NonEmpty ((:|)))
 import qualified Data.List.NonEmpty as NE
 import Data.Monoid (Endo (..))
-import Data.String.Interpolate.IsString
+import Data.String.Interpolate.IsString (i)
 import qualified Data.Text as T
 import qualified Data.Text.Read as TR
 import Data.Traversable
 import DepDict (DepDict ((:|:)))
 import qualified DepDict as D
-import Lift (Lift)
+import Lift (Inc, K (K), LiftCount, Unwrap)
 import Shaper
+import Shaper.Helpers (BuildD, buildFree)
 import TypeDict
 
 parseWhole :: Parser a -> T.Text -> a
-parseWhole parser str = case parse parser str of
+parseWhole parser str = case Parsec.parse parser str of
   Fail i ctxs err -> error $ show (i, ctxs, err)
   Partial p -> case p "" of
     Fail i ctxs err -> error $ show (i, ctxs, err)
@@ -66,40 +69,36 @@ parseDefinitions str = parseWhole parser str'
           <$> (char '@' *> Parsec.takeWhile (/= ':') <* char ':')
           <*> Parsec.takeWhile (/= '@')
 
-type ParseGenericD d m = ParseGenericD_ d m (ParseGenericA d) [g|r|]
-type ParseGenericA d =
-  Name "buildTreeD" (Name "build" [d|buildTree|] :+: d)
+type ParseD d m = ParseD_ d m (ParseA d [g|r|]) [g|r|]
+type ParseA d r =
+  Name "shareTree" (Mk (MfnK r r) [d|shareTree|])
+    :+: Name "buildTreeD" (Name "build" (Mk (MfnK (Term T.Text T.Text r) r) [d|buildTree|]) :+: d)
     :+: End
-type ParseGenericD_ d m (d' :: TypeDict) (r :: *) =
-  D.Name "aliases" (r ~ [g|r|], d' ~ ParseGenericA d)
-    :|: D.Name "" (MonadFn' [d|shareTree|] r r m)
+type ParseD_ (d :: TypeDict) (m :: * -> *) (d' :: TypeDict) (r :: *) =
+  D.Name "aliases" (r ~ [g|r|], d' ~ ParseA d r)
+    :|: D.Name "" (MonadFn [d'|shareTree|] m)
     :|: D.Name "" (BuildD [g'|buildTreeD|] (Term T.Text T.Text) r m)
     :|: D.End
-parseGeneric ::
+parse ::
   forall d m r d'.
-  D.ToConstraint (ParseGenericD_ d m d' r) =>
+  ( D.ToConstraint (ParseD_ d m d' r)
+  ) =>
   T.Text ->
   m (r, r, (Int, Int -> T.Text, Int -> r, T.Text -> Int))
-parseGeneric str = do
+parse str = do
   (initR, finalR, stateRs) <- flip evalStateT HM.empty $ do
     (,,) <$> convert init <*> convert final <*> mapM convert states
   let stateList = HM.toList stateRs
       arr = listArray (0, HM.size stateRs - 1) stateList
       stateNames = map fst stateList
       state2ix = HM.fromList $ zip stateNames [0 ..]
-  return
-    ( initR
-    , finalR
-    ,
-      ( rangeSize $ bounds arr
-      , fst . (arr !)
-      , snd . (arr !)
-      , (state2ix HM.!)
-      )
-    )
+      states = (rangeSize $ bounds arr, fst . (arr !), snd . (arr !), (state2ix HM.!))
+  return (initR, finalR, states)
   where
     (init, final, formulae, states) = orize $ parseDefinitions str
+    convert :: Free (Term T.Text T.Text) T.Text -> StateT (HM.HashMap T.Text (Maybe r)) m r
     convert f = mapM fRec f >>= buildFree @(LiftTags [g'|buildTreeD|])
+    fRec :: T.Text -> StateT (HM.HashMap T.Text (Maybe r)) m r
     fRec name =
       gets (HM.!? name) >>= \case
         Just Nothing -> error $ "cycle " ++ T.unpack name
@@ -107,7 +106,7 @@ parseGeneric str = do
         Nothing -> do
           modify $ HM.insert name Nothing
           (f :: Free (Term T.Text T.Text) r) <- mapM fRec (formulae HM.! name)
-          buildFree @(LiftTags [g'|buildTreeD|]) f >>= monadfn @(Lift [d|shareTree|])
+          buildFree @(LiftTags [g'|buildTreeD|]) f >>= monadfn @(Inc [d'|shareTree|])
 
 type STermStr = Free (Term T.Text T.Text) T.Text
 
@@ -137,6 +136,7 @@ expr = buildExpressionParser table term <?> "expression"
       , [Infix (Free .: Or <$ char '|') AssocLeft]
       ]
 
+identifier :: Parser T.Text
 identifier = Parsec.takeWhile (\case '_' -> True; x -> isAlphaNum x)
 
 term :: Parser STermStr
@@ -146,11 +146,8 @@ term =
     <|> (Pure <$> ("f" *> identifier))
     <|> (Free LTrue <$ "True")
     <|> (Free LFalse <$ "False")
-    <|> (Free . Var <$> identifier)
+    <|> (Free . Var <$> ("a" *> identifier))
     <?> "expected a term"
-
-recur :: ((a -> b) -> a -> b) -> a -> b
-recur fn = rec where rec = fn rec
 
 orize :: [Definition] -> (STermStr, STermStr, HM.HashMap T.Text STermStr, HM.HashMap T.Text STermStr)
 orize defs =
@@ -167,38 +164,80 @@ orize defs =
         DInitialStates dterm -> tell (Endo (dterm :), mempty, mempty, mempty)
         DFinalStates dterm -> tell (mempty, Endo (dterm :), mempty, mempty)
 
--- formatAfa :: BoolAfaUnswallowed Int -> T.Text
--- formatAfa (swallow -> BoolAfa bterms (Afa mterms states init)) =
---   T.unlines $
---     [ [i|@kInitialFormula: s#{init}|]
---     , let finals = map (\q -> [i|!s#{q}|]) $ Data.Array.indices states
---        in [i|@kFinalFormula: #{T.intercalate " & " finals}|]
---     ]
---       ++ map (\(j, t) -> [i|@fBool#{j}: #{fromBTermTree t}|]) (assocs bterms)
---       ++ map (\(j, t) -> [i|@fMix#{j}: #{fromMTermTree t}|]) (assocs mterms)
---       ++ map (\(j, t) -> [i|@s#{j}: #{fromMTermTree t}|]) (assocs states)
---
--- fromBTermTree :: BoolTermIFree Int -> T.Text
--- fromBTermTree = iter fromBTerm . fmap (\j -> [i|fBool#{j}|])
---
--- fromBTerm :: BTerm.Term Int T.Text -> T.Text
--- fromBTerm BTerm.LTrue = "kTrue"
--- fromBTerm BTerm.LFalse = "kFalse"
--- fromBTerm (BTerm.Predicate p) = [i|a#{p}|]
--- fromBTerm (BTerm.Not x) = [i|!#{x}|]
--- fromBTerm (BTerm.And (x :| [])) = x
--- fromBTerm (BTerm.Or (x :| [])) = x
--- fromBTerm (BTerm.And xs) = [i|(#{T.intercalate " & "$ NE.toList xs})|]
--- fromBTerm (BTerm.Or xs) = [i|(#{T.intercalate " | "$ NE.toList xs})|]
---
--- fromMTermTree :: MixTermIFree (BoolTermIFree Int) -> T.Text
--- fromMTermTree = iter fromMTerm . fmap (\j -> [i|fMix#{j}|])
---
--- fromMTerm :: MTerm.Term (BoolTermIFree Int) Int T.Text -> T.Text
--- fromMTerm MTerm.LTrue = "kTrue"
--- fromMTerm (MTerm.Predicate p) = fromBTermTree p
--- fromMTerm (MTerm.State q) = [i|s#{q}|]
--- fromMTerm (MTerm.And (x :| [])) = x
--- fromMTerm (MTerm.Or (x :| [])) = x
--- fromMTerm (MTerm.And xs) = [i|(#{T.intercalate " & "$ NE.toList xs})|]
--- fromMTerm (MTerm.Or xs) = [i|(#{T.intercalate " | "$ NE.toList xs})|]
+class ShowT a where
+  showT :: a -> T.Text
+
+instance ShowT T.Text where
+  showT = id
+
+type FormatD d m =
+  FormatD_ d m (FormatA d (Term [g|q|] [g|v|] [g|r|]) [g|r|]) [g|q|] [g|v|] [g|r|]
+type FormatM m = StateT Int (WriterT (Endo [T.Text]) m)
+type FormatA (d :: TypeDict) x r =
+  FormatA1
+    ( Name "recur" (MkN (RecK r x T.Text) (Inc (Inc [d|any|])))
+        :+: End
+    )
+    r
+type FormatA1 d' r =
+  Name "isTree" (Mk IsTree [d'|recur|])
+    :+: Name "rec" (Mk (MfnK r T.Text) [d'|recur|])
+    :+: d'
+type FormatD_ d (m :: * -> *) (d' :: TypeDict) (q :: *) (v :: *) (r :: *) =
+  D.Name "aliases" (q ~ [g|q|], v ~ [g|v|], r ~ [g|r|], d' ~ FormatA d (Term q v r) r)
+    :|: D.Name "" (RecRecur [d'|recur|] (FormatM m))
+    :|: D.End
+format ::
+  forall d q v r m d'.
+  (Monad m, D.ToConstraint (FormatD_ d m d' q v r), ShowT v, ShowT q) =>
+  r ->
+  r ->
+  (Int, Int -> q, Int -> r, q -> Int) ->
+  m T.Text
+format init final (qCount, i2q, i2r, q2i) = do
+  let qis = [0 .. qCount - 1]
+  ((init', final', qs'), log) <- runWriterT $ flip evalStateT (0 :: Int) do
+    convert <- recur @ [d'|recur|] \x -> do
+      txt <- case x of
+        LTrue -> return [i|kTrue|]
+        LFalse -> return [i|kFalse|]
+        State q -> return [i|s#{showT q}|]
+        Var v -> return [i|a#{showT v}|]
+        Not r -> do r' <- [d'|monadfn|rec|] r; return [i|!(#{r'})|]
+        And a b -> do a' <- [d'|monadfn|rec|] a; b' <- [d'|monadfn|rec|] b; return [i|(#{a'}) & (#{b'})|]
+        Or a b -> do a' <- [d'|monadfn|rec|] a; b' <- [d'|monadfn|rec|] b; return [i|(#{a'}) | (#{b'})|]
+      [d'|ask|isTree|] >>= \case
+        True -> return txt
+        False -> do
+          fIx :: Int <- lift get
+          lift $ put $ fIx + 1
+          lift $ lift $ tell $ Endo (txt :)
+          return [i|f#{fIx}|]
+    (,,) <$> convert init <*> convert final <*> mapM (convert . i2r) qis
+
+  return $
+    T.unlines $
+      [i|@kInitialFormula: #{init'}|] :
+      [i|@kFinalFormula: #{final'}|] :
+      zipWith (\n t -> [i|@s#{showT $ i2q n}: #{t}|]) [0 ..] qs'
+        ++ zipWith (\n t -> [i|@f#{n}: #{t}|]) [0 ..] (log `appEndo` [])
+
+parseIORef ::
+  forall s r r' d result.
+  ( r ~ Afa.IORef.Ref (Term T.Text T.Text)
+  , d ~ IORefRemoveFinalsD T.Text T.Text r r'
+  ) =>
+  T.Text ->
+  IO (r, r, (Int, Int -> T.Text, Int -> r, T.Text -> Int))
+parseIORef = Afa.Convert.PrettyStranger2.parse @d
+
+formatIORef ::
+  forall s r r' d result.
+  ( r ~ Afa.IORef.Ref (Term T.Text T.Text)
+  , d ~ IORefRemoveFinalsD T.Text T.Text r r'
+  ) =>
+  r ->
+  r ->
+  (Int, Int -> T.Text, Int -> r, T.Text -> Int) ->
+  IO T.Text
+formatIORef = Afa.Convert.PrettyStranger2.format @d
