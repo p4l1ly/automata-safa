@@ -1,6 +1,12 @@
+{-# LANGUAGE BlockArguments #-}
+{-# LANGUAGE DataKinds #-}
 {-# LANGUAGE LambdaCase #-}
+{-# LANGUAGE QuasiQuotes #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TupleSections #-}
+{-# LANGUAGE TypeApplications #-}
+{-# LANGUAGE TypeFamilies #-}
+{-# LANGUAGE TypeOperators #-}
 {-# LANGUAGE ViewPatterns #-}
 
 module Main where
@@ -23,8 +29,10 @@ import qualified Afa.Convert.Separated.Model as Sep
 import qualified Afa.Convert.Separated.ToDnf as ToDnf
 import Afa.Convert.Smv
 import qualified Afa.Convert.Stranger as Stranger
+import qualified Afa.Convert.Stranger2 as Stranger2
 import qualified Afa.Finalful as Finalful
 import qualified Afa.Finalful.STerm
+import qualified Afa.Finalful.STerm as STerm
 import qualified Afa.IORef
 import qualified Afa.Ops.Boolean as Ops
 import Afa.Ops.Compound
@@ -35,8 +43,10 @@ import Control.Concurrent
 import Control.Concurrent.STM
 import Control.Exception
 import Control.Monad
+import Control.Monad.Free
 import Data.Array
 import Data.Fix (Fix (..))
+import Data.Function.Apply ((-$))
 import Data.Functor
 import Data.Functor.Base
 import Data.Functor.Compose
@@ -51,22 +61,28 @@ import Data.Traversable
 import Debug.Trace
 import Ltl.Parser
 import Options.Applicative
+import qualified Shaper
+import qualified Shaper.Helpers
 import System.Directory
+import System.Environment (getArgs)
 import System.IO
+import TypeDict (TypeDict ((:+:)), d)
+import qualified TypeDict
 
 data Opts = Opts
   { readers :: Fix (Compose IO (ListF (String, BoolAfaUnswallowed Int)))
   , writers :: [String -> BoolAfaUnswallowed Int -> Either Bool ((Int, Int, Int), IO ())]
   }
 
-dirReaders :: Int -> (Handle -> IO a) -> String -> Fix (Compose IO (ListF (String, a)))
+dirReaders :: forall a. Int -> (Handle -> IO a) -> String -> Fix (Compose IO (ListF (String, a)))
 dirReaders count fileReader indir = Fix $
   Compose $ do
     (sort . map read -> files0 :: [Int]) <- listDirectory indir
     reader (project $ zip [0 ..] files0) <&> \case
       Nil -> Nil
-      Cons afa a -> Cons afa $ hoist (Compose . reader) a
+      Cons afa a -> Cons afa $ hoist (Compose . reader) (a :: [(Int, Int)])
   where
+    reader :: ListF (Int, Int) b -> IO (ListF (String, a) b)
     reader Nil = return Nil
     reader (Cons (i, _) _) | i == count = return Nil
     reader (Cons (_, file) a) = do
@@ -295,15 +311,14 @@ optParser =
             Right $
               repeat $ \i (separateStatelessBottoms -> bafa) -> do
                 let Just sepafa =
-                      traceShow (bafa, Sep.mixedToSeparated bafa) $
-                        Sep.mixedToSeparated bafa
-                          <|> Sep.mixedToSeparated bafa{afa = delayPredicates $ afa bafa}
+                      Sep.mixedToSeparated bafa
+                        <|> Sep.mixedToSeparated bafa{afa = delayPredicates $ afa bafa}
                 sepafa' <- Sep.simplify sepafa
                 let sepafa''
-                      | all (\case MTerm.Or _ -> False; _ -> True) $ Sep.qterms sepafa = trace "dnfOk" sepafa
+                      | all (\case MTerm.Or _ -> False; _ -> True) $ Sep.qterms sepafa = traceShow (i, "dnfOk") sepafa
                       | otherwise = case ToDnf.distributeTopOrs sepafa' of
-                        Just sepafa'' -> trace "distributeTopOrs" sepafa''
-                        Nothing -> trace "epsilonize" $ ToDnf.epsilonize sepafa'
+                        Just sepafa'' -> traceShow (i, "distributeTopOrs") sepafa''
+                        Nothing -> traceShow (i, "epsilonize") $ ToDnf.epsilonize sepafa'
                 Sep.simplify sepafa'' <&> sepAfaWriter outdir i
           (break (== ':') -> ("smv", ':' : outdir)) ->
             Right $
@@ -353,24 +368,54 @@ optParser =
 
 timeoutMicro = 500 * 1000000
 
+removeFinalsMain ::
+  forall d t r buildTree buildD q' v' r'.
+  ( t ~ T.Text
+  , q' ~ Finalful.SyncQs t
+  , v' ~ Finalful.SyncVar t t
+  , r' ~ Afa.IORef.Ref (STerm.Term q' v')
+  , d ~ Afa.IORef.IORefRemoveFinalsD t t r r
+  , buildTree ~ Shaper.Mk (Shaper.MfnK (STerm.Term q' v' r') r') [d|buildTree|]
+  , buildD ~ (TypeDict.Name "build" buildTree :+: d)
+  ) =>
+  IO ()
+removeFinalsMain = do
+  txt <- getContents
+  hPutStrLn stderr "parsing"
+  (init2, final2, qs) <- PrettyStranger2.parseIORef $ Stranger2.parseDefinitions $ T.pack txt
+  hPutStrLn stderr "separating"
+  Just qs1 <- Afa.IORef.trySeparateQTransitions qs
+  hPutStrLn stderr "removing finals"
+  (init3, qs2) <- Afa.IORef.removeFinalsHind init2 final2 qs1
+  hPutStrLn stderr "unseparating"
+  qs3@(qCount, i2q, _, _) <- Afa.IORef.unseparateQTransitions qs2
+  true <- Shaper.monadfn @buildTree STerm.LTrue
+  hPutStrLn stderr "final3"
+  final3 <-
+    foldM -$ true -$ [0 .. qCount - 1] $ \r (i2q -> q) ->
+      Shaper.Helpers.buildFree @buildD (Free $ STerm.And (Free $ STerm.Not $ Free $ STerm.State q) (Pure r))
+  hPutStrLn stderr "formatting"
+  txt' <- PrettyStranger2.formatIORef init3 final3 qs3
+  hPutStrLn stderr "outputting"
+  mapM_ TIO.putStrLn txt'
+  hPutStrLn stderr "finish"
+
 main :: IO ()
 main = do
-  txt <- getContents
-  (init, final, qs) <- PrettyStranger2.parseIORef (T.pack txt)
-  (init', qs') <- Afa.IORef.removeFinals init final qs
-  txt' <- PrettyStranger2.formatIORef init' (Afa.IORef.Subtree Afa.Finalful.STerm.LFalse) qs'
-  TIO.putStr txt'
+  args <- getArgs
+  if args == ["strangerRemoveFinals"]
+    then removeFinalsMain
+    else do
+      (Opts readers writers) <-
+        execParser $
+          info (optParser <**> helper) $
+            fullDesc
+              <> progDesc
+                "Convert LTLe to a symbolic alternating finite automaton, possibly \
+                \preprocess the automaton and output it somewhere further."
+              <> header "ltle-to-afa: symbolic alternating finite automata preprocessing"
 
--- (Opts readers writers) <-
---   execParser $
---     info (optParser <**> helper) $
---       fullDesc
---         <> progDesc
---           "Convert LTLe to a symbolic alternating finite automaton, possibly \
---           \preprocess the automaton and output it somewhere further."
---         <> header "ltle-to-afa: symbolic alternating finite automata preprocessing"
-
--- applyWritersAndReaders writers readers
+      applyWritersAndReaders writers readers
 
 applyWritersAndReaders (writer : writers) (Fix (Compose action)) =
   action >>= \case

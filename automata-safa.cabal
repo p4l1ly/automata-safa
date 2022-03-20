@@ -33,6 +33,7 @@ library
     Afa.Ops.Compound
     Afa.Ops.Randomize
     Afa.Ops.Boolean
+    Afa.Separated
     Shaper
     Shaper.Helpers
     Lift
@@ -98,6 +99,7 @@ library convert
     -- Afa.Convert.Pretty
     Afa.Convert.Dot
     Afa.Convert.Stranger
+    Afa.Convert.Stranger2
     Afa.Convert.PrettyStranger
     Afa.Convert.PrettyStranger2
     Afa.Convert.Smv
@@ -174,6 +176,8 @@ executable ltle-to-afa
     text ^>=1.2.4.1,
     stm ^>=2.5.0.0,
     split ^>=0.2.3.4,
+    composition-extra ^>=2.0.0,
+    free ^>=5.1.7,
     automata-safa,
     automata-safa:ltl,
     automata-safa:convert,

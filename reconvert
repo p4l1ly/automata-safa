@@ -19,6 +19,7 @@ if [ "$EXTERNAL" = true ]; then
 
   FROM_LTL=${FROM_LTL:-false}
   FROM_STRANGER=${FROM_STRANGER:-false}
+  FROM_STRANGER_NOFINAL=${FROM_STRANGER_NOFINAL:-false}
   BASIC=${BASIC:-false}
   GOBLIN3=${GOBLIN3:-false}
   GOBLIN4=${GOBLIN4:-false}
@@ -34,6 +35,7 @@ if [ "$EXTERNAL" = true ]; then
   ABC=${ABC:-false}
   ABC_REV=${ABC_REV:-false}
   ABC_REV_ASGN=${ABC_REV_ASGN:-false}
+  PRETTY=${PRETTY:-false}
 
   RETIME=${RETIME:-false}
 else
@@ -62,6 +64,7 @@ else
   ABC=false
   ABC_REV=false
   ABC_REV_ASGN=true
+  PRETTY=false
 
   RETIME=false
 fi
@@ -79,7 +82,7 @@ resetDir() {
 {$AFASAT || $AFASAT_CLAUSAL} && AFASAT_ANY=true || AFASAT_ANY=false
 
 $GENERATE && {
-  {$FROM_LTL || $FROM_STRANGER} && resetDir afa0
+  {$FROM_LTL || $FROM_STRANGER || $FROM_STRANGER_NOFINAL} && resetDir afa0
 
   $NRAND && $BASIC   && $SUCCINCT     && resetDir afaBasic
   $NRAND && $BASIC   && $AFASAT_ANY   && resetDir afaCnf
@@ -90,6 +93,7 @@ $GENERATE && {
   $NRAND && $BASIC   && $ABC_REV_ASGN && resetDir smvReverseAsgn
   $NRAND && $BASIC   && $ABC          && resetDir aig
   $NRAND && $BASIC   && $ABC_REV_ASGN && resetDir aigReverseAsgn
+  $NRAND && $BASIC   && $PRETTY       && resetDir pretty && resetDir dnfsepafaDelaying && resetDir pretty0
 
   $NRAND && $GOBLIN3 && $SUCCINCT     && resetDir afaSimpGoblinMincut3
   $NRAND && $GOBLIN3 && $AFASAT_ANY   && resetDir afaCnf3
@@ -143,6 +147,7 @@ $GENERATE && {
 
   $FROM_LTL && { cat $1/ltls| cabal exec ltle-to-afa -- -i ltl -o afa:$1/afa0 > $1/afa0.csv }
   $FROM_STRANGER && { cabal exec ltle-to-afa -- -i stranger:$1/input -o afa:$1/afa0 > $1/afa0.csv }
+  $FROM_STRANGER_NOFINAL && { cabal exec ltle-to-afa -- -i prettyStranger:$1/nofinals -o afa:$1/afa0 > $1/afa0.csv }
 
   $ZERO && {
     $AFASAT_ANY   && cabal exec ltle-to-afa -- -i $READAFA:$1/afa0 -o cnfafa0:$1/afaCnf0 > $1/afaCnf0.csv
@@ -167,6 +172,11 @@ $GENERATE && {
     $ABC          && for f in $(ls $1/smv); do ../aiger/smvtoaig $1/smv/$f > $1/aig/$f; done
     $ABC_REV      && for f in $(ls $1/smvReverse); do ../aiger/smvtoaig $1/smvReverse/$f > $1/aigReverse/$f; done
     $ABC_REV_ASGN && for f in $(ls $1/smvReverseAsgn); do ../aiger/smvtoaig $1/smvReverseAsgn/$f > $1/aigReverseAsgn/$f; done
+    $PRETTY       && {
+      cabal exec ltle-to-afa -- -i $READAFA:$1/afaBasic -o prettyStranger:$1/pretty0 > $1/pretty0.csv
+      cabal exec ltle-to-afa -- -i $READAFA:$1/afaBasic -o dnfsepafaDelaying:$1/dnfsepafaDelaying > $1/dnfsepafaDelaying.csv
+      cabal exec ltle-to-afa -- -i sepafa:$1/dnfsepafaDelaying -o prettyStranger:$1/pretty > $1/pretty.csv
+    }
   }
 
   $RAND && $BASIC && {

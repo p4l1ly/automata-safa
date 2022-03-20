@@ -33,7 +33,7 @@ import Data.Void
 import Debug.Trace
 
 distributeTopOrs :: Show p => Afa p -> Maybe (Afa p)
-distributeTopOrs afa@Afa{qterms, states} = traceShow afa $ do
+distributeTopOrs afa@Afa{qterms, states} = do
   scanResult <&> \(ixMap, qterms') ->
     afa
       { qterms = listArray' qterms'

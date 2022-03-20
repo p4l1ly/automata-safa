@@ -84,9 +84,9 @@ parse ::
   forall d m r d'.
   ( D.ToConstraint (ParseD_ d m d' r)
   ) =>
-  T.Text ->
+  [Definition] ->
   m (r, r, (Int, Int -> T.Text, Int -> r, T.Text -> Int))
-parse str = do
+parse defs = do
   (initR, finalR, stateRs) <- flip evalStateT HM.empty $ do
     (,,) <$> convert init <*> convert final <*> mapM convert states
   let stateList = HM.toList stateRs
@@ -96,7 +96,7 @@ parse str = do
       states = (rangeSize $ bounds arr, fst . (arr !), snd . (arr !), (state2ix HM.!))
   return (initR, finalR, states)
   where
-    (init, final, formulae, states) = orize $ parseDefinitions str
+    (init, final, formulae, states) = orize defs
     convert :: Free (Term T.Text T.Text) T.Text -> StateT (HM.HashMap T.Text (Maybe r)) m r
     convert f = mapM fRec f >>= buildFree @(LiftTags [g'|buildTreeD|])
     fRec :: T.Text -> StateT (HM.HashMap T.Text (Maybe r)) m r
@@ -188,7 +188,7 @@ format ::
   r ->
   r ->
   (Int, Int -> q, Int -> r, q -> Int) ->
-  m T.Text
+  m [T.Text]
 format init final (qCount, i2q, i2r, q2i) = do
   let qis = [0 .. qCount - 1]
   ((init', final', qs'), log) <- runWriterT $ flip evalStateT (0 :: Int) do
@@ -211,18 +211,17 @@ format init final (qCount, i2q, i2r, q2i) = do
     (,,) <$> convert init <*> convert final <*> mapM (convert . i2r) qis
 
   return $
-    T.unlines $
-      [i|@kInitialFormula: #{init'}|] :
-      [i|@kFinalFormula: #{final'}|] :
-      zipWith (\n t -> [i|@s#{showT $ i2q n}: #{t}|]) [0 ..] qs'
-        ++ zipWith (\n t -> [i|@f#{n}: #{t}|]) [0 ..] (log `appEndo` [])
+    [i|@kInitialFormula: #{init'}|] :
+    [i|@kFinalFormula: #{final'}|] :
+    zipWith (\n t -> [i|@s#{showT $ i2q n}: #{t}|]) [0 ..] qs'
+      ++ zipWith (\n t -> [i|@f#{n}: #{t}|]) [0 ..] (log `appEndo` [])
 
 parseIORef ::
   forall s r r' d result.
   ( r ~ Afa.IORef.Ref (Term T.Text T.Text)
   , d ~ IORefRemoveFinalsD T.Text T.Text r r'
   ) =>
-  T.Text ->
+  [Definition] ->
   IO (r, r, (Int, Int -> T.Text, Int -> r, T.Text -> Int))
 parseIORef = Afa.Convert.PrettyStranger2.parse @d
 
@@ -236,7 +235,7 @@ formatIORef ::
   r ->
   r ->
   (Int, Int -> q, Int -> r, q -> Int) ->
-  IO T.Text
+  IO [T.Text]
 formatIORef = Afa.Convert.PrettyStranger2.format @d
 
 class ShowT a where

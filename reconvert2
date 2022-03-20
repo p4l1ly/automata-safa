@@ -123,18 +123,29 @@ export EXTERNAL=true
 #   zsh reconvert ../data/email75-abcd-abcdd
 # )
 
+# (
+#   # export GENERATE=true
+#   export MODELCHECK=true
+#   export TIMEOUT=120
+#   export BASIC=true
+#   # export ZERO=true
+#   # export SUCCINCT=true
+#   # export ABC_REV_ASGN=true
+#   export AFASAT=true
+#   export DANTONI=true
+#   zsh -x reconvert ../data/cox/filter/inclusion-sat
+#   zsh -x reconvert ../data/cox/filter/inclusion-unsat
+#   zsh -x reconvert ../data/cox/filter/intersection-sat
+#   zsh -x reconvert ../data/cox/filter/intersection-unsat
+# )
+
 (
-  # export GENERATE=true
-  export MODELCHECK=true
-  export TIMEOUT=120
+  export GENERATE=true
+  export FROM_STRANGER_NOFINAL=true
   export BASIC=true
-  # export ZERO=true
-  # export SUCCINCT=true
-  # export ABC_REV_ASGN=true
-  export AFASAT=true
-  export DANTONI=true
-  zsh -x reconvert ../data/cox/filter/inclusion-sat
-  zsh -x reconvert ../data/cox/filter/inclusion-unsat
-  zsh -x reconvert ../data/cox/filter/intersection-sat
-  zsh -x reconvert ../data/cox/filter/intersection-unsat
+  export SUCCINCT=true
+  export PRETTY=true
+  for i in {0..9}; do
+    zsh reconvert ../data/stranger-tenth$i 2> ../data/stranger-tenth$i/reconvert.stderr
+  done
 )

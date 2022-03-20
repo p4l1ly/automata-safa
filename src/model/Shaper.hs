@@ -39,8 +39,6 @@ type family Mk (mk :: * -> *) (k :: K) :: K where
 type family MkN (mk :: Pean -> * -> *) (k :: K) :: K where
   MkN mk k = 'K Zero (mk (LiftCount k) (Unwrap k))
 
-type family Ref (k :: K) (x :: *) :: *
-
 type family MfnA (k :: *) :: *
 type family MfnB (k :: *) :: *
 
