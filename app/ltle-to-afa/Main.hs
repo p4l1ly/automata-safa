@@ -1,7 +1,9 @@
 {-# LANGUAGE BlockArguments #-}
 {-# LANGUAGE DataKinds #-}
+{-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE QuasiQuotes #-}
+{-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TupleSections #-}
 {-# LANGUAGE TypeApplications #-}
@@ -34,6 +36,7 @@ import qualified Afa.Finalful as Finalful
 import qualified Afa.Finalful.STerm
 import qualified Afa.Finalful.STerm as STerm
 import qualified Afa.IORef
+import qualified Afa.Negate as Negate
 import qualified Afa.Ops.Boolean as Ops
 import Afa.Ops.Compound
 import Afa.Ops.Randomize (randomizeIO)
@@ -46,7 +49,9 @@ import Control.Monad
 import Control.Monad.Free
 import Data.Array
 import Data.Fix (Fix (..))
+import Data.Foldable (toList)
 import Data.Function.Apply ((-$))
+import Data.Function.Syntax ((.:))
 import Data.Functor
 import Data.Functor.Base
 import Data.Functor.Compose
@@ -54,10 +59,13 @@ import Data.Functor.Foldable
 import Data.List
 import Data.List.Split
 import Data.Maybe
+import Data.String.Interpolate.IsString (i)
 import qualified Data.Text as T
 import qualified Data.Text.IO as TIO
 import Data.Time.Clock.POSIX (getPOSIXTime)
 import Data.Traversable
+import Data.Void (Void)
+import Data.Word (Word32, Word8)
 import Debug.Trace
 import Ltl.Parser
 import Options.Applicative
@@ -244,6 +252,10 @@ optParser =
           (break (== ':') -> ("afa0", ':' : outdir)) ->
             Right $
               repeat $ \i bafa ->
+                Right $ afaWriter0 outdir i (unswallow $ swallow bafa)
+          (break (== ':') -> ("swallowUnswallow", ':' : outdir)) ->
+            Right $
+              repeat $ \i bafa ->
                 Right $ afaWriter0 outdir i bafa
           (break (== ':') -> ("cnfafa0", ':' : outdir)) ->
             Right $
@@ -391,21 +403,123 @@ removeFinalsMain = do
   qs3@(qCount, i2q, _, _) <- Afa.IORef.unseparateQTransitions qs2
   true <- Shaper.monadfn @buildTree STerm.LTrue
   hPutStrLn stderr "final3"
-  final3 <-
-    foldM -$ true -$ [0 .. qCount - 1] $ \r (i2q -> q) ->
-      Shaper.Helpers.buildFree @buildD (Free $ STerm.And (Free $ STerm.Not $ Free $ STerm.State q) (Pure r))
+  let final3free = foldr -$ Pure true -$ [0 .. qCount - 1] $ \qi r ->
+        Free $ STerm.And (Free $ STerm.Not $ Free $ STerm.State $ i2q qi) r
+  final3 <- Shaper.Helpers.buildFree @buildD final3free
   hPutStrLn stderr "formatting"
-  txt' <- PrettyStranger2.formatIORef init3 final3 qs3
-  hPutStrLn stderr "outputting"
-  mapM_ TIO.putStrLn txt'
-  hPutStrLn stderr "finish"
+  PrettyStranger2.formatIORef init3 final3 qs3
+
+qdnfMain :: IO ()
+qdnfMain = do
+  txt <- getContents
+  hPutStrLn stderr "parsing"
+  (init3, final3, qs) <- PrettyStranger2.parseIORef $ PrettyStranger2.parseDefinitions $ T.pack txt
+  hPutStrLn stderr "separating"
+  Just qs1 <- Afa.IORef.trySeparateQTransitions qs
+  hPutStrLn stderr "toQDnf"
+  qs2 <- Afa.IORef.toQDnf qs1
+  hPutStrLn stderr "unseparating"
+  qs3 <- Afa.IORef.unseparateQTransitions qs2
+  hPutStrLn stderr "formatting"
+  PrettyStranger2.formatIORef init3 final3 qs3
+
+range16ToPrettyRangeVarsMain :: IO ()
+range16ToPrettyRangeVarsMain = do
+  hPutStrLn stderr "parsing"
+  nfa <- Range16Nfa.hReadNfaRaw stdin
+  (init, final, states) <- Range16Nfa.deserializeToIORef nfa
+  hPutStrLn stderr "formatting"
+  states' <- Afa.IORef.unseparateQTransitions states
+  PrettyStranger2.formatIORefWithExplicitFInals init final states'
+
+range16ToPrettyMain ::
+  forall d buildTree buildD r'.
+  ( r' ~ Afa.IORef.Ref (STerm.Term Word32 Range16Nfa.Range16)
+  , d ~ Afa.IORef.IORefRemoveFinalsD Void Void Void Void
+  , buildTree ~ Shaper.Mk (Shaper.MfnK (STerm.Term Word32 Range16Nfa.Range16 r') r') [d|buildTree|]
+  , buildD ~ (TypeDict.Name "build" buildTree :+: d)
+  ) =>
+  IO ()
+range16ToPrettyMain = do
+  hPutStrLn stderr "parsing"
+  nfa <- Range16Nfa.hReadNfaRaw stdin
+  (init1, finals, states@(qCount, i2q, _, q2i)) <- Range16Nfa.deserializeToIORef nfa
+  hPutStrLn stderr "formatting"
+  states1 <- Afa.IORef.unseparateQTransitions states
+  let nonfinals =
+        accumArray (\_ _ -> False) True (0, qCount - 1) $
+          map ((,()) . q2i) $ toList finals
+  let nonfinals' =
+        foldr (Fix .: STerm.And . Fix . STerm.Not . Fix . STerm.State . i2q) (Fix STerm.LTrue) $
+          filter (nonfinals !) [0 .. qCount - 1]
+  final <- Shaper.Helpers.buildFix @buildD nonfinals'
+  (init2, final2, states2) <- Range16Nfa.convertRangeIORef (init1, final, states1)
+  PrettyStranger2.formatIORef init2 final2 states2
+
+negateLang :: IO ()
+negateLang = do
+  hPutStrLn stderr "parsing"
+  txt <- TIO.hGetContents stdin
+  (init, final, qs@(qCount, i2q, _, q2i)) <-
+    PrettyStranger2.parseIORef (PrettyStranger2.parseDefinitions txt)
+  hPutStrLn stderr "splittingFinals"
+  (nonfinals, Nothing) <- Afa.IORef.splitFinals final
+  let finals = accumArray (\_ _ -> False) True (0, qCount - 1) $ map ((,()) . q2i) nonfinals
+  let finals' = map i2q $ filter (finals !) [0 .. qCount - 1]
+  hPutStrLn stderr "negating"
+  (init1, finals1, states1) <- Afa.IORef.negateSeparated init finals' qs
+  hPutStrLn stderr "formatting"
+  PrettyStranger2.formatIORefWithExplicitFInals init1 finals1 states1
+
+comboOp ::
+  forall d t r buildTree buildD q' r' freeTerm.
+  ( t ~ T.Text
+  , d ~ Afa.IORef.IORefRemoveFinalsD Void Void Void Void
+  , q' ~ Negate.Qombo t
+  , r' ~ Afa.IORef.Ref (STerm.Term q' t)
+  , buildTree ~ Shaper.Mk (Shaper.MfnK (STerm.Term q' t r') r') [d|buildTree|]
+  , buildD ~ (TypeDict.Name "build" buildTree :+: d)
+  , freeTerm ~ Free (STerm.Term q' t) r'
+  ) =>
+  ([freeTerm] -> freeTerm) ->
+  [String] ->
+  IO ()
+comboOp op paths = do
+  hPutStrLn stderr "parsing"
+  afas <- for paths \path -> do
+    f <- openFile path ReadMode
+    txt <- TIO.hGetContents f
+    (init, final, qs@(qCount, i2q, _, q2i)) <-
+      PrettyStranger2.parseIORef (PrettyStranger2.parseDefinitions txt)
+    (nonfinals, Nothing) <- Afa.IORef.splitFinals final
+    let finals = accumArray (\_ _ -> False) True (0, qCount - 1) $ map ((,()) . q2i) nonfinals
+    let finals' = map i2q $ filter (finals !) [0 .. qCount - 1]
+    return (init, finals', qs)
+  (inits, finals, states) <- Afa.IORef.qombo afas
+  let initFree = op (map Pure inits)
+  init <- Shaper.Helpers.buildFree @buildD initFree
+  PrettyStranger2.formatIORefWithExplicitFInals init finals states
+
+parseFormat :: IO ()
+parseFormat = do
+  txt <- getContents
+  print $ PrettyStranger.parseAfa $ T.pack txt
 
 main :: IO ()
 main = do
   args <- getArgs
-  if args == ["strangerRemoveFinals"]
-    then removeFinalsMain
-    else do
+  case args of
+    ["strangerRemoveFinals"] -> removeFinalsMain
+    ["qdnf"] -> qdnfMain
+    ["range16ToPrettyRangeVars"] -> range16ToPrettyRangeVarsMain
+    ["range16ToPretty"] -> range16ToPrettyMain
+    ["parseFormat"] -> parseFormat
+    ["negate"] -> negateLang
+    ("and" : paths) -> comboOp (foldr1 $ Free .: STerm.And) paths
+    ("or" : paths) -> comboOp (foldr1 $ Free .: STerm.Or) paths
+    ("neq" : paths) -> (`comboOp` paths) \[a, b, na, nb] ->
+      Free $ STerm.Or (Free $ STerm.And a nb) (Free $ STerm.And na b)
+    _ -> do
       (Opts readers writers) <-
         execParser $
           info (optParser <**> helper) $

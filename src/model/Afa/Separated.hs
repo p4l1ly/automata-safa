@@ -27,7 +27,6 @@ type TrySeparateAlgD d m = TrySeparateAlgD_ d m (TrySeparateAlgA d [g|q|] [g|v|]
 type TrySeparateAlgA d q v r =  -- keyword aliases
   Name "rec" (Mk (MfnK r (AQ r)) [d|rec|])
     :+: Name "self" (Mk (MfnK () r) [d|rec|])
-    :+: Name "deref" (Mk (MfnK r (Term q v r)) [d|deref|])
     :+: Name "fail" (Mk (MfnK (Term q v (AQ r)) (AQ r)) [d|fail|])
     :+: Name "buildD"
           ( Name "shareTree" (Mk (MfnK r r) [d|shareTree|])
@@ -44,7 +43,6 @@ type TrySeparateAlgD_ d m d' q v r =
             :|: D.Name "isTree" (MonadFn (Mk IsTree [d|rec|]) m)
             :|: D.End
         )
-  :|: D.Name "deref" (MonadFn [d'|deref|] m)
   :|: D.Name "fail" (MonadFn [d'|fail|] m)
   :|: D.Name "build" (D.Remove "isTree" (BuildInheritShareD [g'|buildD|] (Term q v r) r m))
   :|: D.End

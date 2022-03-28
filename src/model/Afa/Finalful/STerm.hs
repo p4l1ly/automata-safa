@@ -79,7 +79,9 @@ data a :&: b = a :&: b
 infixr 0 :&:
 
 data QVFun q v q' v' = QVFun (q -> q') (v -> v')
+newtype QFun q q' = QFun (q -> q')
 newtype RTra (m :: * -> *) (r :: *) (r' :: *) = RTra (r -> m r')
+newtype VarTra (m :: * -> *) (v :: *) (q :: *) (v' :: *) (r' :: *) = VarTra (v -> m (Term q v' r'))
 
 type instance
   FunSelector
@@ -87,11 +89,18 @@ type instance
     QVFun q v q' v'
 type instance
   FunSelector
+    (OneshotFunSelector '(Just q, Nothing, Nothing) '(Just q', Nothing, Nothing)) =
+    QFun q q'
+type instance
+  FunSelector
     (OneshotTraSelector m '(Nothing, Nothing, Just r) '(Nothing, Nothing, Just r')) =
     RTra m r r'
 
 instance Create (OneshotFun [Q, V]) ((q -> q') :&: (v -> v')) where
   create (qfn :&: vfn) = QVFun qfn vfn
+
+instance Create (OneshotFun '[Q]) (q -> q') where
+  create qfn = QFun qfn
 
 instance Create (OneshotTra '[R]) (r -> m r') where
   create rfn = RTra rfn

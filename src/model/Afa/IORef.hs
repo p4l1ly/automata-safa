@@ -8,6 +8,7 @@
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE QuasiQuotes #-}
 {-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE TupleSections #-}
 {-# LANGUAGE TypeApplications #-}
 {-# LANGUAGE TypeFamilies #-}
 {-# LANGUAGE TypeOperators #-}
@@ -15,19 +16,25 @@
 
 module Afa.IORef where
 
+import qualified Afa.DnfStates as QDnf
 import Afa.Finalful
 import Afa.Finalful.STerm as STerm
+import Afa.Negate (Qombo)
+import qualified Afa.Negate as Negate
 import qualified Afa.Separated as Separ
 import Control.Monad.Except
 import Control.Monad.Free
 import Control.Monad.Reader
 import Control.Monad.State (StateT (runStateT), get, put)
 import Data.Array
+import Data.Foldable (toList)
 import Data.Function.Apply ((-$))
 import Data.Functor (($>), (<&>))
 import Data.Functor.Compose (Compose (Compose, getCompose))
 import qualified Data.HashMap.Strict as HM
+import qualified Data.HashSet as HS
 import Data.IORef
+import Data.Monoid (Endo (appEndo))
 import qualified Data.Text as T
 import Data.Traversable (for)
 import Lift
@@ -157,6 +164,46 @@ instance
     return convert'
 
 instance
+  FunRecur
+    ( 'K
+        n
+        ( FRecK
+            (Ref (Term q v))
+            (Ref (Term q' v))
+            (QFun q q')
+            Funrec
+        )
+    )
+    IO
+  where
+  funRecur (QFun qfn) = do
+    old2new <- newIORef (HM.empty :: HM.HashMap (SN (Term q v)) (Ref (Term q' v')))
+
+    let convert (State q) = return (State (qfn q))
+        convert (Var v) = return (Var v)
+        convert (And a b) = And <$> convert' a <*> convert' b
+        convert (Or a b) = Or <$> convert' a <*> convert' b
+        convert (Not a) = Not <$> convert' a
+        convert LTrue = pure LTrue
+        convert LFalse = pure LFalse
+
+        convert' :: Ref (Term q v) -> IO (Ref (Term q' v))
+        convert' (Ref (name, ioref)) = do
+          hmap <- readIORef old2new
+          case HM.lookup name hmap of
+            Just r' -> return r'
+            Nothing -> do
+              f' <- readIORef ioref >>= convert
+              ioref' <- newIORef f'
+              name' <- makeStableName ioref'
+              let r' = Ref (name', ioref')
+              writeIORef old2new (HM.insert name r' hmap)
+              return r'
+        convert' (Subtree f) = Subtree <$> convert f
+
+    return convert'
+
+instance
   (Monad m, MLift n m IO) =>
   FunRecur
     ( 'K
@@ -185,6 +232,50 @@ instance
         convert LFalse = pure LFalse
 
         convert' :: Ref (Term q v) -> m (Ref (Term q v))
+        convert' (Ref (name, ioref)) = do
+          hmap <- my_mlift $ readIORef old2new
+          case HM.lookup name hmap of
+            Just r' -> return r'
+            Nothing -> do
+              f' <- my_mlift (readIORef ioref) >>= convert
+              ioref' <- my_mlift $ newIORef f'
+              name' <- my_mlift $ makeStableName ioref'
+              let r' = Ref (name', ioref')
+              my_mlift $ writeIORef old2new (HM.insert name r' hmap)
+              return r'
+        convert' (Subtree f) = Subtree <$> convert f
+
+    return convert'
+
+instance
+  (Monad m, MLift n m IO) =>
+  FunRecur
+    ( 'K
+        n
+        ( FRecK
+            (Ref (Term q v))
+            (Ref (Term q v'))
+            (VarTra m v q v' (Ref (Term q v')))
+            Funrec
+        )
+    )
+    m
+  where
+  funRecur (VarTra vfn) = do
+    let my_mlift :: IO a -> m a
+        my_mlift = mlift @n
+
+    old2new <- mlift @n $ newIORef (HM.empty :: HM.HashMap (SN (Term q v)) (Ref (Term q v')))
+
+    let convert (State q) = return (State q)
+        convert (Var v) = vfn v
+        convert (And a b) = And <$> convert' a <*> convert' b
+        convert (Or a b) = Or <$> convert' a <*> convert' b
+        convert (Not a) = Not <$> convert' a
+        convert LTrue = pure LTrue
+        convert LFalse = pure LFalse
+
+        convert' :: Ref (Term q v) -> m (Ref (Term q v'))
         convert' (Ref (name, ioref)) = do
           hmap <- my_mlift $ readIORef old2new
           case HM.lookup name hmap of
@@ -251,7 +342,7 @@ type IORefRemoveFinalsD q v r r' =
     :+: End
 
 removeFinals ::
-  forall s q v r r' d.
+  forall q v r r' d.
   ( r ~ Ref (Term q v)
   , r' ~ Ref (Term (SyncQs q) (SyncVar q v))
   , d ~ IORefRemoveFinalsD q v r r'
@@ -268,7 +359,7 @@ instance Monad m => MonadFn ( 'K Zero (MfnK e a Fail)) (ExceptT e m) where
 
 -- this could be more generic and reside in Afa.Separated
 trySeparateQTransitions ::
-  forall s q v r r' d sepF d' buildTree.
+  forall q v r r' d sepF d' buildTree.
   ( r ~ Ref (Term q v)
   , d ~ IORefRemoveFinalsD q v r r'
   , sepF ~ MkN (RecK r (Term q v r) (Separ.AQ r)) (Inc [d|lock|])
@@ -303,7 +394,7 @@ trySeparateQTransitions (qCount, i2q, i2r, q2i) = do
     Right x -> return (Just x)
 
 removeFinalsHind ::
-  forall s q v r r' d.
+  forall q v r r' d.
   ( r ~ Ref (Term q v)
   , r' ~ Ref (Term (SyncQs q) (SyncVar q v))
   , d ~ IORefRemoveFinalsD q v r r'
@@ -315,13 +406,14 @@ removeFinalsHind ::
 removeFinalsHind = Afa.Finalful.removeFinalsHind @d
 
 unseparateQTransitions ::
-  forall s q v r r' d buildTree buildD.
+  forall q v r r' d buildTree buildD f.
   ( r ~ Ref (Term q v)
   , d ~ IORefRemoveFinalsD q v r r'
   , buildTree ~ Mk (MfnK (Term q v r) r) [d|buildTree|]
   , buildD ~ (Name "build" buildTree :+: d)
+  , Foldable f
   ) =>
-  (Int, Int -> q, Int -> [(r, r)], q -> Int) ->
+  (Int, Int -> q, Int -> f (r, r), q -> Int) ->
   IO (Int, Int -> q, Int -> r, q -> Int)
 unseparateQTransitions (qCount, i2q, i2r, q2i) = do
   rFalse <- monadfn @buildTree LFalse
@@ -330,3 +422,89 @@ unseparateQTransitions (qCount, i2q, i2r, q2i) = do
       buildFree @buildD (Free $ Or (Pure result) (Free $ And (Pure a) (Pure q)))
   let qrmap = listArray (0, qCount - 1) rs
   return (qCount, i2q, (qrmap !), q2i)
+
+-- this could be more generic and reside in Afa.Separated
+toQDnf ::
+  forall q v r r' d recK d' buildTree shareTree.
+  ( r ~ Ref (Term q v)
+  , d ~ IORefRemoveFinalsD q v r r'
+  , recK ~ MkN (RecK r (Term q v r) [r]) [d|lock|]
+  , buildTree ~ Mk (MfnK (Term q v r) r) [d|buildTree|]
+  , shareTree ~ Mk (MfnK r r) [d|shareTree|]
+  , d' ~ (Name "rec" recK :+: LiftTags d)
+  ) =>
+  (Int, Int -> q, Int -> [(r, r)], q -> Int) ->
+  IO (Int, Int -> q, Int -> [(r, r)], q -> Int)
+toQDnf (qCount, i2q, i2r, q2i) = do
+  rFalse <- monadfn @buildTree LFalse
+  qdnf <- recur @recK (QDnf.qdnfAlg @d')
+  i2r' <-
+    listArray (0, qCount - 1)
+      <$> for [0 .. qCount - 1] \(i2r -> aqs) ->
+        concat <$> for aqs \(a, q) ->
+          qdnf q >>= \case
+            [q] -> return [(a, q)]
+            qs -> do
+              a' <- monadfn @shareTree a
+              return $ map (a',) qs
+  return (qCount, i2q, (i2r' !), q2i)
+
+-- this could be more generic and reside in Negate.deMorganAlg
+negateSeparated ::
+  forall q v r r' d morgF d' buildTree f.
+  ( r ~ Ref (Term q v)
+  , d ~ IORefRemoveFinalsD q v r r'
+  , morgF ~ MkN (RecK r (Term q v r) r) [d|lock|]
+  , d' ~ (Name "rec" morgF :+: LiftTags d)
+  , buildTree ~ Mk (MfnK (Term q v r) r) [d|buildTree|]
+  , Foldable f
+  ) =>
+  r ->
+  f q ->
+  (Int, Int -> q, Int -> r, q -> Int) ->
+  IO (r, [q], (Int, Int -> q, Int -> r, q -> Int))
+negateSeparated init finals (qCount, i2q, i2r, q2i) = do
+  deMorgan <- recur @morgF (Negate.deMorganAlg @d')
+  init' <- deMorgan init
+  let nonfinals =
+        accumArray (\_ _ -> False) True (0, qCount - 1) $
+          map ((,()) . q2i) $ toList finals
+  let finals' = map i2q $ filter (nonfinals !) [0 .. qCount - 1]
+  qts' <- for [0 .. qCount - 1] $ deMorgan . i2r
+  let qts'Arr = listArray (0, qCount - 1) qts'
+  return (init', finals', (qCount, i2q, (qts'Arr !), q2i))
+
+-- this could be more generic and reside in Negate.deMorganAlg
+qombo ::
+  forall q v r r' d f fq.
+  ( r ~ Ref (Term q v)
+  , r' ~ Ref (Term (Qombo q) v)
+  , d ~ IORefRemoveFinalsD q v r r'
+  , Foldable f
+  ) =>
+  [(r, f q, (Int, Int -> q, Int -> r, q -> Int))] ->
+  IO ([r'], [Qombo q], (Int, Int -> Qombo q, Int -> r', Qombo q -> Int))
+qombo = Negate.qombo @d
+
+-- this could be more generic and reside in Negate.deMorganAlg
+splitFinals ::
+  forall q v r d d' splitF buildTree shareTree deref.
+  ( r ~ Ref (Term q v)
+  , d ~ IORefRemoveFinalsD q v r r
+  , splitF ~ MkN (RecK r (Term q v r) (SplitFinalsR r q)) [d|lock|]
+  , d'
+      ~ ( Name "rec" splitF
+            :+: LiftTags
+                  ( Name "buildTree" (Mk (MfnK (Term q v r) r) [d|buildTree|])
+                      :+: Name "shareTree" (Mk (MfnK r r) [d|shareTree|])
+                      :+: Name "deref" (Mk (MfnK r (Term q v r)) [d|deref|])
+                      :+: d
+                  )
+        )
+  ) =>
+  r ->
+  IO ([q], Maybe r)
+splitFinals final = do
+  splitF <- recur @splitF (Afa.Finalful.splitFinals @d')
+  ((_, (`appEndo` []) -> nonfinals), complex) <- splitF final
+  return (nonfinals, complex)

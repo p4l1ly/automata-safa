@@ -15,6 +15,8 @@
 
 module Afa.Convert.PrettyStranger where
 
+import Debug.Trace
+import GHC.Stack
 import Afa
 import Afa.Bool
 import Afa.Lib (listArray')
@@ -56,6 +58,7 @@ import Data.Traversable
 import GHC.Generics (Generic, Generic1)
 import Generic.Data (Generically1 (..))
 import Generic.Data.Orphans ()
+import GHC.Exts (sortWith)
 
 parseWhole :: Parser a -> T.Text -> a
 parseWhole parser str = case parse parser str of
@@ -157,7 +160,10 @@ enumerate defs =
       <$> namesToIxs (orize init)
       <*> namesToIxs (orize final)
       <*> mapM (namesToIxs . snd) orStates
-      <*> mapM (namesToIxs . snd) orFormulae
+      <*> do
+        fs <- mapM (\(n, f) -> (n,) <$> namesToIxs f) orFormulae
+        let fs' = map snd $ sortWith ((fNameToIx HM.!) . fst) fs
+        return fs' 
   where
     orize [] = Fix SFalse
     orize xs = foldr1 (Fix .: SOr) xs

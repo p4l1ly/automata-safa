@@ -1,4 +1,5 @@
 {-# LANGUAGE AllowAmbiguousTypes #-}
+{-# LANGUAGE BangPatterns #-}
 {-# LANGUAGE BlockArguments #-}
 {-# LANGUAGE ConstraintKinds #-}
 {-# LANGUAGE DataKinds #-}
@@ -25,7 +26,11 @@ import Afa.Finalful
 import Afa.Finalful.STerm (Term (..))
 import Afa.IORef
 import Afa.Lib (listArray')
+import Afa.Negate (Qombo (Qombo))
+import qualified Capnp.Gen.Afa.Model.Separated.Pure as AfaC
+import qualified Capnp.GenHelpers.ReExports.Data.Vector as V
 import Control.Applicative
+import Control.Lens (itraverse, (&))
 import Control.Monad.Free
 import Control.Monad.State.Strict
 import Control.Monad.Trans (lift)
@@ -36,14 +41,20 @@ import Data.Attoparsec.Text
 import qualified Data.Attoparsec.Text as Parsec
 import Data.Char
 import Data.Composition ((.:))
+import Data.Foldable
+import Data.Functor ((<&>))
 import qualified Data.HashMap.Strict as HM
+import Data.IORef
 import Data.List.NonEmpty (NonEmpty ((:|)))
 import qualified Data.List.NonEmpty as NE
 import Data.Monoid (Endo (..))
 import Data.String.Interpolate.IsString (i)
 import qualified Data.Text as T
+import qualified Data.Text.IO as TIO
 import qualified Data.Text.Read as TR
 import Data.Traversable
+import Data.Word
+import Debug.Trace
 import DepDict (DepDict ((:|:)))
 import qualified DepDict as D
 import Lift (Inc, K (K), LiftCount, Unwrap)
@@ -107,7 +118,9 @@ parse defs = do
         Nothing -> do
           modify $ HM.insert name Nothing
           (f :: Free (Term T.Text T.Text) r) <- mapM fRec (formulae HM.! name)
-          buildFree @(LiftTags [g'|buildTreeD|]) f >>= monadfn @(Inc [d'|shareTree|])
+          r <- buildFree @(LiftTags [g'|buildTreeD|]) f >>= monadfn @(Inc [d'|shareTree|])
+          modify $ HM.insert name (Just r)
+          return r
 
 type STermStr = Free (Term T.Text T.Text) T.Text
 
@@ -124,7 +137,7 @@ parseOne name value = case T.uncons name of
   Just ('k', keyword) -> case keyword of
     "InitialFormula" -> DInitialStates $ parseWhole expr value
     "FinalFormula" -> DFinalStates $ parseWhole expr value
-    _ -> error [i|unknown keyowrd #{keyword}|]
+    _ -> error [i|unknown keyword #{keyword}|]
   Just (t, _) -> error [i|unknown type #{t}|]
   Nothing -> error "empty identifier"
 
@@ -145,8 +158,8 @@ term =
   "(" *> expr <* ")"
     <|> (Free . State <$> ("s" *> identifier))
     <|> (Pure <$> ("f" *> identifier))
-    <|> (Free LTrue <$ "True")
-    <|> (Free LFalse <$ "False")
+    <|> (Free LTrue <$ "kTrue")
+    <|> (Free LFalse <$ "kFalse")
     <|> (Free . Var <$> ("a" *> identifier))
     <?> "expected a term"
 
@@ -165,59 +178,114 @@ orize defs =
         DInitialStates dterm -> tell (Endo (dterm :), mempty, mempty, mempty)
         DFinalStates dterm -> tell (mempty, Endo (dterm :), mempty, mempty)
 
-type FormatD d m =
-  FormatD_ d m (FormatA d (Term [g|q|] [g|v|] [g|r|]) [g|r|]) [g|q|] [g|v|] [g|r|]
-type FormatM m = StateT Int (WriterT (Endo [T.Text]) m)
-type FormatA (d :: TypeDict) x r =
-  FormatA1
-    ( Name "recur" (MkN (RecK r x T.Text) (Inc (Inc [d|any|])))
-        :+: End
-    )
-    r
-type FormatA1 d' r =
+type FormatFormulaD d m =
+  FormatFormulaD_ d m (FormatFormulaA d (Term [g|q|] [g|v|] [g|r|]) [g|r|]) [g|q|] [g|v|] [g|r|]
+type FormatFormulaA (d :: TypeDict) x r =
+  FormatFormulaA1 (Name "recur" (MkN (RecK r x T.Text) [d|any|]) :+: End) r
+type FormatFormulaA1 d' r =
   Name "isTree" (Mk IsTree [d'|recur|])
     :+: Name "rec" (Mk (MfnK r T.Text) [d'|recur|])
+    :+: Name "self" (Mk (MfnK () r) [d'|recur|])
     :+: d'
-type FormatD_ d (m :: * -> *) (d' :: TypeDict) (q :: *) (v :: *) (r :: *) =
-  D.Name "aliases" (q ~ [g|q|], v ~ [g|v|], r ~ [g|r|], d' ~ FormatA d (Term q v r) r)
-    :|: D.Name "" (RecRecur [d'|recur|] (FormatM m))
+type FormatFormulaD_ d (m :: * -> *) (d' :: TypeDict) (q :: *) (v :: *) (r :: *) =
+  D.Name "aliases" (q ~ [g|q|], v ~ [g|v|], r ~ [g|r|], d' ~ FormatFormulaA d (Term q v r) r)
+    :|: D.Name "show" (ShowT v, ShowT q)
+    :|: D.Name "rec" (RecRecur [d'|recur|] m)
     :|: D.End
-format ::
-  forall d q v r m d'.
-  (Monad m, D.ToConstraint (FormatD_ d m d' q v r), ShowT v, ShowT q) =>
-  r ->
-  r ->
-  (Int, Int -> q, Int -> r, q -> Int) ->
-  m [T.Text]
-format init final (qCount, i2q, i2r, q2i) = do
-  let qis = [0 .. qCount - 1]
-  ((init', final', qs'), log) <- runWriterT $ flip evalStateT (0 :: Int) do
-    convert <- recur @ [d'|recur|] \x -> do
-      txt <- case x of
-        LTrue -> return [i|kTrue|]
-        LFalse -> return [i|kFalse|]
-        State q -> return [i|s#{showT q}|]
-        Var v -> return [i|a#{showT v}|]
-        Not r -> do r' <- [d'|monadfn|rec|] r; return [i|!(#{r'})|]
-        And a b -> do a' <- [d'|monadfn|rec|] a; b' <- [d'|monadfn|rec|] b; return [i|(#{a'}) & (#{b'})|]
-        Or a b -> do a' <- [d'|monadfn|rec|] a; b' <- [d'|monadfn|rec|] b; return [i|(#{a'}) | (#{b'})|]
-      [d'|ask|isTree|] >>= \case
-        True -> return txt
-        False -> do
-          fIx :: Int <- lift get
-          lift $ put $ fIx + 1
-          lift $ lift $ tell $ Endo (txt :)
-          return [i|f#{fIx}|]
-    (,,) <$> convert init <*> convert final <*> mapM (convert . i2r) qis
+formatFormula ::
+  forall d q v r d'.
+  D.ToConstraint (FormatFormulaD_ d IO d' q v r) =>
+  IO (r -> IO T.Text, IO [(Int, T.Text)])
+formatFormula = do
+  let rec x = [d'|monadfn|rec|] x
+  vFIx <- newIORef (0 :: Int)
+  stack <- newIORef ([] :: [(Int, T.Text)])
+  let algebra x = do
+        [d'|ask|isTree|] >>= \case
+          True ->
+            case x of
+              LTrue -> return "kTrue"
+              LFalse -> return "kFalse"
+              State q -> return $ T.cons 's' (showT q)
+              Var v -> return $ T.cons 'a' (showT v)
+              Not !r -> do !r' <- rec r; return $ T.concat ["!(", r', ")"]
+              And !a !b -> do !a' <- rec a; !b' <- rec b; return $ T.concat ["(", a', ") & (", b', ")"]
+              Or !a !b -> do !a' <- rec a; !b' <- rec b; return $ T.concat ["(", a', ") | (", b', ")"]
+          False -> do
+            txt <- case x of
+              LTrue -> return "kTrue"
+              LFalse -> return "kFalse"
+              State q -> return $ T.cons 's' (showT q)
+              Var v -> return $ T.cons 'a' (showT v)
+              Not !r -> do !r' <- rec r; return $ T.concat ["!(", r', ")"]
+              And !a !b -> do !a' <- rec a; !b' <- rec b; return $ T.concat ["(", a', ") & (", b', ")"]
+              Or !a !b -> do !a' <- rec a; !b' <- rec b; return $ T.concat ["(", a', ") | (", b', ")"]
+            fIx <- lift $ readIORef vFIx
+            lift $ writeIORef vFIx $ fIx + 1
+            lift $ modifyIORef stack ((fIx, txt) :)
+            return $ do T.cons 'f' (T.pack (show fIx))
 
-  return $
-    [i|@kInitialFormula: #{init'}|] :
-    [i|@kFinalFormula: #{final'}|] :
-    zipWith (\n t -> [i|@s#{showT $ i2q n}: #{t}|]) [0 ..] qs'
-      ++ zipWith (\n t -> [i|@f#{n}: #{t}|]) [0 ..] (log `appEndo` [])
+  convert <- recur @ [d'|recur|] algebra
+  return (convert, readIORef stack)
+
+format ::
+  forall d q v r d'.
+  D.ToConstraint (FormatFormulaD d IO) =>
+  [g|r|] ->
+  [g|r|] ->
+  (Int, Int -> [g|q|], Int -> [g|r|], [g|q|] -> Int) ->
+  IO ()
+format init final (qCount, i2q, i2r, q2i) = do
+  (convert, getShared) <- formatFormula @d
+
+  TIO.putStr "@kInitialFormula: "
+  TIO.putStrLn =<< convert init
+  TIO.putStr "@kFinalFormula: "
+  TIO.putStrLn =<< convert final
+  for_ [0 .. qCount - 1] \i -> do
+    TIO.putStr "@s"
+    TIO.putStr (showT $ i2q i)
+    TIO.putStr ": "
+    TIO.putStrLn =<< convert (i2r i)
+
+  getShared >>= mapM_ \(i, txt) -> do
+    TIO.putStr "@f"
+    putStr (show i)
+    TIO.putStr ": "
+    TIO.putStrLn txt
+
+formatWithExplicitFinals ::
+  forall d f.
+  (D.ToConstraint (FormatFormulaD d IO), Foldable f) =>
+  [g|r|] ->
+  f [g|q|] ->
+  (Int, Int -> [g|q|], Int -> [g|r|], [g|q|] -> Int) ->
+  IO ()
+formatWithExplicitFinals init finals (qCount, i2q, i2r, q2i) = do
+  (convert, getShared) <- formatFormula @d
+
+  TIO.putStr "@kInitialFormula: "
+  TIO.putStrLn =<< convert init
+  let nonfinals =
+        accumArray (\_ _ -> False) True (0, qCount - 1) $
+          map ((,()) . q2i) $ toList finals
+  let nonfinals' = map i2q $ filter (nonfinals !) [0 .. qCount - 1]
+  let finalFormula = T.intercalate " & " $ nonfinals' <&> \q -> [i|!s#{showT q}|]
+  TIO.putStrLn [i|@kFinalFormula: #{finalFormula}|]
+  for_ [0 .. qCount - 1] \i -> do
+    TIO.putStr "@s"
+    TIO.putStr (showT $ i2q i)
+    TIO.putStr ": "
+    TIO.putStrLn =<< convert (i2r i)
+
+  getShared >>= mapM_ \(i, txt) -> do
+    TIO.putStr "@f"
+    putStr (show i)
+    TIO.putStr ": "
+    TIO.putStrLn txt
 
 parseIORef ::
-  forall s r r' d result.
+  forall r r' d result.
   ( r ~ Afa.IORef.Ref (Term T.Text T.Text)
   , d ~ IORefRemoveFinalsD T.Text T.Text r r'
   ) =>
@@ -226,7 +294,7 @@ parseIORef ::
 parseIORef = Afa.Convert.PrettyStranger2.parse @d
 
 formatIORef ::
-  forall s q v r r' d result.
+  forall q v r r' d result.
   ( r ~ Afa.IORef.Ref (Term q v)
   , d ~ IORefRemoveFinalsD q v r r'
   , ShowT q
@@ -235,7 +303,7 @@ formatIORef ::
   r ->
   r ->
   (Int, Int -> q, Int -> r, q -> Int) ->
-  IO [T.Text]
+  IO ()
 formatIORef = Afa.Convert.PrettyStranger2.format @d
 
 class ShowT a where
@@ -243,6 +311,15 @@ class ShowT a where
 
 instance ShowT T.Text where
   showT = id
+
+instance ShowT Word32 where
+  showT = T.pack . show
+
+instance ShowT Word8 where
+  showT = T.pack . show
+
+instance ShowT AfaC.Range16 where
+  showT (AfaC.Range16 a b) = [i|R#{a}_#{b}|]
 
 instance ShowT q => ShowT (SyncQs q) where
   showT (QState q) = [i|Q#{showT q}|]
@@ -252,3 +329,39 @@ instance (ShowT q, ShowT v) => ShowT (SyncVar q v) where
   showT (VVar v) = [i|V#{showT v}|]
   showT (QVar v) = [i|Q#{showT v}|]
   showT FVar = "F"
+
+formatRange16Nfa :: AfaC.Range16Nfa -> IO ()
+formatRange16Nfa (AfaC.Range16Nfa states initial finals) = do
+  TIO.putStrLn [i|@kInitialFormula: s#{initial}|]
+  let nonfinals =
+        accumArray (\_ _ -> False) True (0, fromIntegral (V.length states - 1)) $
+          map (,()) $ toList finals
+  let nonfinals' = filter (nonfinals !) (range $ bounds nonfinals)
+  let finals'
+        | V.length states == 0 = "kTrue"
+        | otherwise = T.intercalate " & " $ nonfinals' <&> \q -> [i|!s#{q}|]
+  TIO.putStrLn [i|@kFinalFormula: #{finals'}|]
+  states & itraverse \qi ts ->
+    for ts \(AfaC.ConjunctR16Q ranges qi') -> do
+      let ranges' =
+            T.intercalate " | " . toList $
+              ranges <&> \(AfaC.Range16 a b) -> [i|[#{a};#{b}]|]
+      TIO.putStrLn [i|@q#{qi}: (#{ranges'}) & s#{qi'}|]
+  return ()
+
+formatIORefWithExplicitFInals ::
+  forall q v r r' d result f.
+  ( r ~ Afa.IORef.Ref (Term q v)
+  , d ~ IORefRemoveFinalsD q v r r'
+  , ShowT q
+  , ShowT v
+  , Foldable f
+  ) =>
+  r ->
+  f q ->
+  (Int, Int -> q, Int -> r, q -> Int) ->
+  IO ()
+formatIORefWithExplicitFInals = Afa.Convert.PrettyStranger2.formatWithExplicitFinals @d
+
+instance ShowT q => ShowT (Qombo q) where
+  showT (Qombo n q) = [i|C#{n}_#{showT q}|]

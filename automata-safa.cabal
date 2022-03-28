@@ -34,6 +34,8 @@ library
     Afa.Ops.Randomize
     Afa.Ops.Boolean
     Afa.Separated
+    Afa.Negate
+    Afa.DnfStates
     Shaper
     Shaper.Helpers
     Lift
@@ -176,8 +178,10 @@ executable ltle-to-afa
     text ^>=1.2.4.1,
     stm ^>=2.5.0.0,
     split ^>=0.2.3.4,
+    composition ^>=1.0.2.2,
     composition-extra ^>=2.0.0,
     free ^>=5.1.7,
+    interpolate ^>=0.2.1,
     automata-safa,
     automata-safa:ltl,
     automata-safa:convert,
