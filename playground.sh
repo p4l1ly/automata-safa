@@ -24,11 +24,18 @@ cabal exec ltle-to-afa negate < playground/abcd.r.afa > playground/abcd-neg.r.af
 cabal exec ltle-to-afa negate < playground/abcdd.r.afa > playground/abcdd-neg.r.afa
 cabal exec ltle-to-afa neq playground/abcd.r.afa playground/abcdd.r.afa playground/abcd-neg.r.afa playground/abcdd-neg.r.afa > playground/abcd-abcdd-neq.r.afa
 
+cabal exec ltle-to-afa range16ToPretty < ../dantoni-symbolic/benchmarks/cox-a/5 > playground/cox-a5.afa
+cabal exec ltle-to-afa range16ToPretty < ../dantoni-symbolic/benchmarks/cox-b/5 > playground/cox-b5.afa
+cabal exec ltle-to-afa negate < playground/cox-b5.afa > playground/cox-b5-neg.afa
+cabal exec ltle-to-afa and playground/cox-a5.afa playground/cox-b5-neg.afa > playground/cox-inclusion-unsat5.afa
+
 mkdir -p playground/insimp
 mkdir -p playground/outsimp
 cp playground/abcd-abcdd-neq.afa playground/insimp/0
+cp playground/cox-inclusion-unsat5.afa playground/insimp/1
 cabal exec ltle-to-afa -- -i prettyStranger:playground/insimp -o afaBasicSimp:playground/outsimp
 cabal exec ltle-to-afa -- -i afa:playground/outsimp -o prettyStranger:playground
 rm -r playground/insimp
 rm -r playground/outsimp
 mv playground/0 playground/abcd-abcdd-neq-basicsimp.afa
+mv playground/1 playground/cox-inclusion-unsat5-basicsimp.afa

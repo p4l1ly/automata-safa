@@ -180,7 +180,7 @@ deserializeNfa2 (AfaC.Range16Nfa states init finals) = do
     for ts \(AfaC.ConjunctR16Q ranges q) -> do
       let a = foldr (Fix .: Or . Fix . Var) (Fix LFalse) ranges
       ar <- buildFix @ [g'|buildD|] a
-      qr <- [d'|monadfn|buildTree|] (State init)
+      qr <- [d'|monadfn|buildTree|] (State q)
       return (ar, qr)
   return (initR, finals, (V.length states, fromIntegral, (states' V.!), fromIntegral))
 

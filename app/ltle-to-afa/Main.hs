@@ -409,6 +409,35 @@ removeFinalsMain = do
   hPutStrLn stderr "formatting"
   PrettyStranger2.formatIORef init3 final3 qs3
 
+removeFinalsPrettyMain ::
+  forall d t r buildTree buildD q' v' r'.
+  ( t ~ T.Text
+  , q' ~ Finalful.SyncQs t
+  , v' ~ Finalful.SyncVar t t
+  , r' ~ Afa.IORef.Ref (STerm.Term q' v')
+  , d ~ Afa.IORef.IORefRemoveFinalsD t t r r
+  , buildTree ~ Shaper.Mk (Shaper.MfnK (STerm.Term q' v' r') r') [d|buildTree|]
+  , buildD ~ (TypeDict.Name "build" buildTree :+: d)
+  ) =>
+  IO ()
+removeFinalsPrettyMain = do
+  txt <- getContents
+  hPutStrLn stderr "parsing"
+  (init2, final2, qs) <- PrettyStranger2.parseIORef $ PrettyStranger2.parseDefinitions $ T.pack txt
+  hPutStrLn stderr "separating"
+  Just qs1 <- Afa.IORef.trySeparateQTransitions qs
+  hPutStrLn stderr "removing finals"
+  (init3, qs2) <- Afa.IORef.removeFinalsHind init2 final2 qs1
+  hPutStrLn stderr "unseparating"
+  qs3@(qCount, i2q, _, _) <- Afa.IORef.unseparateQTransitions qs2
+  true <- Shaper.monadfn @buildTree STerm.LTrue
+  hPutStrLn stderr "final3"
+  let final3free = foldr -$ Pure true -$ [0 .. qCount - 1] $ \qi r ->
+        Free $ STerm.And (Free $ STerm.Not $ Free $ STerm.State $ i2q qi) r
+  final3 <- Shaper.Helpers.buildFree @buildD final3free
+  hPutStrLn stderr "formatting"
+  PrettyStranger2.formatIORef init3 final3 qs3
+
 qdnfMain :: IO ()
 qdnfMain = do
   txt <- getContents
@@ -510,6 +539,7 @@ main = do
   args <- getArgs
   case args of
     ["strangerRemoveFinals"] -> removeFinalsMain
+    ["removeFinals"] -> removeFinalsPrettyMain
     ["qdnf"] -> qdnfMain
     ["range16ToPrettyRangeVars"] -> range16ToPrettyRangeVarsMain
     ["range16ToPretty"] -> range16ToPrettyMain
