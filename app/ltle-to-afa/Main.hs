@@ -452,14 +452,28 @@ qdnfMain = do
   hPutStrLn stderr "formatting"
   PrettyStranger2.formatIORef init3 final3 qs3
 
-range16ToPrettyRangeVarsMain :: IO ()
+range16ToPrettyRangeVarsMain ::
+  forall d buildTree buildD r'.
+  ( r' ~ Afa.IORef.Ref (STerm.Term Word32 Range16Nfa.Range16)
+  , d ~ Afa.IORef.IORefRemoveFinalsD Void Void Void Void
+  , buildTree ~ Shaper.Mk (Shaper.MfnK (STerm.Term Word32 Range16Nfa.Range16 r') r') [d|buildTree|]
+  , buildD ~ (TypeDict.Name "build" buildTree :+: d)
+  ) =>
+  IO ()
 range16ToPrettyRangeVarsMain = do
   hPutStrLn stderr "parsing"
   nfa <- Range16Nfa.hReadNfaRaw stdin
-  (init, final, states) <- Range16Nfa.deserializeToIORef nfa
+  (init, finals, states) <- Range16Nfa.deserializeToIORef nfa
   hPutStrLn stderr "formatting"
-  states' <- Afa.IORef.unseparateQTransitions states
-  PrettyStranger2.formatIORefWithExplicitFInals init final states'
+  states'@(qCount, i2q, i2r, q2i) <- Afa.IORef.unseparateQTransitions states
+  let nonfinals =
+        accumArray (\_ _ -> False) True (0, qCount - 1) $
+          map ((,()) . q2i) $ toList finals
+  let nonfinals' =
+        foldr (Fix .: STerm.And . Fix . STerm.Not . Fix . STerm.State . i2q) (Fix STerm.LTrue) $
+          filter (nonfinals !) [0 .. qCount - 1]
+  final' <- Shaper.Helpers.buildFix @buildD nonfinals'
+  PrettyStranger2.formatIORef init final' states'
 
 range16ToPrettyMain ::
   forall d buildTree buildD r'.
@@ -485,7 +499,14 @@ range16ToPrettyMain = do
   (init2, final2, states2) <- Range16Nfa.convertRangeIORef (init1, final, states1)
   PrettyStranger2.formatIORef init2 final2 states2
 
-negateLang :: IO ()
+negateLang ::
+  forall d buildTree buildD r'.
+  ( r' ~ Afa.IORef.Ref (STerm.Term T.Text T.Text)
+  , d ~ Afa.IORef.IORefRemoveFinalsD Void Void Void Void
+  , buildTree ~ Shaper.Mk (Shaper.MfnK (STerm.Term T.Text T.Text r') r') [d|buildTree|]
+  , buildD ~ (TypeDict.Name "build" buildTree :+: d)
+  ) =>
+  IO ()
 negateLang = do
   hPutStrLn stderr "parsing"
   txt <- TIO.hGetContents stdin
@@ -496,9 +517,16 @@ negateLang = do
   let finals = accumArray (\_ _ -> False) True (0, qCount - 1) $ map ((,()) . q2i) nonfinals
   let finals' = map i2q $ filter (finals !) [0 .. qCount - 1]
   hPutStrLn stderr "negating"
-  (init1, finals1, states1) <- Afa.IORef.negateSeparated init finals' qs
+  (init1, finals1, states1@(qCount, i2q, i2r, q2i)) <- Afa.IORef.negateSeparated init finals' qs
   hPutStrLn stderr "formatting"
-  PrettyStranger2.formatIORefWithExplicitFInals init1 finals1 states1
+  let nonfinals =
+        accumArray (\_ _ -> False) True (0, qCount - 1) $
+          map ((,()) . q2i) $ toList finals1
+  let nonfinals' =
+        foldr (Fix .: STerm.And . Fix . STerm.Not . Fix . STerm.State . i2q) (Fix STerm.LTrue) $
+          filter (nonfinals !) [0 .. qCount - 1]
+  final' <- Shaper.Helpers.buildFix @buildD nonfinals'
+  PrettyStranger2.formatIORef init1 final' states1
 
 comboOp ::
   forall d t r buildTree buildD q' r' freeTerm.
@@ -524,15 +552,23 @@ comboOp op paths = do
     let finals = accumArray (\_ _ -> False) True (0, qCount - 1) $ map ((,()) . q2i) nonfinals
     let finals' = map i2q $ filter (finals !) [0 .. qCount - 1]
     return (init, finals', qs)
-  (inits, finals, states) <- Afa.IORef.qombo afas
+  (inits, finals, states@(qCount, i2q, i2r, q2i)) <- Afa.IORef.qombo afas
   let initFree = op (map Pure inits)
   init <- Shaper.Helpers.buildFree @buildD initFree
-  PrettyStranger2.formatIORefWithExplicitFInals init finals states
+  let nonfinals =
+        accumArray (\_ _ -> False) True (0, qCount - 1) $
+          map ((,()) . q2i) $ toList finals
+  let nonfinals' =
+        foldr (Fix .: STerm.And . Fix . STerm.Not . Fix . STerm.State . i2q) (Fix STerm.LTrue) $
+          filter (nonfinals !) [0 .. qCount - 1]
+  final' <- Shaper.Helpers.buildFix @buildD nonfinals'
+  PrettyStranger2.formatIORef init final' states
 
 parseFormat :: IO ()
 parseFormat = do
-  txt <- getContents
-  print $ PrettyStranger.parseAfa $ T.pack txt
+  txt <- TIO.getContents
+  (init, final, states) <- PrettyStranger2.parseIORef (PrettyStranger2.parseDefinitions txt)
+  PrettyStranger2.formatIORef init final states
 
 main :: IO ()
 main = do

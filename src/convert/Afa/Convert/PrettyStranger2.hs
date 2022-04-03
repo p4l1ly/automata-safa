@@ -181,7 +181,12 @@ orize defs =
 type FormatFormulaD d m =
   FormatFormulaD_ d m (FormatFormulaA d (Term [g|q|] [g|v|] [g|r|]) [g|r|]) [g|q|] [g|v|] [g|r|]
 type FormatFormulaA (d :: TypeDict) x r =
-  FormatFormulaA1 (Name "recur" (MkN (RecK r x T.Text) [d|any|]) :+: End) r
+  FormatFormulaA1
+    ( Name "recur" (MkN (RecK r x T.Text) [d|any|])
+        :+: Name "deref" (Mk (MfnK r (Term [g|q|] [g|v|] [g|r|])) [d|deref|])
+        :+: End
+    )
+    r
 type FormatFormulaA1 d' r =
   Name "isTree" (Mk IsTree [d'|recur|])
     :+: Name "rec" (Mk (MfnK r T.Text) [d'|recur|])
@@ -191,6 +196,7 @@ type FormatFormulaD_ d (m :: * -> *) (d' :: TypeDict) (q :: *) (v :: *) (r :: *)
   D.Name "aliases" (q ~ [g|q|], v ~ [g|v|], r ~ [g|r|], d' ~ FormatFormulaA d (Term q v r) r)
     :|: D.Name "show" (ShowT v, ShowT q)
     :|: D.Name "rec" (RecRecur [d'|recur|] m)
+    :|: D.Name "deref" (MonadFn [d'|deref|] m)
     :|: D.End
 formatFormula ::
   forall d q v r d'.
@@ -203,23 +209,95 @@ formatFormula = do
   let algebra x = do
         [d'|ask|isTree|] >>= \case
           True ->
+            -- case x of
+            --   LTrue -> return "kTrue"
+            --   LFalse -> return "kFalse"
+            --   State q -> return $ T.cons 's' (showT q)
+            --   Var v -> return $ T.cons 'a' (showT v)
+            --   Not !r -> do !r' <- rec r; return $ T.concat ["!(", r', ")"]
+            --   And !a !b -> do !a' <- rec a; !b' <- rec b; return $ T.concat ["(", a', ") & (", b', ")"]
+            --   Or !a !b -> do !a' <- rec a; !b' <- rec b; return $ T.concat ["(", a', ") | (", b', ")"]
             case x of
               LTrue -> return "kTrue"
               LFalse -> return "kFalse"
               State q -> return $ T.cons 's' (showT q)
               Var v -> return $ T.cons 'a' (showT v)
-              Not !r -> do !r' <- rec r; return $ T.concat ["!(", r', ")"]
-              And !a !b -> do !a' <- rec a; !b' <- rec b; return $ T.concat ["(", a', ") & (", b', ")"]
-              Or !a !b -> do !a' <- rec a; !b' <- rec b; return $ T.concat ["(", a', ") | (", b', ")"]
+              Not !r -> do
+                !r' <- rec r
+                rt <- monadfn @(Inc [d'|deref|]) r
+                case rt of
+                  And _ _ -> return $ T.concat ["!(", r', ")"]
+                  Or _ _ -> return $ T.concat ["!(", r', ")"]
+                  _ -> return $ T.cons '!' r'
+              And !a !b -> do
+                !a' <- rec a
+                !b' <- rec b
+                at <- monadfn @(Inc [d'|deref|]) a
+                bt <- monadfn @(Inc [d'|deref|]) b
+                let a'' = case at of
+                      Or _ _ -> T.concat ["(", a', ")"]
+                      _ -> a'
+                let b'' = case bt of
+                      Or _ _ -> T.concat ["(", b', ")"]
+                      _ -> b'
+                return $ T.concat [a'', " & ", b'']
+              Or !a !b -> do
+                !a' <- rec a
+                !b' <- rec b
+                at <- monadfn @(Inc [d'|deref|]) a
+                bt <- monadfn @(Inc [d'|deref|]) b
+                let a'' = case at of
+                      And _ _ -> T.concat ["(", a', ")"]
+                      _ -> a'
+                let b'' = case bt of
+                      And _ _ -> T.concat ["(", b', ")"]
+                      _ -> b'
+                return $ T.concat [a'', " | ", b'']
           False -> do
+            -- txt <- case x of
+            --   LTrue -> return "kTrue"
+            --   LFalse -> return "kFalse"
+            --   State q -> return $ T.cons 's' (showT q)
+            --   Var v -> return $ T.cons 'a' (showT v)
+            --   Not !r -> do !r' <- rec r; return $ T.concat ["!(", r', ")"]
+            --   And !a !b -> do !a' <- rec a; !b' <- rec b; return $ T.concat ["(", a', ") & (", b', ")"]
+            --   Or !a !b -> do !a' <- rec a; !b' <- rec b; return $ T.concat ["(", a', ") | (", b', ")"]
             txt <- case x of
               LTrue -> return "kTrue"
               LFalse -> return "kFalse"
               State q -> return $ T.cons 's' (showT q)
               Var v -> return $ T.cons 'a' (showT v)
-              Not !r -> do !r' <- rec r; return $ T.concat ["!(", r', ")"]
-              And !a !b -> do !a' <- rec a; !b' <- rec b; return $ T.concat ["(", a', ") & (", b', ")"]
-              Or !a !b -> do !a' <- rec a; !b' <- rec b; return $ T.concat ["(", a', ") | (", b', ")"]
+              Not !r -> do
+                !r' <- rec r
+                rt <- monadfn @(Inc [d'|deref|]) r
+                case rt of
+                  And _ _ -> return $ T.concat ["!(", r', ")"]
+                  Or _ _ -> return $ T.concat ["!(", r', ")"]
+                  _ -> return $ T.cons '!' r'
+              And !a !b -> do
+                !a' <- rec a
+                !b' <- rec b
+                at <- monadfn @(Inc [d'|deref|]) a
+                bt <- monadfn @(Inc [d'|deref|]) b
+                let a'' = case at of
+                      Or _ _ -> T.concat ["(", a', ")"]
+                      _ -> a'
+                let b'' = case bt of
+                      Or _ _ -> T.concat ["(", b', ")"]
+                      _ -> b'
+                return $ T.concat [a'', " & ", b'']
+              Or !a !b -> do
+                !a' <- rec a
+                !b' <- rec b
+                at <- monadfn @(Inc [d'|deref|]) a
+                bt <- monadfn @(Inc [d'|deref|]) b
+                let a'' = case at of
+                      And _ _ -> T.concat ["(", a', ")"]
+                      _ -> a'
+                let b'' = case bt of
+                      And _ _ -> T.concat ["(", b', ")"]
+                      _ -> b'
+                return $ T.concat [a'', " | ", b'']
             fIx <- lift $ readIORef vFIx
             lift $ writeIORef vFIx $ fIx + 1
             lift $ modifyIORef stack ((fIx, txt) :)
@@ -242,36 +320,6 @@ format init final (qCount, i2q, i2r, q2i) = do
   TIO.putStrLn =<< convert init
   TIO.putStr "@kFinalFormula: "
   TIO.putStrLn =<< convert final
-  for_ [0 .. qCount - 1] \i -> do
-    TIO.putStr "@s"
-    TIO.putStr (showT $ i2q i)
-    TIO.putStr ": "
-    TIO.putStrLn =<< convert (i2r i)
-
-  getShared >>= mapM_ \(i, txt) -> do
-    TIO.putStr "@f"
-    putStr (show i)
-    TIO.putStr ": "
-    TIO.putStrLn txt
-
-formatWithExplicitFinals ::
-  forall d f.
-  (D.ToConstraint (FormatFormulaD d IO), Foldable f) =>
-  [g|r|] ->
-  f [g|q|] ->
-  (Int, Int -> [g|q|], Int -> [g|r|], [g|q|] -> Int) ->
-  IO ()
-formatWithExplicitFinals init finals (qCount, i2q, i2r, q2i) = do
-  (convert, getShared) <- formatFormula @d
-
-  TIO.putStr "@kInitialFormula: "
-  TIO.putStrLn =<< convert init
-  let nonfinals =
-        accumArray (\_ _ -> False) True (0, qCount - 1) $
-          map ((,()) . q2i) $ toList finals
-  let nonfinals' = map i2q $ filter (nonfinals !) [0 .. qCount - 1]
-  let finalFormula = T.intercalate " & " $ nonfinals' <&> \q -> [i|!s#{showT q}|]
-  TIO.putStrLn [i|@kFinalFormula: #{finalFormula}|]
   for_ [0 .. qCount - 1] \i -> do
     TIO.putStr "@s"
     TIO.putStr (showT $ i2q i)
@@ -348,20 +396,6 @@ formatRange16Nfa (AfaC.Range16Nfa states initial finals) = do
               ranges <&> \(AfaC.Range16 a b) -> [i|[#{a};#{b}]|]
       TIO.putStrLn [i|@q#{qi}: (#{ranges'}) & s#{qi'}|]
   return ()
-
-formatIORefWithExplicitFInals ::
-  forall q v r r' d result f.
-  ( r ~ Afa.IORef.Ref (Term q v)
-  , d ~ IORefRemoveFinalsD q v r r'
-  , ShowT q
-  , ShowT v
-  , Foldable f
-  ) =>
-  r ->
-  f q ->
-  (Int, Int -> q, Int -> r, q -> Int) ->
-  IO ()
-formatIORefWithExplicitFInals = Afa.Convert.PrettyStranger2.formatWithExplicitFinals @d
 
 instance ShowT q => ShowT (Qombo q) where
   showT (Qombo n q) = [i|C#{n}_#{showT q}|]
