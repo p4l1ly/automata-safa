@@ -41,6 +41,7 @@ import Lift
 import Shaper (FRecK, FunRecur, IsTree, MLift (mlift), MfnK, Mk, MkN, MonadFn (monadfn), RecK, RecTrans, Recur0 (recur))
 import qualified Shaper
 import Shaper.Helpers (buildFree)
+import System.IO
 import System.Mem.StableName
 import TypeDict
 
@@ -390,8 +391,37 @@ trySeparateQTransitions (qCount, i2q, i2r, q2i) = do
   case result of
     Left (term :: Term q v (Separ.AQ r)) -> do
       let term' = getCompose $ Compose term $> ()
-      putStrLn ("Error: " ++ show term') $> Nothing
+      hPutStrLn stderr ("Error: " ++ show term') $> Nothing
     Right x -> return (Just x)
+
+-- this could be more generic and reside in Afa.Separated
+boomSeparateQTransitions ::
+  forall q v r r' d sepF d' buildTree.
+  ( r ~ Ref (Term q v)
+  , d ~ IORefRemoveFinalsD q v r r'
+  , sepF ~ MkN (RecK r (Term q v r) (Separ.AQ r)) [d|lock|]
+  , d' ~ (Name "rec" sepF :+: LiftTags d)
+  , buildTree ~ Mk (MfnK (Term q v r) r) [d|buildTree|]
+  , Show q
+  , Show v
+  ) =>
+  (Int, Int -> q, Int -> r, q -> Int) ->
+  IO (Int, Int -> q, Int -> [(r, r)], q -> Int)
+boomSeparateQTransitions (qCount, i2q, i2r, q2i) = do
+  rTrue <- monadfn @buildTree LTrue
+  separ <- recur @sepF (Separ.boomSeparateAlg @d')
+  i2r' <-
+    listArray (0, qCount - 1) <$> for [0 .. qCount - 1] \(i2r -> r) ->
+      separ r <&> \case
+        Separ.A ref -> [(ref, rTrue)]
+        Separ.Q ref -> [(rTrue, ref)]
+        Separ.AQAnd ref ref' -> [(ref, ref')]
+        Separ.AQOr aq1s ->
+          aq1s <&> \case
+            Separ.A1 ref -> (ref, rTrue)
+            Separ.Q1 ref -> (rTrue, ref)
+            Separ.AQAnd1 ref ref' -> (ref, ref')
+  return (qCount, i2q, (i2r' !), q2i)
 
 removeFinalsHind ::
   forall q v r r' d.

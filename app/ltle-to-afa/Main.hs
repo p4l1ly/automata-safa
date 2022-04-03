@@ -425,7 +425,7 @@ removeFinalsPrettyMain = do
   hPutStrLn stderr "parsing"
   (init2, final2, qs) <- PrettyStranger2.parseIORef $ PrettyStranger2.parseDefinitions $ T.pack txt
   hPutStrLn stderr "separating"
-  Just qs1 <- Afa.IORef.trySeparateQTransitions qs
+  Just qs1 <- Afa.IORef.trySeparateQTransitions qs >>= \case
   hPutStrLn stderr "removing finals"
   (init3, qs2) <- Afa.IORef.removeFinalsHind init2 final2 qs1
   hPutStrLn stderr "unseparating"
@@ -438,6 +438,32 @@ removeFinalsPrettyMain = do
   hPutStrLn stderr "formatting"
   PrettyStranger2.formatIORef init3 final3 qs3
 
+removeFinalsNonsepMain ::
+  forall d t r buildTree buildD q' v' r'.
+  ( t ~ T.Text
+  , q' ~ Finalful.SyncQs t
+  , v' ~ Finalful.SyncVar t t
+  , r' ~ Afa.IORef.Ref (STerm.Term q' v')
+  , d ~ Afa.IORef.IORefRemoveFinalsD t t r r
+  , buildTree ~ Shaper.Mk (Shaper.MfnK (STerm.Term q' v' r') r') [d|buildTree|]
+  , buildD ~ (TypeDict.Name "build" buildTree :+: d)
+  ) =>
+  IO ()
+removeFinalsPrettyNonsepMain = do
+  txt <- getContents
+  hPutStrLn stderr "parsing"
+  (init2, final2, qs) <- PrettyStranger2.parseIORef $ PrettyStranger2.parseDefinitions $ T.pack txt
+  hPutStrLn stderr "separating"
+  hPutStrLn stderr "removing finals nonsep"
+  (init2, qs2@(qCount, i2q, _, _)) <- Afa.IORef.removeFinals init2 final2 qs
+  true <- Shaper.monadfn @buildTree STerm.LTrue
+  hPutStrLn stderr "final3"
+  let final2free = foldr -$ Pure true -$ [0 .. qCount - 1] $ \qi r ->
+        Free $ STerm.And (Free $ STerm.Not $ Free $ STerm.State $ i2q qi) r
+  final2 <- Shaper.Helpers.buildFree @buildD final2free
+  hPutStrLn stderr "formatting"
+  PrettyStranger2.formatIORef init2 final2 qs2
+
 qdnfMain :: IO ()
 qdnfMain = do
   txt <- getContents
@@ -447,6 +473,18 @@ qdnfMain = do
   Just qs1 <- Afa.IORef.trySeparateQTransitions qs
   hPutStrLn stderr "toQDnf"
   qs2 <- Afa.IORef.toQDnf qs1
+  hPutStrLn stderr "unseparating"
+  qs3 <- Afa.IORef.unseparateQTransitions qs2
+  hPutStrLn stderr "formatting"
+  PrettyStranger2.formatIORef init3 final3 qs3
+
+boomSeparateMain :: IO ()
+boomSeparateMain = do
+  txt <- getContents
+  hPutStrLn stderr "parsing"
+  (init3, final3, qs) <- PrettyStranger2.parseIORef $ PrettyStranger2.parseDefinitions $ T.pack txt
+  hPutStrLn stderr "separating"
+  qs1 <- Afa.IORef.boomSeparateQTransitions qs
   hPutStrLn stderr "unseparating"
   qs3 <- Afa.IORef.unseparateQTransitions qs2
   hPutStrLn stderr "formatting"
@@ -570,13 +608,29 @@ parseFormat = do
   (init, final, states) <- PrettyStranger2.parseIORef (PrettyStranger2.parseDefinitions txt)
   PrettyStranger2.formatIORef init final states
 
+treeRepr ::
+  forall t d.
+  ( t ~ T.Text
+  , d ~ Afa.IORef.IORefRemoveFinalsD t t (Afa.IORef.Ref (STerm.Term t t)) Void
+  ) =>
+  IO ()
+treeRepr = do
+  hPutStrLn stderr "parsing"
+  txt <- TIO.hGetContents stdin
+  afa <- PrettyStranger2.parseIORef (PrettyStranger2.parseDefinitions txt)
+  afa' <- Negate.unInitState @d afa
+  (init, final, states) <- Negate.unshare @d afa'
+  PrettyStranger2.formatIORef init final states
+
 main :: IO ()
 main = do
   args <- getArgs
   case args of
     ["strangerRemoveFinals"] -> removeFinalsMain
     ["removeFinals"] -> removeFinalsPrettyMain
+    ["removeFinalsNonsep"] -> removeFinalsPrettyNonsepMain
     ["qdnf"] -> qdnfMain
+    ["boomSeparate"] -> boomSeparateMain
     ["range16ToPrettyRangeVars"] -> range16ToPrettyRangeVarsMain
     ["range16ToPretty"] -> range16ToPrettyMain
     ["parseFormat"] -> parseFormat
@@ -585,6 +639,7 @@ main = do
     ("or" : paths) -> comboOp (foldr1 $ Free .: STerm.Or) paths
     ("neq" : paths) -> (`comboOp` paths) \[a, b, na, nb] ->
       Free $ STerm.Or (Free $ STerm.And a nb) (Free $ STerm.And na b)
+    ["treeRepr"] -> treeRepr
     _ -> do
       (Opts readers writers) <-
         execParser $

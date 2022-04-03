@@ -7,6 +7,8 @@
 {-# LANGUAGE QuasiQuotes #-}
 {-# LANGUAGE KindSignatures #-}
 {-# LANGUAGE BlockArguments #-}
+{-# LANGUAGE TypeFamilies #-}
+{-# LANGUAGE LambdaCase #-}
 
 module Afa.Negate where
 
@@ -15,8 +17,8 @@ import Shaper.Helpers (BuildD, BuildInheritShareD, buildInheritShare)
 import Afa.Finalful.STerm (Term (..), QVR(Q), create, Create, Creation)
 import qualified DepDict as D
 import TypeDict
-    ( d, g, d', g', Named(Name), TypeDict((:+:)), TypeDict(End) )
-import Shaper (MonadFn(monadfn), ask, Mk, IsTree, MfnK, FRecK, FunRecur, funRecur)
+    ( d, g, d', g', Named(Name), TypeDict((:+:)), TypeDict(End, LiftTags) )
+import Shaper (MonadFn(monadfn), ask, Mk, IsTree, MfnK, FRecK, FunRecur, funRecur, Recur, MkN, RecK, Recur0(recur))
 import DepDict (DepDict((:|:)))
 import Data.Traversable (for)
 import Data.Function.Apply ((-$))
@@ -26,6 +28,7 @@ import Data.Array.MArray
 import Data.Array.IO (IOArray)
 import Data.Array (listArray, (!), Array)
 import Data.Array.Unsafe (unsafeFreeze)
+import Lift (K(K))
 
 type DeMorganAlgD d m = DeMorganAlgD_ d m (DeMorganAlgA d [g|q|] [g|v|] [g|r|]) [g|q|] [g|v|] [g|r|]
 type DeMorganAlgA d q v r =  -- keyword aliases
@@ -118,3 +121,55 @@ qombo afas = do
   i2qArr' :: Array Int (Qombo q) <- unsafeFreeze i2qArr
 
   return (inits, finals, (totalQCount, (i2qArr' !), (qtsArr' !), q2i))
+
+
+type UnshareAlgD d f r m = UnshareAlgD_ d m (UnshareAlgA d f r) f r
+type UnshareAlgA d f r =  -- keyword aliases
+  Name "rec" (Mk (MfnK r r) [d|rec|])
+    :+: Name "buildTree" (Mk (MfnK (f r) r) [d|buildTree|])
+    :+: End
+type UnshareAlgD_ d m d' f r =
+  D.Name "aliases" (d' ~ UnshareAlgA d f r)
+  :|: D.Name "rec" (D.Name "rec" (MonadFn [d'|rec|] m) :|: D.End)
+  :|: D.Name "build" (MonadFn [d'|buildTree|] m)
+  :|: D.End
+unshareAlg ::
+  forall d m d' f r.
+  (D.ToConstraint (UnshareAlgD_ d m d' f r), Traversable f) =>
+  f r -> m r
+unshareAlg fr = mapM [d'|monadfn|rec|] fr >>= [d'|monadfn|buildTree|]
+
+type UnshareA d q v r = Name "recK" (MkN (RecK r (Term q v r) r) [d|any|]) :+: End
+type UnshareD_ d m d' q v r =
+  D.Name "aliases" (d' ~ UnshareA d q v r, q ~ [g|q|], v ~ [g|v|], r ~ [g|r|])
+    :|: D.Name "rec"
+          ( D.Name "" (Recur [d'|recK|] m)
+              :|: D.Remove "rec" (UnshareAlgD d (Term q v) r m)
+          )
+    :|: D.End
+unshare ::
+  forall d m d' q v r n x.
+  (D.ToConstraint (UnshareD_ d m d' q v r), [d|buildTree|] ~ 'K n x) =>  -- TODO explicit Inc invariant
+  (r, r, (Int, Int -> q, Int -> r, q -> Int)) ->
+  m (r, r, (Int, Int -> q, Int -> r, q -> Int))
+unshare (init, final, (qCount, i2q, i2r, q2i)) = do
+  convert <- [d'|recur|recK|] (unshareAlg @(Name "rec" [d'|recK|] :+: LiftTags d))
+  init' <- convert init
+  final' <- convert final
+  i2r' <- listArray (0, qCount - 1) <$> for [0 .. qCount - 1] (convert . i2r)
+  return (init', final', (qCount, i2q, (i2r' !), q2i))
+
+type UnInitStateA d q v r = Name "deref" (Mk (MfnK r (Term q v r)) [d|deref|]) :+: End
+type UnInitStateD_ d m d' q v r =
+  D.Name "aliases" (d' ~ UnInitStateA d q v r, q ~ [g|q|], v ~ [g|v|], r ~ [g|r|])
+    :|: D.Name "deref" (MonadFn [d'|deref|] m)
+    :|: D.End
+unInitState ::
+  forall d m d' q v r n x.
+  D.ToConstraint (UnInitStateD_ d m d' q v r) =>
+  (r, r, (Int, Int -> q, Int -> r, q -> Int)) ->
+  m (r, r, (Int, Int -> q, Int -> r, q -> Int))
+unInitState afa@(init, final, states@(_, _, i2r, q2i)) = do
+  [d'|monadfn|deref|] init >>= \case
+    State q -> return (i2r $ q2i q, final, states)
+    _ -> return afa
