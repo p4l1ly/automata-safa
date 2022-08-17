@@ -13,39 +13,40 @@ cabal exec ltle-to-afa and playground/0.afa playground/1.afa playground/2.afa pl
 cabal exec ltle-to-afa negate < playground/abcd.afa > playground/abcd-neg.afa
 cabal exec ltle-to-afa negate < playground/abcdd.afa > playground/abcdd-neg.afa
 cabal exec ltle-to-afa neq playground/abcd.afa playground/abcdd.afa playground/abcd-neg.afa playground/abcdd-neg.afa > playground/abcd-abcdd-neq.afa
-cabal exec ltle-to-afa removeFinals < playground/abcd-abcdd-neq.afa > playground/abcd-abcdd-neq-nofinals.afa
-
-cabal exec ltle-to-afa range16ToPrettyRangeVars < ../data/email75/range16nfa/0 > playground/0.r.afa
-cabal exec ltle-to-afa range16ToPrettyRangeVars < ../data/email75/range16nfa/1 > playground/1.r.afa
-cabal exec ltle-to-afa range16ToPrettyRangeVars < ../data/email75/range16nfa/2 > playground/2.r.afa
-cabal exec ltle-to-afa range16ToPrettyRangeVars < ../data/email75/range16nfa/3 > playground/3.r.afa
-cabal exec ltle-to-afa and playground/0.r.afa playground/1.r.afa playground/2.r.afa playground/3.r.afa > playground/abcd.r.afa
-cabal exec ltle-to-afa and playground/0.r.afa playground/1.r.afa playground/2.r.afa playground/3.r.afa playground/3.r.afa > playground/abcdd.r.afa
-cabal exec ltle-to-afa negate < playground/abcd.r.afa > playground/abcd-neg.r.afa
-cabal exec ltle-to-afa negate < playground/abcdd.r.afa > playground/abcdd-neg.r.afa
-cabal exec ltle-to-afa neq playground/abcd.r.afa playground/abcdd.r.afa playground/abcd-neg.r.afa playground/abcdd-neg.r.afa > playground/abcd-abcdd-neq.r.afa
-cabal exec ltle-to-afa removeFinals < playground/abcd-abcdd-neq.r.afa > playground/abcd-abcdd-neq-nofinals.r.afa
+cabal exec ltle-to-afa boomSeparate < playground/abcd-abcdd-neq.afa > playground/abcd-abcdd-neq-boomsep.afa
+cabal exec ltle-to-afa removeFinals < playground/abcd-abcdd-neq-boomsep.afa > playground/abcd-abcdd-neq-boomsep-nofinals.afa
 
 cabal exec ltle-to-afa range16ToPretty < ../dantoni-symbolic/benchmarks/cox-a/5 > playground/cox-a5.afa
 cabal exec ltle-to-afa range16ToPretty < ../dantoni-symbolic/benchmarks/cox-b/5 > playground/cox-b5.afa
 cabal exec ltle-to-afa negate < playground/cox-b5.afa > playground/cox-b5-neg.afa
 cabal exec ltle-to-afa and playground/cox-a5.afa playground/cox-b5-neg.afa > playground/cox-inclusion-unsat5.afa
+cabal exec ltle-to-afa boomSeparate < playground/cox-inclusion-unsat5.afa > playground/cox-inclusion-unsat5-boomsep.afa
+cabal exec ltle-to-afa removeFinals < playground/cox-inclusion-unsat5-boomsep.afa > playground/cox-inclusion-unsat5-boomsep-nofinals.afa
 
 mkdir -p playground/insimp
 mkdir -p playground/outsimp
-mkdir -p playground/outdnf
-mkdir -p playground/outdnf
-cp playground/abcd-abcdd-neq-nofinals.afa playground/insimp/0
-cp playground/cox-inclusion-unsat5.afa playground/insimp/1
+cp playground/abcd-abcdd-neq-boomsep-nofinals.afa playground/insimp/0
+cp playground/cox-inclusion-unsat5-boomsep-nofinals.afa playground/insimp/1
 cabal exec ltle-to-afa -- -i prettyStranger:playground/insimp -o afaBasicSimp:playground/outsimp
 rm -r playground/insimp
 cabal exec ltle-to-afa -- -i afa:playground/outsimp -o prettyStranger:playground
-cp playground/0 playground/abcd-abcdd-neq-nofinals-basicsimp.afa
-mv playground/1 playground/cox-inclusion-unsat5-basicsimp.afa
-cabal exec ltle-to-afa -- -i afa:playground/outsimp -o dnfsepafaDelaying:playground/outdnf
 rm -r playground/outsimp
-cabal exec ltle-to-afa -- -i sepafa:playground/outdnf -o prettyStranger:playground
-mv playground/0 playground/abcd-abcdd-neq-nofinals-basicsimp-dnf.afa
-rm -r playground/outdnf
-cabal exec ltle-to-afa treeRepr < playground/abcd-abcdd-neq-nofinals-basicsimp-dnf.afa > playground/abcd-abcdd-neq-nofinals-basicsimp-dnf-tree.afa
-cabal exec ltle-to-afa treeRepr < playground/cox-inclusion-unsat5-basicsimp.afa > playground/cox-inclusion-unsat5-basicsimp-tree.afa
+mv playground/0 playground/abcd-abcdd-neq-boomsep-nofinals-basicsimp.afa
+mv playground/1 playground/cox-inclusion-unsat5-boomsep-nofinals-basicsimp.afa
+
+cabal exec ltle-to-afa qdnf < playground/abcd-abcdd-neq-boomsep-nofinals-basicsimp.afa > playground/abcd-abcdd-neq-boomsep-nofinals-basicsimp-qdnf.afa
+cabal exec ltle-to-afa qdnf < playground/cox-inclusion-unsat5-boomsep-nofinals-basicsimp.afa > playground/cox-inclusion-unsat5-boomsep-nofinals-basicsimp-qdnf.afa
+
+mkdir -p playground/insimp
+mkdir -p playground/outsimp
+cp playground/abcd-abcdd-neq-boomsep-nofinals-basicsimp-qdnf.afa playground/insimp/0
+cp playground/cox-inclusion-unsat5-boomsep-nofinals-basicsimp-qdnf.afa playground/insimp/1
+cabal exec ltle-to-afa -- -i prettyStranger:playground/insimp -o afaBasicSimp:playground/outsimp
+rm -r playground/insimp
+cabal exec ltle-to-afa -- -i afa:playground/outsimp -o prettyStranger:playground
+rm -r playground/outsimp
+mv playground/0 playground/abcd-abcdd-neq-boomsep-nofinals-basicsimp-qdnf-basicsimp.afa
+mv playground/1 playground/cox-inclusion-unsat5-boomsep-nofinals-basicsimp-qdnf-basicsimp.afa
+
+cabal exec ltle-to-afa treeRepr < playground/abcd-abcdd-neq-boomsep-nofinals-basicsimp-qdnf-basicsimp.afa | grep -v '^@s0' | sed 's/!s0 & //' > playground/abcd-abcdd-neq-boomsep-nofinals-basicsimp-qdnf-basicsimp-tree.afa
+cabal exec ltle-to-afa treeRepr < playground/cox-inclusion-unsat5-boomsep-nofinals-basicsimp-qdnf-basicsimp.afa | grep -v '^@s0' | sed 's/!s0 & //' > playground/cox-inclusion-unsat5-boomsep-nofinals-basicsimp-qdnf-basicsimp-tree.afa

@@ -21,10 +21,12 @@ import Control.Lens
 import Control.Monad
 import Control.Monad.Free
 import Control.Monad.Reader (ReaderT (..))
+import qualified Control.Monad.Reader
 import Control.Monad.ST
 import Control.Monad.Trans
 import Control.RecursionSchemes.Lens
 import qualified Control.RecursionSchemes.Utils.HashCons2 as HCons
+import qualified Control.RecursionSchemes.Utils.NoCons2 as NoCons
 import Data.Array
 import Data.Array.Base (unsafeAt, unsafeNewArray_, unsafeRead, unsafeWrite)
 import Data.Array.ST
@@ -283,6 +285,43 @@ newtype Builder s x a = Builder {runBuilder :: BuilderCtx s x -> ST s a}
     via ReaderRef (MonadReader (ReaderT (BuilderCtx s x) (ST s)))
 blift = Builder . const
 
+{-# INLINEABLE delitDag #-}
+delitDag ::
+  forall p.
+  (Eq p, Hashable p) =>
+  Array Int Any ->
+  (Array Int (Either Bool Int), Array Int (Term p Int)) ->
+  (Array Int (Either Bool Int), Array Int (Term p Int))
+delitDag gs (ixMap, arr) = runST action
+  where
+    bnds@(ibeg, iend) = bounds arr
+
+    action :: forall s. ST s (Array Int (Either Bool Int), Array Int (Term p Int))
+    action = do
+      stateV <- newSTRef (0, [])
+      ixMap' <- flip runReaderT stateV $ do
+        ixMap' <- lift $ unsafeNewArray_ @(STArray s) bnds
+        for_ [ibeg .. iend] $ \i -> do
+          t <- lift $ for (arr `unsafeAt` i) $ unsafeRead ixMap'
+          alg t >>= lift . unsafeWrite ixMap' i
+        lift $ unsafeFreeze ixMap'
+      (_, terms) <- readSTRef stateV
+      return (ixMap', listArray (0, length terms) $ reverse terms)
+
+    alg ::
+      forall s.
+      Term p (Either Bool Int) ->
+      ReaderT (STRef s (Int, [Term p Int])) (ST s) (Either Bool Int)
+    alg t = case deLit t <&> deUnary of
+      Left b -> return $ Left b
+      Right (Left ix) -> return $ Right ix
+      Right (Right t) ->
+        Right <$> do
+          stateV <- Control.Monad.Reader.ask
+          (i, xs) <- lift $ readSTRef stateV
+          lift $ writeSTRef stateV (i + 1, t : xs)
+          return i
+
 {-# INLINEABLE simplifyDag #-}
 simplifyDag ::
   forall p.
@@ -500,6 +539,6 @@ simplifyDagUntilFixpoint gs (ixMap, arr) =
     cost ts = (rangeSize $ bounds ts, sum $ fmap length ts)
     iters =
       iterate
-        ((cost . snd &&& id) . simplifyDag gs . snd)
+        ((cost . snd &&& id) . delitDag gs . snd)
         (cost arr, (ixMap, arr))
     better (c1, r) (c2, _) (c3, _) = r <$ guard (c1 <= c2 && c1 <= c3)

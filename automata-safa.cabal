@@ -104,7 +104,9 @@ library convert
     Afa.Convert.Stranger2
     Afa.Convert.PrettyStranger
     Afa.Convert.PrettyStranger2
+    Afa.Convert.Machete
     Afa.Convert.Smv
+    Afa.Convert.Smv2
     Afa.Convert.Ada
     Afa.Convert.CnfAfa
     Afa.Convert.Separated

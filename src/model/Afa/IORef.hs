@@ -335,6 +335,7 @@ type IORefRemoveFinalsD q v r r' =
     :+: Name "lock" (Wrap Anyrec)
     :+: Name "any" (Wrap Anyrec)
     :+: Name "funr" (Wrap Funrec)
+    :+: Name "buildShared" (Wrap (Delit Build Deref))
     :+: Name "buildTree" (Wrap (Delit BuildTree Deref))
     :+: Name "shareTree" (Wrap ShareTree)
     :+: Name "deref" (Wrap Deref)

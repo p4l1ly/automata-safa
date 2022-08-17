@@ -21,7 +21,7 @@ import qualified Afa.Finalful.STerm as Term
 import Control.Lens ( itraverse, (&), traversed, _1, traverseOf)
 import Control.Monad ( (<=<) )
 import Control.Monad.Free ( Free(Pure, Free) )
-import Data.Array ( (!), accumArray, listArray )
+import Data.Array ( (!), accumArray, listArray, Array )
 import Data.Composition ((.:))
 import Data.Fix ( Fix(Fix) )
 import Data.Foldable (toList, fold)
@@ -47,18 +47,14 @@ type RemoveFinalsD d m = RemoveFinalsD_ d m
   [g|q|] [g|v|] [g|r|] [g|r'|]
 type RemoveFinalsA d q v r r' m =
   RemoveFinalsA1 d
-    ( Name "term" (Term q v r)
-        :+: Name "term'" (Term (SyncQs q) (SyncVar q v) r')
+    ( Name "term'" (Term (SyncQs q) (SyncVar q v) r')
         :+: Name "termF'" (Term (SyncQs q) (SyncVar q v))
         :+: End
     ) q v r r' m
 type RemoveFinalsA1 d d' q v r r' m =
   RemoveFinalsA2 d
-    ( Name "buildTree" (Mk (MfnK [g'|term|] r) [d|buildTree|])
-      :+: Name "buildTree'" (Mk (MfnK [g'|term'|] r') [d|buildTree|])
-      :+: Name "shareTree" (Mk (MfnK r r) [d|shareTree|])
+    ( Name "buildTree'" (Mk (MfnK [g'|term'|] r') [d|buildTree|])
       :+: Name "shareTree'" (Mk (MfnK r' r') [d|shareTree|])
-      :+: Name "deref" (Mk (MfnK r [g'|term|]) [d|deref|])
       :+: Name "deref'" (Mk (MfnK r' [g'|term'|]) [d|deref|])
       :+: Name "alphabetF" ([g|fun|] [Term.Q, Term.V] :: *)
       :+: Name "alphabetFn" ((q -> SyncQs q) :&: (v -> SyncVar q v))
@@ -68,23 +64,19 @@ type RemoveFinalsA1 d d' q v r r' m =
     ) q r r'
 type RemoveFinalsA2 d d' q r r' =
   RemoveFinalsA3 d
-    ( Name "refdeD" (Name "buildTree" [d'|buildTree|] :+: Name "shareTree" [d'|shareTree|] :+: Name "deref" [d'|deref|] :+: d)
-      :+: Name "refdeD'" (Name "buildTree" [d'|buildTree'|] :+: Name "shareTree" [d'|shareTree'|] :+: Name "deref" [d'|deref'|] :+: d)
+    ( Name "refdeD'" (Name "buildTree" [d'|buildTree'|] :+: Name "shareTree" [d'|shareTree'|] :+: Name "deref" [d'|deref'|] :+: d)
       :+: Name "refdeDTree'" (Name "build" [d'|buildTree'|] :+: Name "deref" [d'|deref'|] :+: d)
       :+: d'
     ) q r r'
 type RemoveFinalsA3 d d' q r r' =
-  Name "splitF" (MkN (RecK r [g'|term|] (SplitFinalsR r q)) [d|lock|])
-    :+: Name "findQs" (MkN (RecK r [g'|term|] (Endo [q])) [d|any|])
-    :+: Name "alphabet" (Mk (FRecK r r' (Creation [g'|alphabetF|] [g'|alphabetFn|])) [d|funr|])
+  Name "alphabet" (Mk (FRecK r r' (Creation [g'|alphabetF|] [g'|alphabetFn|])) [d|funr|])
     :+: Name "finalConstr" (MkN (RecK r' [g'|term'|] r') [d|any|])
     :+: Name "finalConstrD" (Name "r" r' :+: [g'|refdeD'|])
     :+: Name "redirect" (Mk (FRecK r' r' (Creation [g'|redirectF|] [g'|redirectFn|])) [d|funr|])
     :+: d'
 type RemoveFinalsD_ d m d' q v r r' =
   D.Name "aliases" (QVR d q v r, d' ~ RemoveFinalsA d q v r r' m, r' ~ [g|r'|])
-    :|: D.Name "splitF" (D.Name "" (RecRecur [d'|splitF|] m) :|: D.Remove "rec" (SplitFinalsD [g'|refdeD|] m))
-    :|: D.Name "findQs" (D.Name "" (Recur [d'|findQs|] m) :|: D.Remove "rec" (FindQsD d m))
+    :|: D.Name "splitF" (SplitFinals'D d m)
     :|: D.Name
           "functorRecur"
           ( FunRecur [d'|alphabet|] m
@@ -108,16 +100,7 @@ removeFinals ::
   (Int, Int -> q, Int -> r, q -> Int) ->
   m (r', (Int, Int -> SyncQs q, Int -> r', SyncQs q -> Int))
 removeFinals init final (qCount, i2q, i2r, q2i) = do
-  -- split finals; partition states to final, nonfinal and complex;
-  ((_, (`appEndo` []) -> nonfinals), complex) <-
-    [d'|recur|splitF|] (splitFinals @(DRec [g'|refdeD|] [d'|splitF|])) >>= ($ final)
-  complexFinals <- case complex of
-    Nothing -> return []
-    Just complex -> ([d'|recur|findQs|] (findQs @(DRec d [d'|findQs|]) @q @v @r) >>= ($ complex)) <&> (`appEndo` [])
-  let finalnesses =
-        accumArray max Final (0, qCount - 1) $
-          map (\q -> (q2i q, Nonfinal)) nonfinals
-            ++ map (\q -> (q2i q, Complex)) complexFinals
+  (finalnesses, _, complex) <- splitFinals' @d final qCount q2i
 
   -- adapt the type, so that new symbols and state could be added
   let mfun = create @[g'|alphabetF|] (QState :&: VVar :: [g'|alphabetFn|])
@@ -188,23 +171,69 @@ removeFinals init final (qCount, i2q, i2r, q2i) = do
           let qrmap = listArray (0, qCount) $ syncQTrans : qTransitions
           return (init'', (qCount', i2q', (qrmap !), q2i'))
 
+type SplitFinals'D d m = SplitFinals'D_ d m
+  (SplitFinals'A d [g|q|] [g|v|] [g|r|] [g|r'|] m)
+  [g|q|] [g|v|] [g|r|] [g|r'|]
+type SplitFinals'A d q v r r' m =
+  SplitFinals'A1 d
+    ( Name "term" (Term q v r)
+        :+: End
+    ) q v r r' m
+type SplitFinals'A1 d d' q v r r' m =
+  SplitFinals'A2 d
+    ( Name "buildTree" (Mk (MfnK [g'|term|] r) [d|buildTree|])
+      :+: Name "shareTree" (Mk (MfnK r r) [d|shareTree|])
+      :+: Name "deref" (Mk (MfnK r [g'|term|]) [d|deref|])
+      :+: d'
+    ) q r r'
+type SplitFinals'A2 d d' q r r' =
+  SplitFinals'A3 d
+    ( Name "refdeD" (Name "buildTree" [d'|buildTree|] :+: Name "shareTree" [d'|shareTree|] :+: Name "deref" [d'|deref|] :+: d)
+      :+: d'
+    ) q r r'
+type SplitFinals'A3 d d' q r r' =
+  Name "splitF" (MkN (RecK r [g'|term|] (SplitFinalsR r q)) [d|lock|])
+    :+: Name "findQs" (MkN (RecK r [g'|term|] (Endo [q])) [d|any|])
+    :+: d'
+type SplitFinals'D_ d m d' q v r r' =
+  D.Name "aliases" (QVR d q v r, d' ~ SplitFinals'A d q v r r' m, r' ~ [g|r'|])
+    :|: D.Name "splitF" (D.Name "" (RecRecur [d'|splitF|] m) :|: D.Remove "rec" (SplitFinalsD [g'|refdeD|] m))
+    :|: D.Name "findQs" (D.Name "" (Recur [d'|findQs|] m) :|: D.Remove "rec" (FindQsD d m))
+    :|: D.End
+splitFinals' ::
+  forall d q v r r' m d'.
+  D.ToConstraint (SplitFinals'D_ d m d' q v r r') =>
+  r ->
+  Int ->  -- qCount
+  (q -> Int) ->  -- q2i
+  m (Array Int Finalness, [q], Maybe r)
+splitFinals' final qCount q2i = do
+  -- split finals; partition states to final, nonfinal and complex;
+  ((_, (`appEndo` []) -> nonfinals), complex) <-
+    [d'|recur|splitF|] (splitFinals @(DRec [g'|refdeD|] [d'|splitF|])) >>= ($ final)
+  complexFinals <- case complex of
+    Nothing -> return []
+    Just complex -> ([d'|recur|findQs|] (findQs @(DRec d [d'|findQs|]) @q @v @r) >>= ($ complex)) <&> (`appEndo` [])
+  let finalnesses =
+        accumArray max Final (0, qCount - 1) $
+          map (\q -> (q2i q, Nonfinal)) nonfinals
+            ++ map (\q -> (q2i q, Complex)) complexFinals
+  return (finalnesses, nonfinals, complex)
+
+
 type RemoveFinalsHindD d m = RemoveFinalsHindD_ d m
   (RemoveFinalsHindA d [g|q|] [g|v|] [g|r|] [g|r'|] m)
   [g|q|] [g|v|] [g|r|] [g|r'|]
 type RemoveFinalsHindA d q v r r' m =
   RemoveFinalsHindA1 d
-    ( Name "term" (Term q v r)
-        :+: Name "term'" (Term (SyncQs q) (SyncVar q v) r')
+    ( Name "term'" (Term (SyncQs q) (SyncVar q v) r')
         :+: Name "termF'" (Term (SyncQs q) (SyncVar q v))
         :+: End
     ) q v r r' m
 type RemoveFinalsHindA1 d d' q v r r' m =
   RemoveFinalsHindA2 d
-    ( Name "buildTree" (Mk (MfnK [g'|term|] r) [d|buildTree|])
-      :+: Name "buildTree'" (Mk (MfnK [g'|term'|] r') [d|buildTree|])
-      :+: Name "shareTree" (Mk (MfnK r r) [d|shareTree|])
+    ( Name "buildTree'" (Mk (MfnK [g'|term'|] r') [d|buildTree|])
       :+: Name "shareTree'" (Mk (MfnK r' r') [d|shareTree|])
-      :+: Name "deref" (Mk (MfnK r [g'|term|]) [d|deref|])
       :+: Name "deref'" (Mk (MfnK r' [g'|term'|]) [d|deref|])
       :+: Name "alphabetF" ([g|fun|] [Term.Q, Term.V] :: *)
       :+: Name "alphabetFn" ((q -> SyncQs q) :&: (v -> SyncVar q v))
@@ -212,22 +241,18 @@ type RemoveFinalsHindA1 d d' q v r r' m =
     ) q r r'
 type RemoveFinalsHindA2 d d' q r r' =
   RemoveFinalsHindA3 d
-    ( Name "refdeD" (Name "buildTree" [d'|buildTree|] :+: Name "shareTree" [d'|shareTree|] :+: Name "deref" [d'|deref|] :+: d)
-      :+: Name "refdeD'" (Name "buildTree" [d'|buildTree'|] :+: Name "shareTree" [d'|shareTree'|] :+: Name "deref" [d'|deref'|] :+: d)
+    ( Name "refdeD'" (Name "buildTree" [d'|buildTree'|] :+: Name "shareTree" [d'|shareTree'|] :+: Name "deref" [d'|deref'|] :+: d)
       :+: Name "refdeDTree'" (Name "build" [d'|buildTree'|] :+: Name "deref" [d'|deref'|] :+: d)
       :+: d'
     ) q r r'
 type RemoveFinalsHindA3 d d' q r r' =
-  Name "splitF" (MkN (RecK r [g'|term|] (SplitFinalsR r q)) [d|lock|])
-    :+: Name "findQs" (MkN (RecK r [g'|term|] (Endo [q])) [d|any|])
-    :+: Name "alphabet" (Mk (FRecK r r' (Creation [g'|alphabetF|] [g'|alphabetFn|])) [d|funr|])
+  Name "alphabet" (Mk (FRecK r r' (Creation [g'|alphabetF|] [g'|alphabetFn|])) [d|funr|])
     :+: Name "finalConstr" (MkN (RecK r' [g'|term'|] r') [d|any|])
     :+: Name "finalConstrD" (Name "r" r' :+: [g'|refdeD'|])
     :+: d'
 type RemoveFinalsHindD_ d m d' q v r r' =
   D.Name "aliases" (QVR d q v r, d' ~ RemoveFinalsHindA d q v r r' m, r' ~ [g|r'|])
-    :|: D.Name "splitF" (D.Name "" (RecRecur [d'|splitF|] m) :|: D.Remove "rec" (SplitFinalsD [g'|refdeD|] m))
-    :|: D.Name "findQs" (D.Name "" (Recur [d'|findQs|] m) :|: D.Remove "rec" (FindQsD d m))
+    :|: D.Name "splitF" (SplitFinals'D d m)
     :|: D.Name
           "functorRecur"
           ( FunRecur [d'|alphabet|] m
@@ -249,16 +274,7 @@ removeFinalsHind ::
   (Int, Int -> q, Int -> [(r, r)], q -> Int) ->
   m (r', (Int, Int -> SyncQs q, Int -> [(r', r')], SyncQs q -> Int))
 removeFinalsHind init final (qCount, i2q, i2r, q2i) = do
-  -- split finals; partition states to final, nonfinal and complex;
-  ((_, (`appEndo` []) -> nonfinals), complex) <-
-    [d'|recur|splitF|] (splitFinals @(DRec [g'|refdeD|] [d'|splitF|])) >>= ($ final)
-  complexFinals <- case complex of
-    Nothing -> return []
-    Just complex -> ([d'|recur|findQs|] (findQs @(DRec d [d'|findQs|]) @q @v @r) >>= ($ complex)) <&> (`appEndo` [])
-  let finalnesses =
-        accumArray max Final (0, qCount - 1) $
-          map (\q -> (q2i q, Nonfinal)) nonfinals
-            ++ map (\q -> (q2i q, Complex)) complexFinals
+  (finalnesses, _, complex) <- splitFinals' @d final qCount q2i
 
   -- adapt the type, so that new symbols and state could be added
   let mfun = create @[g'|alphabetF|] (QState :&: VVar :: [g'|alphabetFn|])

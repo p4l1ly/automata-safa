@@ -24,12 +24,14 @@ import qualified Afa.Convert.Capnp.Separated as SepCap
 import Afa.Convert.CnfAfa (tseytin')
 import Afa.Convert.Dot
 import Afa.Convert.Ltle
+import qualified Afa.Convert.Machete as Machete
 import qualified Afa.Convert.PrettyStranger as PrettyStranger
 import qualified Afa.Convert.PrettyStranger2 as PrettyStranger2
 import qualified Afa.Convert.Separated as Sep
 import qualified Afa.Convert.Separated.Model as Sep
 import qualified Afa.Convert.Separated.ToDnf as ToDnf
 import Afa.Convert.Smv
+import qualified Afa.Convert.Smv2 as Smv2
 import qualified Afa.Convert.Stranger as Stranger
 import qualified Afa.Convert.Stranger2 as Stranger2
 import qualified Afa.Finalful as Finalful
@@ -409,6 +411,13 @@ removeFinalsMain = do
   hPutStrLn stderr "formatting"
   PrettyStranger2.formatIORef init3 final3 qs3
 
+strangerToMachete :: IO ()
+strangerToMachete = do
+  txt <- getContents
+  hPutStrLn stderr "parsing"
+  (init, final, qs) <- PrettyStranger2.parseIORef $ Stranger2.parseDefinitions $ T.pack txt
+  Machete.formatIORef init final qs
+
 removeFinalsPrettyMain ::
   forall d t r buildTree buildD q' v' r'.
   ( t ~ T.Text
@@ -425,7 +434,7 @@ removeFinalsPrettyMain = do
   hPutStrLn stderr "parsing"
   (init2, final2, qs) <- PrettyStranger2.parseIORef $ PrettyStranger2.parseDefinitions $ T.pack txt
   hPutStrLn stderr "separating"
-  Just qs1 <- Afa.IORef.trySeparateQTransitions qs >>= \case
+  Just qs1 <- Afa.IORef.trySeparateQTransitions qs
   hPutStrLn stderr "removing finals"
   (init3, qs2) <- Afa.IORef.removeFinalsHind init2 final2 qs1
   hPutStrLn stderr "unseparating"
@@ -449,11 +458,10 @@ removeFinalsNonsepMain ::
   , buildD ~ (TypeDict.Name "build" buildTree :+: d)
   ) =>
   IO ()
-removeFinalsPrettyNonsepMain = do
+removeFinalsNonsepMain = do
   txt <- getContents
   hPutStrLn stderr "parsing"
   (init2, final2, qs) <- PrettyStranger2.parseIORef $ PrettyStranger2.parseDefinitions $ T.pack txt
-  hPutStrLn stderr "separating"
   hPutStrLn stderr "removing finals nonsep"
   (init2, qs2@(qCount, i2q, _, _)) <- Afa.IORef.removeFinals init2 final2 qs
   true <- Shaper.monadfn @buildTree STerm.LTrue
@@ -482,13 +490,13 @@ boomSeparateMain :: IO ()
 boomSeparateMain = do
   txt <- getContents
   hPutStrLn stderr "parsing"
-  (init3, final3, qs) <- PrettyStranger2.parseIORef $ PrettyStranger2.parseDefinitions $ T.pack txt
+  (init2, final2, qs) <- PrettyStranger2.parseIORef $ PrettyStranger2.parseDefinitions $ T.pack txt
   hPutStrLn stderr "separating"
   qs1 <- Afa.IORef.boomSeparateQTransitions qs
   hPutStrLn stderr "unseparating"
-  qs3 <- Afa.IORef.unseparateQTransitions qs2
+  qs2 <- Afa.IORef.unseparateQTransitions qs1
   hPutStrLn stderr "formatting"
-  PrettyStranger2.formatIORef init3 final3 qs3
+  PrettyStranger2.formatIORef init2 final2 qs2
 
 range16ToPrettyRangeVarsMain ::
   forall d buildTree buildD r'.
@@ -536,6 +544,19 @@ range16ToPrettyMain = do
   final <- Shaper.Helpers.buildFix @buildD nonfinals'
   (init2, final2, states2) <- Range16Nfa.convertRangeIORef (init1, final, states1)
   PrettyStranger2.formatIORef init2 final2 states2
+
+range16ToMacheteNfaMain ::
+  forall d buildTree buildD r'.
+  ( r' ~ Afa.IORef.Ref (STerm.Term Word32 Range16Nfa.Range16)
+  , d ~ Afa.IORef.IORefRemoveFinalsD Void Void Void Void
+  , buildTree ~ Shaper.Mk (Shaper.MfnK (STerm.Term Word32 Range16Nfa.Range16 r') r') [d|buildTree|]
+  , buildD ~ (TypeDict.Name "build" buildTree :+: d)
+  ) =>
+  IO ()
+range16ToMacheteNfaMain = do
+  hPutStrLn stderr "parsing"
+  nfa <- Range16Nfa.hReadNfaRaw stdin
+  Machete.formatRange16Nfa nfa
 
 negateLang ::
   forall d buildTree buildD r'.
@@ -608,6 +629,18 @@ parseFormat = do
   (init, final, states) <- PrettyStranger2.parseIORef (PrettyStranger2.parseDefinitions txt)
   PrettyStranger2.formatIORef init final states
 
+prettyToMachete :: IO ()
+prettyToMachete = do
+  txt <- TIO.getContents
+  (init, final, states) <- PrettyStranger2.parseIORef (PrettyStranger2.parseDefinitions txt)
+  Machete.formatIORef init final states
+
+prettyToSmv :: IO ()
+prettyToSmv = do
+  txt <- TIO.getContents
+  (init, final, states) <- PrettyStranger2.parseIORef (PrettyStranger2.parseDefinitions txt)
+  Smv2.formatIORef init final states
+
 treeRepr ::
   forall t d.
   ( t ~ T.Text
@@ -626,9 +659,10 @@ main :: IO ()
 main = do
   args <- getArgs
   case args of
+    ["strangerToMachete"] -> strangerToMachete
     ["strangerRemoveFinals"] -> removeFinalsMain
     ["removeFinals"] -> removeFinalsPrettyMain
-    ["removeFinalsNonsep"] -> removeFinalsPrettyNonsepMain
+    ["removeFinalsNonsep"] -> removeFinalsNonsepMain
     ["qdnf"] -> qdnfMain
     ["boomSeparate"] -> boomSeparateMain
     ["range16ToPrettyRangeVars"] -> range16ToPrettyRangeVarsMain
@@ -640,6 +674,9 @@ main = do
     ("neq" : paths) -> (`comboOp` paths) \[a, b, na, nb] ->
       Free $ STerm.Or (Free $ STerm.And a nb) (Free $ STerm.And na b)
     ["treeRepr"] -> treeRepr
+    ["range16ToMacheteNfa"] -> range16ToMacheteNfaMain
+    ["prettyToMachete"] -> prettyToMachete
+    ["prettyToSmv"] -> prettyToSmv
     _ -> do
       (Opts readers writers) <-
         execParser $
