@@ -107,6 +107,7 @@ library convert
     Afa.Convert.Machete
     Afa.Convert.Smv
     Afa.Convert.Smv2
+    Afa.Convert.Mona
     Afa.Convert.Ada
     Afa.Convert.CnfAfa
     Afa.Convert.Separated

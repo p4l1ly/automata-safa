@@ -21,7 +21,7 @@ import Control.Arrow hiding (first)
 import Control.Lens
 import Control.Monad
 import Control.Monad.Free
-import Control.Monad.Reader (ReaderT (..))
+import Control.Monad.Reader (ReaderT (..), ask)
 import Control.Monad.ST
 import Control.Monad.Trans
 import Control.RecursionSchemes.Lens
@@ -206,6 +206,42 @@ newtype Builder s x a = Builder {runBuilder :: BuilderCtx s x -> ST s a}
     )
     via ReaderRef (MonadReader (ReaderT (BuilderCtx s x) (ST s)))
 blift = Builder . const
+
+{-# INLINEABLE delitDag #-}
+delitDag ::
+  forall p q.
+  Array Int Any ->
+  (Array Int (Either Bool Int), Array Int (Term p q Int)) ->
+  (Array Int (Either Bool Int), Array Int (Term p q Int))
+delitDag gs (ixMap, arr) = runST action
+  where
+    bnds@(ibeg, iend) = bounds arr
+
+    action :: forall s. ST s (Array Int (Either Bool Int), Array Int (Term p q Int))
+    action = do
+      stateV <- newSTRef (0, [])
+      ixMap' <- flip runReaderT stateV $ do
+        ixMap' <- lift $ unsafeNewArray_ @(STArray s) bnds
+        for_ [ibeg .. iend] $ \i -> do
+          t <- lift $ for (arr `unsafeAt` i) $ unsafeRead ixMap'
+          alg t >>= lift . unsafeWrite ixMap' i
+        lift $ unsafeFreeze ixMap'
+      (_, terms) <- readSTRef stateV
+      return (ixMap', listArray (0, length terms - 1) $ reverse terms)
+
+    alg ::
+      forall s.
+      Term p q (Either Bool Int) ->
+      ReaderT (STRef s (Int, [Term p q Int])) (ST s) (Either Bool Int)
+    alg t = case deLit t <&> deUnary of
+      Left b -> return $ Left b
+      Right (Left ix) -> return $ Right ix
+      Right (Right t) ->
+        Right <$> do
+          stateV <- Control.Monad.Reader.ask
+          (i, xs) <- lift $ readSTRef stateV
+          lift $ writeSTRef stateV (i + 1, t : xs)
+          return i
 
 {-# INLINEABLE simplifyDag #-}
 simplifyDag ::

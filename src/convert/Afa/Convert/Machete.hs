@@ -8,6 +8,7 @@
 {-# LANGUAGE DerivingVia #-}
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE LambdaCase #-}
+{-# LANGUAGE MonadComprehensions #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE QuasiQuotes #-}
 {-# LANGUAGE RankNTypes #-}
@@ -19,7 +20,6 @@
 {-# LANGUAGE TypeOperators #-}
 {-# LANGUAGE UndecidableInstances #-}
 {-# LANGUAGE ViewPatterns #-}
-{-# LANGUAGE MonadComprehensions #-}
 
 module Afa.Convert.Machete where
 
@@ -30,6 +30,7 @@ import Afa.Lib (listArray')
 import Afa.Negate (Qombo (Qombo))
 import qualified Capnp.Gen.Afa.Model.Separated.Pure as AfaC
 import qualified Capnp.GenHelpers.ReExports.Data.Vector as V
+import Control.Applicative
 import Control.Lens (itraverse, (&))
 import Control.Monad.State.Strict
 import Control.Monad.Trans (lift)
@@ -42,6 +43,7 @@ import qualified Data.HashMap.Strict as HM
 import Data.IORef
 import Data.List.NonEmpty (NonEmpty ((:|)))
 import qualified Data.List.NonEmpty as NE
+import Data.Maybe
 import Data.Monoid (Endo (..))
 import Data.String.Interpolate.IsString (i)
 import qualified Data.Text as T
@@ -56,8 +58,6 @@ import Lift (Inc, K (K), LiftCount, Unwrap)
 import Shaper
 import Shaper.Helpers (BuildD, buildFree)
 import TypeDict
-import Control.Applicative
-import Data.Maybe
 
 type FormatFormulaD d m =
   FormatFormulaD_ d m (FormatFormulaA d (Term [g|q|] [g|v|] [g|r|]) [g|r|]) [g|q|] [g|v|] [g|r|]
@@ -65,6 +65,7 @@ type FormatFormulaA (d :: TypeDict) x r =
   FormatFormulaA1
     ( Name "recur" (MkN (RecK r x T.Text) [d|any|])
         :+: Name "deref" (Mk (MfnK r (Term [g|q|] [g|v|] [g|r|])) [d|deref|])
+        :+: Name "refIsTree" (Mk (MfnK r Bool) [d|refIsTree|])
         :+: End
     )
     r
@@ -78,6 +79,7 @@ type FormatFormulaD_ d (m :: * -> *) (d' :: TypeDict) (q :: *) (v :: *) (r :: *)
     :|: D.Name "show" (ShowT v, ShowT q)
     :|: D.Name "rec" (RecRecur [d'|recur|] m)
     :|: D.Name "deref" (MonadFn [d'|deref|] m)
+    :|: D.Name "refIsTree" (MonadFn [d'|refIsTree|] m)
     :|: D.End
 formatFormula ::
   forall d q v r d'.
@@ -89,7 +91,68 @@ formatFormula = do
   stack <- newIORef ([] :: [(Int, T.Text)])
   let algebra x = do
         [d'|ask|isTree|] >>= \case
-          True ->
+          True -> contents
+          False -> do
+            txt <- contents
+            fIx <- lift $ readIORef vFIx
+            lift $ writeIORef vFIx $ fIx + 1
+            lift $ modifyIORef stack ((fIx, txt) :)
+            return $ do T.cons 'n' (T.pack (show fIx))
+        where
+          contents =
+            case x of
+              LTrue -> return "true"
+              LFalse -> return "false"
+              State q -> return $ T.cons 'q' (showT q)
+              Var v -> return $ T.cons 'a' (showT v)
+              Not !r -> do
+                !r' <- rec r
+                monadfn @(Inc [d'|refIsTree|]) r >>= \case
+                  True ->
+                    monadfn @(Inc [d'|deref|]) r <&> \case
+                      And _ _ -> T.concat ["!(", r', ")"]
+                      Or _ _ -> T.concat ["!(", r', ")"]
+                      _ -> T.cons '!' r'
+                  False -> return $ T.cons '!' r'
+              And !a !b -> do
+                !a' <- rec a
+                !b' <- rec b
+                a'' <-
+                  monadfn @(Inc [d'|refIsTree|]) a >>= \case
+                    True -> do
+                      monadfn @(Inc [d'|deref|]) a <&> \case
+                        Or _ _ -> T.concat ["(", a', ")"]
+                        _ -> a'
+                    False -> return a'
+                b'' <-
+                  monadfn @(Inc [d'|refIsTree|]) b >>= \case
+                    True ->
+                      monadfn @(Inc [d'|deref|]) b <&> \case
+                        Or _ _ -> T.concat ["(", b', ")"]
+                        _ -> b'
+                    False -> return b'
+                return $ T.concat [a'', " & ", b'']
+              Or !a !b -> do
+                !a' <- rec a
+                !b' <- rec b
+                at <- monadfn @(Inc [d'|deref|]) a
+                bt <- monadfn @(Inc [d'|deref|]) b
+                a'' <-
+                  monadfn @(Inc [d'|refIsTree|]) a >>= \case
+                    True -> do
+                      monadfn @(Inc [d'|deref|]) a <&> \case
+                        And _ _ -> T.concat ["(", a', ")"]
+                        _ -> a'
+                    False -> return a'
+                b'' <-
+                  monadfn @(Inc [d'|refIsTree|]) b >>= \case
+                    True ->
+                      monadfn @(Inc [d'|deref|]) b <&> \case
+                        And _ _ -> T.concat ["(", b', ")"]
+                        _ -> b'
+                    False -> return b'
+                return $ T.concat [a'', " | ", b'']
+          contents2 =
             case x of
               LTrue -> return "true"
               LFalse -> return "false"
@@ -126,54 +189,9 @@ formatFormula = do
                       And _ _ -> T.concat ["(", b', ")"]
                       _ -> b'
                 return $ T.concat [a'', " | ", b'']
-          False -> do
-            txt <- case x of
-              LTrue -> return "true"
-              LFalse -> return "false"
-              State q -> return $ T.cons 'q' (showT q)
-              Var v -> return $ T.cons 'a' (showT v)
-              Not !r -> do
-                !r' <- rec r
-                rt <- monadfn @(Inc [d'|deref|]) r
-                case rt of
-                  And _ _ -> return $ T.concat ["!(", r', ")"]
-                  Or _ _ -> return $ T.concat ["!(", r', ")"]
-                  _ -> return $ T.cons '!' r'
-              And !a !b -> do
-                !a' <- rec a
-                !b' <- rec b
-                at <- monadfn @(Inc [d'|deref|]) a
-                bt <- monadfn @(Inc [d'|deref|]) b
-                let a'' = case at of
-                      Or _ _ -> T.concat ["(", a', ")"]
-                      _ -> a'
-                let b'' = case bt of
-                      Or _ _ -> T.concat ["(", b', ")"]
-                      _ -> b'
-                return $ T.concat [a'', " & ", b'']
-              Or !a !b -> do
-                !a' <- rec a
-                !b' <- rec b
-                at <- monadfn @(Inc [d'|deref|]) a
-                bt <- monadfn @(Inc [d'|deref|]) b
-                let a'' = case at of
-                      And _ _ -> T.concat ["(", a', ")"]
-                      _ -> a'
-                let b'' = case bt of
-                      And _ _ -> T.concat ["(", b', ")"]
-                      _ -> b'
-                return $ T.concat [a'', " | ", b'']
-            fIx <- lift $ readIORef vFIx
-            lift $ writeIORef vFIx $ fIx + 1
-            lift $ modifyIORef stack ((fIx, txt) :)
-            return $ do T.cons 'n' (T.pack (show fIx))
 
   convert <- recur @ [d'|recur|] algebra
   return (convert, readIORef stack)
-
-unparen :: T.Text -> T.Text
-unparen txt = 
-  fromMaybe txt [txt'' | ('(', txt') <- T.uncons txt, (txt'', ')') <- T.unsnoc txt]
 
 format ::
   forall d q v r d'.
@@ -186,20 +204,20 @@ format init final (qCount, i2q, i2r, q2i) = do
   (convert, getShared) <- formatFormula @d
 
   TIO.putStr "%InitialFormula "
-  TIO.putStrLn . unparen =<< convert init
+  TIO.putStrLn =<< convert init
   TIO.putStr "%FinalFormula "
-  TIO.putStrLn . unparen =<< convert final
+  TIO.putStrLn =<< convert final
   for_ [0 .. qCount - 1] \i -> do
     TIO.putStr "q"
     TIO.putStr (showT $ i2q i)
     TIO.putStr " "
-    TIO.putStrLn . unparen =<< convert (i2r i)
+    TIO.putStrLn =<< convert (i2r i)
 
   getShared >>= mapM_ \(i, txt) -> do
     TIO.putStr "f"
     putStr (show i)
     TIO.putStr " "
-    TIO.putStrLn (unparen txt)
+    TIO.putStrLn txt
 
 formatIORef ::
   forall q v r r' d result.
@@ -250,7 +268,8 @@ decodeChar w = case toEnum $ fromEnum w of
   '\f' -> "\\f"
   '\v' -> "\\v"
   '\a' -> "\\a"
-  c | isSpace c -> [i|\\u{#{w}}|]
+  c
+    | isSpace c -> [i|\\u{#{w}}|]
     | isPrint c -> T.singleton c
     | otherwise -> [i|\\u{#{w}}|]
 

@@ -15,8 +15,6 @@
 
 module Afa.Convert.PrettyStranger where
 
-import Debug.Trace
-import GHC.Stack
 import Afa
 import Afa.Bool
 import Afa.Lib (listArray')
@@ -55,10 +53,12 @@ import Data.Monoid (Ap (..), Endo (..))
 import Data.String.Interpolate.IsString
 import qualified Data.Text as T
 import Data.Traversable
+import Debug.Trace
+import GHC.Exts (sortWith)
 import GHC.Generics (Generic, Generic1)
+import GHC.Stack
 import Generic.Data (Generically1 (..))
 import Generic.Data.Orphans ()
-import GHC.Exts (sortWith)
 
 parseWhole :: Parser a -> T.Text -> a
 parseWhole parser str = case parse parser str of
@@ -100,11 +100,6 @@ parseDefinitions str = definitions
     orFormulae = HM.toList orFormulaeHM
     orStates = HM.toList $ HM.fromListWith (Fix .: SOr) states
 
-parseGeneric :: T.Text -> (r, r, (Int, Int -> T.Text, Int -> r, T.Text -> Int))
-parseGeneric str = undefined
-  where
-    definitions = parseDefinitions str
-
 data Definition
   = DInitialStates {dterm :: Fix STermStr}
   | DFinalStates {dterm :: Fix STermStr}
@@ -142,9 +137,9 @@ term =
   "(" *> expr <* ")"
     <|> (Fix . SState <$> ("s" *> identifier))
     <|> (Fix . SFormula <$> ("f" *> identifier))
-    <|> (Fix STrue <$ "True")
-    <|> (Fix SFalse <$ "False")
-    <|> (Fix . SVar <$> identifier)
+    <|> (Fix STrue <$ "kTrue")
+    <|> (Fix SFalse <$ "kFalse")
+    <|> (Fix . SVar <$> ("a" *> identifier))
     <?> "expected a term"
 
 u :: Endo [a] -> [a]
@@ -163,7 +158,7 @@ enumerate defs =
       <*> do
         fs <- mapM (\(n, f) -> (n,) <$> namesToIxs f) orFormulae
         let fs' = map snd $ sortWith ((fNameToIx HM.!) . fst) fs
-        return fs' 
+        return fs'
   where
     orize [] = Fix SFalse
     orize xs = foldr1 (Fix .: SOr) xs

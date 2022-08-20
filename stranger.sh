@@ -8,6 +8,7 @@ LTLE_TO_AFA=dist-newstyle/build/x86_64-linux/ghc-8.10.7/automata-safa-0.1.0.0/x/
 
 for f in $(ls ../data/stranger/input/ | sort -n); do
   echo $f
-  echo '%Section AFA Bits' > /tmp/stranger/$f.machete
-  $LTLE_TO_AFA strangerToMachete < ../data/stranger/input/$f >> /tmp/stranger/$f.machete
+  echo '%Section AFA Bits' > /tmp/stranger/$f.mata
+  $LTLE_TO_AFA strangerToMachete < ../data/stranger/input/$f >> /tmp/stranger/$f.mata
+  $LTLE_TO_AFA strangerToPretty < ../data/stranger/input/$f >> /tmp/stranger/$f.afa
 done

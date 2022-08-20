@@ -25,6 +25,7 @@ import Afa.Convert.CnfAfa (tseytin')
 import Afa.Convert.Dot
 import Afa.Convert.Ltle
 import qualified Afa.Convert.Machete as Machete
+import qualified Afa.Convert.Mona as Mona
 import qualified Afa.Convert.PrettyStranger as PrettyStranger
 import qualified Afa.Convert.PrettyStranger2 as PrettyStranger2
 import qualified Afa.Convert.Separated as Sep
@@ -418,6 +419,13 @@ strangerToMachete = do
   (init, final, qs) <- PrettyStranger2.parseIORef $ Stranger2.parseDefinitions $ T.pack txt
   Machete.formatIORef init final qs
 
+strangerToPretty :: IO ()
+strangerToPretty = do
+  txt <- getContents
+  hPutStrLn stderr "parsing"
+  (init, final, qs) <- PrettyStranger2.parseIORef $ Stranger2.parseDefinitions $ T.pack txt
+  PrettyStranger2.formatIORef init final qs
+
 removeFinalsPrettyMain ::
   forall d t r buildTree buildD q' v' r'.
   ( t ~ T.Text
@@ -641,6 +649,55 @@ prettyToSmv = do
   (init, final, states) <- PrettyStranger2.parseIORef (PrettyStranger2.parseDefinitions txt)
   Smv2.formatIORef init final states
 
+prettyToMona :: IO ()
+prettyToMona = do
+  txt <- TIO.getContents
+  (init, final, states) <- PrettyStranger2.parseIORef (PrettyStranger2.parseDefinitions txt)
+  Mona.formatIORef init final states
+
+prettyToAfasat :: IO ()
+prettyToAfasat = do
+  txt <- TIO.getContents
+  let afa = PrettyStranger.parseAfa txt
+  case simplifyAll afa of -- Afasat needs deLit and deUnary.
+    Left solved -> hPutStrLn stderr ("solved " ++ show solved)
+    Right afa' -> do
+      hWriteCnfAfa (tseytin' $ reorderStates' afa') stdout
+
+prettyToDot :: IO ()
+prettyToDot = do
+  txt <- TIO.getContents
+  TIO.putStrLn $ toDot True $ PrettyStranger.parseAfa txt
+
+prettySimplify1 :: IO ()
+prettySimplify1 = do
+  txt <- TIO.getContents
+  let afa = PrettyStranger.parseAfa txt
+  case simplifyAll afa of -- Afasat needs deLit and deUnary.
+    Left solved -> hPutStrLn stderr ("solved " ++ show solved)
+    Right afa' -> do
+      TIO.putStrLn $ PrettyStranger.formatAfa afa'
+
+prettyToSmv1 :: IO ()
+prettyToSmv1 = do
+  txt <- TIO.getContents
+  TIO.putStrLn $ toSmv $ PrettyStranger.parseAfa txt
+
+prettyToSmvReverseAsgn1 :: IO ()
+prettyToSmvReverseAsgn1 = do
+  txt <- TIO.getContents
+  TIO.putStrLn $ toSmvReverseAssign $ PrettyStranger.parseAfa txt
+
+prettyToSmvReverse1 :: IO ()
+prettyToSmvReverse1 = do
+  txt <- TIO.getContents
+  TIO.putStrLn $ toSmvReverse $ PrettyStranger.parseAfa txt
+
+prettyToPretty1 :: IO ()
+prettyToPretty1 = do
+  txt <- TIO.getContents
+  TIO.putStrLn $ PrettyStranger.formatAfa $ PrettyStranger.parseAfa txt
+
 treeRepr ::
   forall t d.
   ( t ~ T.Text
@@ -660,6 +717,7 @@ main = do
   args <- getArgs
   case args of
     ["strangerToMachete"] -> strangerToMachete
+    ["strangerToPretty"] -> strangerToPretty
     ["strangerRemoveFinals"] -> removeFinalsMain
     ["removeFinals"] -> removeFinalsPrettyMain
     ["removeFinalsNonsep"] -> removeFinalsNonsepMain
@@ -677,6 +735,14 @@ main = do
     ["range16ToMacheteNfa"] -> range16ToMacheteNfaMain
     ["prettyToMachete"] -> prettyToMachete
     ["prettyToSmv"] -> prettyToSmv
+    ["prettyToSmv1"] -> prettyToSmv1
+    ["prettyToSmvReverse1"] -> prettyToSmvReverse1
+    ["prettyToSmvReverseAsgn1"] -> prettyToSmvReverseAsgn1
+    ["prettyToMona"] -> prettyToMona
+    ["prettyToAfasat"] -> prettyToAfasat
+    ["prettyToDot"] -> prettyToDot
+    ["prettySimplify1"] -> prettySimplify1
+    ["prettyToPretty1"] -> prettyToPretty1
     _ -> do
       (Opts readers writers) <-
         execParser $
@@ -737,3 +803,4 @@ applyWritersAndReaders (writer : writers) (Fix (Compose action)) =
       hFlush stdout
 
       applyWritersAndReaders writers readers'
+applyWritersAndReaders _ (Fix (Compose action)) = error "writers exhausted"

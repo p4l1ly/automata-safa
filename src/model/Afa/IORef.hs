@@ -56,6 +56,7 @@ data Build
 data BuildTree
 data ShareTree
 data Deref
+data RefIsTree
 
 -- Anyrec
 
@@ -82,6 +83,7 @@ instance
         f <- lift $ mlift @n $ readIORef ioref
         let AnyT action = recur f
         a <- AnyT $ local (const r) action
+        cache <- lift $ mlift @n $ readIORef cacheIoref
         lift $ mlift @n $ writeIORef cacheIoref (HM.insert name a cache)
         return a
   monadfn r@(Subtree f) = do
@@ -106,6 +108,10 @@ instance (Monad m, MLift n m IO) => Recur0 ( 'K Zero (RecK (Ref f) (f (Ref f)) a
       runReaderT (runReaderT reader r) (cacheIoref, action)
 
 --- /Anyrec
+
+instance MonadFn ( 'K Zero (MfnK (Ref f) Bool RefIsTree)) IO where
+  monadfn (Ref _) = return False
+  monadfn (Subtree f) = return True
 
 instance MonadFn ( 'K Zero (MfnK (Ref f) (f (Ref f)) Deref)) IO where
   monadfn (Ref (_, ioref)) = liftIO $ readIORef ioref
@@ -341,6 +347,7 @@ type IORefRemoveFinalsD q v r r' =
     :+: Name "deref" (Wrap Deref)
     :+: Name "fun" STerm.OneshotFun
     :+: Name "tra" STerm.OneshotTra
+    :+: Name "refIsTree" (Wrap RefIsTree)
     :+: End
 
 removeFinals ::

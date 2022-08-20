@@ -22,7 +22,7 @@ toSmv (BoolAfa bterms (Afa mterms states init)) =
     , T.unlines $ map (\j -> [i|  q#{j}: boolean;|]) [0 .. qcount - 1]
     , T.unlines $ map (\j -> [i|  v#{j}: boolean;|]) [0 .. varCnt - 1]
     , "DEFINE"
-    , T.unlines $ map (\(j, t) -> [i|  b#{j} := #{fromBTerm t};|]) (assocs bterms)
+    , T.unlines $ map (\(j, t) -> [i|  b#{j} := #{fromBTerm t};|]) (assocs bterms')
     , T.unlines $ map (\(j, t) -> [i|  m#{j} := #{fromMTerm t};|]) (assocs mterms)
     , [i|INIT q#{init}|]
     , T.append "TRANS " $
@@ -65,7 +65,7 @@ toSmvReverse (BoolAfa bterms (Afa mterms states init)) =
     , T.unlines $ map (\j -> [i|  q#{j}: boolean;|]) [0 .. qcount - 1]
     , T.unlines $ map (\j -> [i|  v#{j}: boolean;|]) [0 .. varCnt - 1]
     , "DEFINE"
-    , T.unlines $ map (\(j, t) -> [i|  b#{j} := #{fromBTerm t};|]) (assocs bterms)
+    , T.unlines $ map (\(j, t) -> [i|  b#{j} := #{fromBTerm t};|]) (assocs bterms')
     , T.unlines $ map (\(j, t) -> [i|  m#{j} := #{fromMTermReverse t};|]) (assocs mterms)
     , [i|INIT #{nqConj}|]
     , T.append "TRANS " $
@@ -86,7 +86,7 @@ toSmvReverseAssign (BoolAfa bterms (Afa mterms states init)) =
     , T.unlines $ map (\j -> [i|  q#{j}: boolean;|]) [0 .. qcount - 1]
     , T.unlines $ map (\j -> [i|  v#{j}: boolean;|]) [0 .. varCnt - 1]
     , "DEFINE"
-    , T.unlines $ map (\(j, t) -> [i|  b#{j} := #{fromBTerm t};|]) (assocs bterms)
+    , T.unlines $ map (\(j, t) -> [i|  b#{j} := #{fromBTerm t};|]) (assocs bterms')
     , T.unlines $ map (\(j, t) -> [i|  m#{j} := #{fromMTermReverse t};|]) (assocs mterms)
     , "ASSIGN"
     , T.unlines $ map (\j -> [i|  init(q#{j}) := FALSE; |]) [0 .. qcount - 1]

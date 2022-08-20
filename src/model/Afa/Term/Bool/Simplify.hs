@@ -288,11 +288,10 @@ blift = Builder . const
 {-# INLINEABLE delitDag #-}
 delitDag ::
   forall p.
-  (Eq p, Hashable p) =>
   Array Int Any ->
   (Array Int (Either Bool Int), Array Int (Term p Int)) ->
   (Array Int (Either Bool Int), Array Int (Term p Int))
-delitDag gs (ixMap, arr) = runST action
+delitDag _ (ixMap, arr) = runST action
   where
     bnds@(ibeg, iend) = bounds arr
 
@@ -306,7 +305,7 @@ delitDag gs (ixMap, arr) = runST action
           alg t >>= lift . unsafeWrite ixMap' i
         lift $ unsafeFreeze ixMap'
       (_, terms) <- readSTRef stateV
-      return (ixMap', listArray (0, length terms) $ reverse terms)
+      return (ixMap', listArray (0, length terms - 1) $ reverse terms)
 
     alg ::
       forall s.
@@ -539,6 +538,6 @@ simplifyDagUntilFixpoint gs (ixMap, arr) =
     cost ts = (rangeSize $ bounds ts, sum $ fmap length ts)
     iters =
       iterate
-        ((cost . snd &&& id) . delitDag gs . snd)
+        ((cost . snd &&& id) . simplifyDag gs . snd)
         (cost arr, (ixMap, arr))
     better (c1, r) (c2, _) (c3, _) = r <$ guard (c1 <= c2 && c1 <= c3)

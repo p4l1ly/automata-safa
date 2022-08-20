@@ -21,7 +21,7 @@
 {-# LANGUAGE UndecidableInstances #-}
 {-# LANGUAGE ViewPatterns #-}
 
-module Afa.Convert.Smv2 where
+module Afa.Convert.Mona where
 
 import Afa.Finalful
 import Afa.Finalful.STerm (Term (..), VarTra (..))
@@ -100,23 +100,23 @@ formatFormula = do
             fIx <- lift $ readIORef vFIx
             lift $ writeIORef vFIx $ fIx + 1
             lift $ modifyIORef stack ((fIx, txt) :)
-            return $ do T.cons 'f' (T.pack (show fIx))
+            return $ do T.append (T.cons 'f' (T.pack (show fIx))) "(next)"
         where
           contents =
             case x of
-              LTrue -> return "TRUE"
-              LFalse -> return "FALSE"
-              State q -> return $ T.cons 'q' (showT q)
-              Var v -> return $ T.cons 'a' (showT v)
+              LTrue -> return "true"
+              LFalse -> return "false"
+              State q -> return $ T.append "next in q" (showT q)
+              Var v -> return $ T.append "next in a" (showT v)
               Not !r -> do
                 !r' <- rec r
                 monadfn @(Inc [d'|refIsTree|]) r >>= \case
                   True ->
                     monadfn @(Inc [d'|deref|]) r <&> \case
-                      And _ _ -> T.concat ["!(", r', ")"]
-                      Or _ _ -> T.concat ["!(", r', ")"]
-                      _ -> T.cons '!' r'
-                  False -> return $ T.cons '!' r'
+                      And _ _ -> T.concat ["~(", r', ")"]
+                      Or _ _ -> T.concat ["~(", r', ")"]
+                      _ -> T.cons '~' r'
+                  False -> return $ T.cons '~' r'
               And !a !b -> do
                 !a' <- rec a
                 !b' <- rec b
@@ -188,31 +188,27 @@ format init final (qCount, i2q, i2r, q2i) = do
   for_ [0 .. qCount - 1] (loadVars . i2r)
   vars <- readIORef varsV
 
-  TIO.putStrLn "MODULE main"
-  TIO.putStrLn "VAR"
-  for_ [0 .. qCount - 1] \qi -> TIO.putStrLn [i|  q#{showT $ i2q qi}: boolean;|]
-  for_ vars \v -> TIO.putStrLn [i|  a#{showT v}: boolean;|]
-
-  (finalnesses, _, complexFinals) <- splitFinals' @d final qCount q2i
+  TIO.putStrLn "var1 f;"
+  for_ [0 .. qCount - 1] \qi -> TIO.putStrLn [i|var2 q#{showT $ i2q qi};|]
+  for_ vars \v -> TIO.putStrLn [i|var2 a#{showT v};|]
 
   initF <- convert init
-  complexFinals' <- for complexFinals convert
+  finalF <- convert final
   qFs <- for [0 .. qCount - 1] (convert . i2r)
 
-  TIO.putStrLn "DEFINE"
-  getShared >>= mapM_ \(j, txt) -> TIO.putStrLn [i|  f#{j} := #{txt};|]
+  shared <- reverse <$> getShared
+  mapM_ (\(j, txt) -> TIO.putStrLn [i|pred f#{j}(var1 next) = #{txt};|]) shared
 
-  TIO.putStrLn "ASSIGN"
+  TIO.putStrLn [i|let1 next = 0 in #{initF};|]
+  TIO.putStrLn [i|let1 next = f in #{finalF};|]
+
+  TIO.putStrLn "all1 this:"
+  TIO.putStrLn "  this < f =>"
+  TIO.putStrLn "    ( let1 next = this + 1 in true"
   for_ (zip [0 ..] qFs) \(qi, qF) -> do
     let qName = showT $ i2q qi
-    case finalnesses ! qi of
-      Final -> TIO.putStrLn [i|  init(q#{qName}) := TRUE;|]
-      Nonfinal -> TIO.putStrLn [i|  init(q#{qName}) := FALSE;|]
-      Complex -> return ()
-    TIO.putStrLn [i|  next(q#{qName}) := #{qF};|]
-
-  for_ complexFinals' \f -> TIO.putStrLn [i|INIT #{f}|]
-  TIO.putStrLn [i|SPEC AG(!(#{initF}))|]
+    TIO.putStrLn [i|      & (this in q#{qName} => #{qF})|]
+  TIO.putStrLn "    );"
 
 formatIORef ::
   forall q v r r' d result.
@@ -227,7 +223,7 @@ formatIORef ::
   r ->
   (Int, Int -> q, Int -> r, q -> Int) ->
   IO ()
-formatIORef = Afa.Convert.Smv2.format @d
+formatIORef = Afa.Convert.Mona.format @d
 
 class ShowT a where
   showT :: a -> T.Text
