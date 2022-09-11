@@ -13,7 +13,7 @@ wanted_count = sys.argv[1]
 if wanted_count == '-':
     def ixs_gen():
         for line in sys.stdin:
-            yield line.split(" ")
+            yield line.strip().split(" ")
 else:
     wanted_count = int(wanted_count)
     empty_only = '--empty' in sys.argv
@@ -35,9 +35,11 @@ else:
 
 
 for i, ixs in enumerate(ixs_gen()):
-    print("AFA", i, file=sys.stderr, flush=True)
-    subprocess.run(f"zsh abcd-equals-abcde.sh {' '.join(ixs)} > /tmp/abcd-equals-abcde/{i}-{'-'.join(ixs)}.mata", shell=True)
-    subprocess.run(f"mv /tmp/abcd-equals-abcde/abcd-abcde-neq.afa /tmp/abcd-equals-abcde/{i}-{'-'.join(ixs)}.afa", shell=True)
+    f = f"{i}-{'-'.join(ixs)}"
+    print("AFA", i, ixs, f, file=sys.stderr, flush=True)
+    subprocess.run(f"zsh abcd-equals-abcde.sh {' '.join(ixs)} > /tmp/abcd-equals-abcde/{f}.mata", shell=True)
+    subprocess.run(f"mv /tmp/abcd-equals-abcde/abcd-abcde-neq.afa /tmp/abcd-equals-abcde/{f}.afa", shell=True)
+    subprocess.run(f"mv /tmp/abcd-equals-abcde/abcd-equals-abcde.bisim /tmp/abcd-equals-abcde/{f}.bisim", shell=True)
 
 subprocess.run("rm /tmp/abcd-equals-abcde/abcd.afa", shell=True)
 subprocess.run("rm /tmp/abcd-equals-abcde/abcde.afa", shell=True)

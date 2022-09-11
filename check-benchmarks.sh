@@ -5,6 +5,7 @@ TIMEOUT=20
 TIMEOUT_MS=20000
 
 mkdir /tmp/afasat-$UUID
+mkdir /tmp/bisim-$UUID
 
 find $1 -name '*.afa' | while read -r fAfa; do
   f=${fAfa%????}
@@ -64,5 +65,10 @@ find $1 -name '*.afa' | while read -r fAfa; do
   ${Afasat:-false} && {
     cp $f.afasat /tmp/afasat-$UUID/0
     ../afapipe/build/file-solver-2 /tmp/afasat-$UUID | sed 's/^0//' | awk "{print \"afasat\\t$f\" \$0}"
+  }
+
+  ${Bisim:-false} && {
+    cp $f.bisim /tmp/bisim-$UUID/0
+    ../afapipe/build/file-solver-1 /tmp/bisim-$UUID | sed 's/^0//' | awk "{print \"bisim\\t$f\" \$0}"
   }
 done

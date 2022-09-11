@@ -33,6 +33,7 @@ import qualified DepDict as D
 import Shaper (FRecK, FunRecur (funRecur), MfnK, Mk, MkN, MonadFn (monadfn), MonadFn', RecK, RecRecur, Recur0 (recur), Recur, ask, IsTree)
 import Shaper.Helpers (BuildInheritShareD, BuildD, buildInheritShare, buildFix, buildFree)
 import TypeDict (Named(Name), TypeDict (End, LiftTags, (:+:)), d, d', g, g')
+import Debug.Trace
 
 data SyncVar q v = VVar v | FVar | QVar q deriving (Eq, Show)
 data SyncQs q = QState q | SyncState deriving (Eq, Show)
@@ -147,13 +148,13 @@ removeFinals init final (qCount, i2q, i2r, q2i) = do
 
       let redirectFn = \r ->
             [d'|monadfn|deref'|] r <&> \case
-              State (QState q) -> (qsubs ! q2i q)
+              State (QState q) -> qsubs ! q2i q
               _ -> r
       let mtra = create @[g'|redirectF|] (redirectFn :: [g'|redirectFn|])
       redirect <- [d'|funRecur|redirect|] mtra :: m (r' -> m r')
 
       qTransitions <- mapM (redirect <=< changeAlphabet . i2r) [0 .. qCount - 1]
-      init' <- changeAlphabet init
+      init' <- redirect =<< changeAlphabet init
       case finalConstraint of
         Nothing -> do
           let qrmap = listArray (0, qCount - 1) qTransitions

@@ -5,16 +5,19 @@
 {-# LANGUAGE TypeOperators #-}
 {-# LANGUAGE StandaloneKindSignatures #-}
 {-# LANGUAGE QuasiQuotes #-}
-{-# LANGUAGE KindSignatures #-}
 {-# LANGUAGE BlockArguments #-}
 {-# LANGUAGE TypeFamilies #-}
 {-# LANGUAGE LambdaCase #-}
+{-# LANGUAGE ViewPatterns #-}
+{-# LANGUAGE TupleSections #-}
+{-# LANGUAGE DeriveAnyClass #-}
+{-# LANGUAGE DeriveGeneric #-}
 
 module Afa.Negate where
 
 import Shaper.Helpers (BuildD, BuildInheritShareD, buildInheritShare)
 
-import Afa.Finalful.STerm (Term (..), QVR(Q), create, Create, Creation)
+import Afa.Finalful.STerm (Term (..), QVR(Q), create, Create, Creation, VarTra (VarTra), QVTra(QVTra))
 import qualified DepDict as D
 import TypeDict
     ( d, g, d', g', Named(Name), TypeDict((:+:)), TypeDict(End, LiftTags) )
@@ -28,7 +31,12 @@ import Data.Array.MArray
 import Data.Array.IO (IOArray)
 import Data.Array (listArray, (!), Array)
 import Data.Array.Unsafe (unsafeFreeze)
-import Lift (K(K))
+import Lift (K(K), Inc)
+import qualified Data.HashMap.Strict as M
+import Data.IORef
+import Data.Hashable
+import Data.Functor.Compose
+import GHC.Generics (Generic)
 
 type DeMorganAlgD d m = DeMorganAlgD_ d m (DeMorganAlgA d [g|q|] [g|v|] [g|r|]) [g|q|] [g|v|] [g|r|]
 type DeMorganAlgA d q v r =  -- keyword aliases
@@ -53,7 +61,7 @@ type DeMorganAlgD_ d m d' q v r =
   :|: D.End
 deMorganAlg ::
   forall d m d' q v r.
-  D.ToConstraint (DeMorganAlgD_ d m d' q v r) => 
+  D.ToConstraint (DeMorganAlgD_ d m d' q v r) =>
   Term q v r -> m r
 deMorganAlg LTrue = buildInheritShare @[g'|buildD|] LFalse
 deMorganAlg LFalse = buildInheritShare @[g'|buildD|] LTrue
@@ -66,7 +74,7 @@ deMorganAlg (Or a b) =
   And <$> [d'|monadfn|rec|] a <*> [d'|monadfn|rec|] b >>= buildInheritShare @[g'|buildD|]
 
 
-data Qombo q = Qombo Int q
+data Qombo q = Qombo Int q deriving (Eq, Show, Generic, Hashable)
 
 type QomboD d m = QomboD_ d (QomboA d [g|q|] [g|v|] [g|r|] [g|r'|]) [g|q|] [g|v|] [g|r|] [g|r'|]
 type QomboA d q v r r' =  -- keyword aliases
@@ -165,7 +173,7 @@ type UnInitStateD_ d m d' q v r =
     :|: D.Name "deref" (MonadFn [d'|deref|] m)
     :|: D.End
 unInitState ::
-  forall d m d' q v r n x.
+  forall d m d' q v r.
   D.ToConstraint (UnInitStateD_ d m d' q v r) =>
   (r, r, (Int, Int -> q, Int -> r, q -> Int)) ->
   m (r, r, (Int, Int -> q, Int -> r, q -> Int))
@@ -173,3 +181,98 @@ unInitState afa@(init, final, states@(_, _, i2r, q2i)) = do
   [d'|monadfn|deref|] init >>= \case
     State q -> return (i2r $ q2i q, final, states)
     _ -> return afa
+
+
+type EnumA d q v r r' =
+  Name "funr" (Mk (FRecK r r' (QVTra IO q v Int Int r')) [d|funr|])
+    :+: End
+type EnumD_ d m d' q v r r' =
+  D.Name "aliases"
+    ( d' ~ EnumA d q v r r'
+    , q ~ [g|q|]
+    , v ~ [g|v|]
+    , r ~ [g|r|]
+    )
+    :|: D.Name "funr" (FunRecur [d'|funr|] m)
+    :|: D.Name "hashable" (Eq v, Hashable v, Eq q, Hashable q)
+    :|: D.End
+enum ::
+  forall d d' q v r r'.
+  D.ToConstraint (EnumD_ d IO d' q v r r') =>
+  [r] ->
+  (Int, Int -> q, Int -> [(r, r)], q -> Int) ->
+  IO ([r'], (Int, Int -> Int, Int -> [(r', r')], Int -> Int))
+enum rs (qCount, _, i2r, q2i) = do
+  -- TODO pure var list builder using VarFol?
+  varCountV <- newIORef 0
+  varsV <- newIORef M.empty
+  convert <- [d'|funRecur|funr|] $ QVTra
+    (return . State . q2i)
+    (\v -> do
+        vars <- readIORef varsV
+        (v', vars') <- getCompose $ M.alterF -$ v -$ vars $ \case
+          Nothing -> Compose do
+            varCount <- readIORef varCountV
+            writeIORef varCountV (varCount + 1)
+            return (varCount, Just varCount)
+          Just v' -> Compose do return (v', Just v')
+        writeIORef varsV vars'
+        return $ Var v'
+    )
+  rs' <- mapM convert rs
+  qs' <- listArray (0, qCount - 1) <$>
+    for [0 .. qCount - 1] \(i2r -> transitions) -> do
+      for transitions \(aterm, qterm) -> (,) <$> convert aterm <*> convert qterm
+  return (rs', (qCount, id, (qs' !), id))
+
+
+type ToDnfA d q v r =
+  ToDnfA1
+    ( Name "recur"
+        ( MkN
+          ( RecK
+              (Bool, r)
+              (Bool, Term q v r)
+              [[(Bool, Either q v)]]
+          )
+          [d|hylo|]
+        )
+        :+: End
+    )
+    q v r
+type ToDnfA1 d' q v r =
+  Name "rec" (Mk (MfnK (Bool, r) [[(Bool, Either q v)]]) [d'|recur|])
+    :+: d'
+type ToDnfD_ d m d' q v r =
+  D.Name "aliases"
+    ( d' ~ ToDnfA d q v r
+    , q ~ [g|q|]
+    , v ~ [g|v|]
+    , r ~ [g|r|]
+    )
+    :|: D.Name "rec" (Recur [d'|recur|] m)
+    :|: D.End
+toDnf ::
+  forall d d' q v r m.
+  D.ToConstraint (ToDnfD_ d m d' q v r) =>
+  m (r -> m [[(Bool, Either q v)]])
+toDnf = do
+  let
+    productConcat xs ys = [x ++ y | x <- xs, y <- ys]
+    alg (False, LTrue) = return []
+    alg (True, LTrue) = return [[]]
+    alg (False, LFalse) = return [[]]
+    alg (True, LFalse) = return []
+    alg (b, State q) = return [[(b, Left q)]]
+    alg (b, Var v) = return [[(b, Right v)]]
+    alg (False, Not a) = [d'|monadfn|rec|] (True, a)
+    alg (True, Not a) = [d'|monadfn|rec|] (False, a)
+    alg (False, And a b) =
+      (++) <$> [d'|monadfn|rec|] (False, a) <*> [d'|monadfn|rec|] (False, b)
+    alg (True, And a b) =
+      productConcat <$> [d'|monadfn|rec|] (True, a) <*> [d'|monadfn|rec|] (True, b)
+    alg (False, Or a b) = do
+      productConcat <$> [d'|monadfn|rec|] (False, a) <*> [d'|monadfn|rec|] (False, b)
+    alg (True, Or a b) =
+      (++) <$> [d'|monadfn|rec|] (True, a) <*> [d'|monadfn|rec|] (True, b)
+  (. (True,)) <$> [d'|recur|recur|] alg

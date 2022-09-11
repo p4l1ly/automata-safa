@@ -274,77 +274,82 @@ toAfa ::
   [Fix STerm'] ->
   [Fix STerm'] ->
   BoolAfaUnswallowed Int
-toAfa qcount fcount acount init final states formulae =
-  unswallow $
-    BoolAfa
-      { boolTerms =
-          listArray' $
-            [ Free BTerm.LTrue
-            , Free BTerm.LFalse
-            , Free $ BTerm.Predicate qcount
-            , Free $ BTerm.Not $ Pure 2
-            ]
-              ++ map (Free . BTerm.Predicate) [qcount + 1 .. qcount + acount]
-              ++ fbterms
-      , Afa.Bool.afa =
-          Afa
-            { terms = listArray' $ extendedStates ++ fmterms
-            , states = states''
-            , initState = init''
-            }
-      }
+toAfa qcount fcount acount init final states formulae
+  | not (and simpleNonfinal && isNothing nonsimpleFinal) =
+    error "no state should be final"
+  | otherwise =
+    unswallow $
+      BoolAfa
+        { boolTerms =
+            listArray' $
+              [ Free BTerm.LTrue
+              , Free BTerm.LFalse
+              , Free $ BTerm.Predicate qcount
+              , Free $ BTerm.Not $ Pure 2
+              ]
+                ++ map (Free . BTerm.Predicate) [qcount + 1 .. qcount + acount]
+                ++ fbterms
+        , Afa.Bool.afa =
+            Afa
+              { terms = listArray' $ extendedStates ++ fmterms
+              , states = states''
+              , initState = init''
+              }
+        }
   where
     (simpleNonfinal, nonsimpleFinal) = finalSplitSimple qcount final
 
-    nonsimpleFinal' =
-      (nonsimpleFinal <&>) . cataRecursive $
-        getCompose >>> \case
-          [x] -> alg x
-          xs -> Free $ BTerm.And $ NE.fromList $ xs <&> alg
-      where
-        alg = \case
-          SState q
-            | simpleNonfinal ! q -> Pure 1
-            | otherwise -> Free $ BTerm.Predicate q
-          SNot x -> Free $ BTerm.Not x
-          SAnd a b -> Free $ BTerm.And $ a :| [b]
-          SOr a b -> Free $ BTerm.Or $ a :| [b]
-          STrue -> Pure 0
-          SFalse -> Pure 1
-          SVar _ -> error "variable in kFinalFormula"
-          SFormula _ -> error "unsupported: formula in kFinalFormula"
+    -- nonsimpleFinal' =
+    --   (nonsimpleFinal <&>) . cataRecursive $
+    --     getCompose >>> \case
+    --       [x] -> alg x
+    --       xs -> Free $ BTerm.And $ NE.fromList $ xs <&> alg
+    --   where
+    --     alg = \case
+    --       SState q
+    --         | simpleNonfinal ! q -> Pure 1
+    --         | otherwise -> Free $ BTerm.Predicate q
+    --       SNot x -> Free $ BTerm.Not x
+    --       SAnd a b -> Free $ BTerm.And $ a :| [b]
+    --       SOr a b -> Free $ BTerm.Or $ a :| [b]
+    --       STrue -> Pure 0
+    --       SFalse -> Pure 1
+    --       SVar _ -> error "variable in kFinalFormula"
+    --       SFormula _ -> error "unsupported: formula in kFinalFormula"
 
-    nonsimpleFinal'' =
-      nonsimpleFinal' <&> \fq ->
-        Free . MTerm.Or $
-          Free (MTerm.And $ Free (MTerm.State $ qcount + 1) :| [Free $ MTerm.Predicate $ Pure 3])
-            :| [Free $ MTerm.And $ Free (MTerm.Predicate $ Pure 2) :| [Free $ MTerm.Predicate fq]]
+    -- nonsimpleFinal'' =
+    --   nonsimpleFinal' <&> \fq ->
+    --     Free . MTerm.Or $
+    --       Free (MTerm.And $ Free (MTerm.State $ qcount + 1) :| [Free $ MTerm.Predicate $ Pure 3])
+    --         :| [Free $ MTerm.And $ Free (MTerm.Predicate $ Pure 2) :| [Free $ MTerm.Predicate fq]]
 
-    qsInNonsimpleFinal =
-      accumArray (\_ _ -> True) False (0, qcount - 1) $
-        nonsimpleFinal'
-          ^.. folded . \add -> (`freeModChilds` pure) $ \rec ->
-            BTerm.modChilds
-              BTerm.ChildMod
-                { BTerm.lP = \p -> p <$ add (p, ())
-                , BTerm.lT = rec
-                }
+    -- qsInNonsimpleFinal =
+    --   accumArray (\_ _ -> True) False (0, qcount - 1) $
+    --     nonsimpleFinal'
+    --       ^.. folded . \add -> (`freeModChilds` pure) $ \rec ->
+    --         BTerm.modChilds
+    --           BTerm.ChildMod
+    --             { BTerm.lP = \p -> p <$ add (p, ())
+    --             , BTerm.lT = rec
+    --             }
 
-    extendedStates
-      | and simpleNonfinal && isNothing nonsimpleFinal = [0 .. qcount - 1] <&> Free . MTerm.State
-      | otherwise =
-        [0 .. qcount - 1] <&> \i ->
-          case (simpleNonfinal ! i, qsInNonsimpleFinal ! i) of
-            (True, _) ->
-              Free . MTerm.And $
-                Free (MTerm.State i) :| [Free $ MTerm.Predicate $ Pure 3]
-            (_, False) ->
-              Free . MTerm.Or $
-                Free (MTerm.State i) :| [Free $ MTerm.Predicate $ Pure 2]
-            _ ->
-              Free . MTerm.Or $
-                Free (MTerm.State i)
-                  :| [Free $ MTerm.Predicate $ Free $ BTerm.And $ Pure 2 :| [Free $ BTerm.Predicate i]]
+    extendedStates = [0 .. qcount - 1] <&> Free . MTerm.State
+
+    -- extendedStates
+    --   | and simpleNonfinal && isNothing nonsimpleFinal = [0 .. qcount - 1] <&> Free . MTerm.State
+    --   | otherwise =
+    --     [0 .. qcount - 1] <&> \i ->
+    --       case (simpleNonfinal ! i, qsInNonsimpleFinal ! i) of
+    --         (True, _) ->
+    --           Free . MTerm.And $
+    --             Free (MTerm.State i) :| [Free $ MTerm.Predicate $ Pure 3]
+    --         (_, False) ->
+    --           Free . MTerm.Or $
+    --             Free (MTerm.State i) :| [Free $ MTerm.Predicate $ Pure 2]
+    --         _ ->
+    --           Free . MTerm.Or $
+    --             Free (MTerm.State i)
+    --               :| [Free $ MTerm.Predicate $ Free $ BTerm.And $ Pure 2 :| [Free $ BTerm.Predicate i]]
 
     freeJust (Free t) = Just t
     freeJust _ = Nothing
@@ -379,16 +384,17 @@ toAfa qcount fcount acount init final states formulae =
       SOr x y -> Right $ Free $ MTerm.Or $ NE.map asRight $ x :| [y]
       x -> error $ "non-exhaustive patterns " ++ show x
 
-    init' = convertTransition init >>= Free . MTerm.State
+    init' = convertTransition init
 
-    (init'', states'') = case nonsimpleFinal'' of
-      Just finalTrans ->
-        ( qcount
-        , listArray (0, qcount + 1) $
-            states'
-              ++ [Free $ MTerm.And $ init' :| [Free $ MTerm.State $ qcount + 1], finalTrans]
-        )
-      Nothing -> case init' of
+    -- (init'', states'') = case nonsimpleFinal'' of
+    --   Just finalTrans ->
+    --     ( qcount
+    --     , listArray (0, qcount + 1) $
+    --         states'
+    --           ++ [Free $ MTerm.And $ init' :| [Free $ MTerm.State $ qcount + 1], finalTrans]
+    --     )
+    (init'', states'') =
+      case init' of
         Free (MTerm.State q) -> (q, listArray (0, qcount - 1) states')
         _ -> (qcount, listArray (0, qcount) $ states' ++ [init'])
 

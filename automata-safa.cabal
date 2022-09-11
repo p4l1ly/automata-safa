@@ -111,6 +111,7 @@ library convert
     Afa.Convert.Ada
     Afa.Convert.CnfAfa
     Afa.Convert.Separated
+    Afa.Convert.Separated2
     Afa.Convert.Separated.Model
     Afa.Convert.Separated.ToDnf
     Afa.Convert.Capnp.Afa
@@ -185,6 +186,7 @@ executable ltle-to-afa
     composition-extra ^>=2.0.0,
     free ^>=5.1.7,
     interpolate ^>=0.2.1,
+    unordered-containers ^>=0.2.19.1,
     automata-safa,
     automata-safa:ltl,
     automata-safa:convert,

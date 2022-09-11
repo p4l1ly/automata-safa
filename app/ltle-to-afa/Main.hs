@@ -31,6 +31,7 @@ import qualified Afa.Convert.PrettyStranger2 as PrettyStranger2
 import qualified Afa.Convert.Separated as Sep
 import qualified Afa.Convert.Separated.Model as Sep
 import qualified Afa.Convert.Separated.ToDnf as ToDnf
+import qualified Afa.Convert.Separated2 as Sep2
 import Afa.Convert.Smv
 import qualified Afa.Convert.Smv2 as Smv2
 import qualified Afa.Convert.Stranger as Stranger
@@ -59,6 +60,7 @@ import Data.Functor
 import Data.Functor.Base
 import Data.Functor.Compose
 import Data.Functor.Foldable
+import qualified Data.HashMap.Strict as HM
 import Data.List
 import Data.List.Split
 import Data.Maybe
@@ -77,6 +79,7 @@ import qualified Shaper.Helpers
 import System.Directory
 import System.Environment (getArgs)
 import System.IO
+import Text.Read
 import TypeDict (TypeDict ((:+:)), d)
 import qualified TypeDict
 
@@ -655,6 +658,127 @@ prettyToMona = do
   (init, final, states) <- PrettyStranger2.parseIORef (PrettyStranger2.parseDefinitions txt)
   Mona.formatIORef init final states
 
+prettyToSeparated ::
+  forall t d.
+  ( t ~ T.Text
+  , d ~ Afa.IORef.IORefRemoveFinalsD t t (Afa.IORef.Ref (STerm.Term t t)) Void
+  ) =>
+  IO ()
+prettyToSeparated = do
+  txt <- TIO.getContents
+  (init, final, states) <- PrettyStranger2.parseIORef (PrettyStranger2.parseDefinitions txt)
+  Just states' <- Afa.IORef.trySeparateQTransitions states
+  ([init', final'], states'') <- Negate.enum @d [init, final] states'
+  Sep2.formatIORef init' final' states''
+
+emailFilterBisim ::
+  forall t d buildD buildTree q' r'.
+  ( t ~ T.Text
+  , d ~ Afa.IORef.IORefRemoveFinalsD t t (Afa.IORef.Ref (STerm.Term t t)) Void
+  , buildTree ~ Shaper.Mk (Shaper.MfnK (STerm.Term q' t r') r') [d|buildTree|]
+  , buildD ~ (TypeDict.Name "build" buildTree :+: d)
+  , q' ~ Negate.Qombo t
+  , r' ~ Afa.IORef.Ref (STerm.Term q' t)
+  ) =>
+  String ->
+  String ->
+  IO ()
+emailFilterBisim path1 path2 = do
+  [afa1, afa2] <- for [path1, path2] \path -> do
+    f <- openFile path ReadMode
+    txt <- TIO.hGetContents f
+    (init, final, qs@(qCount, i2q, _, q2i)) <-
+      PrettyStranger2.parseIORef (PrettyStranger2.parseDefinitions txt)
+    (nonfinals, Nothing) <- Afa.IORef.splitFinals final
+    let finals = accumArray (\_ _ -> False) True (0, qCount - 1) $ map ((,()) . q2i) nonfinals
+    let finals' = map i2q $ filter (finals !) [0 .. qCount - 1]
+    return (init, finals', qs)
+  ([init1, init2], finals, states@(qCount, i2q, i2r, q2i)) <- Afa.IORef.qombo [afa1, afa2]
+  let initFree = Free $ STerm.And (Pure init1) (Pure init2)
+  init <- Shaper.Helpers.buildFree @buildD initFree
+  let nonfinals =
+        accumArray (\_ _ -> False) True (0, qCount - 1) $
+          map ((,()) . q2i) $ toList finals
+  let nonfinals' =
+        foldr (Fix .: STerm.And . Fix . STerm.Not . Fix . STerm.State . i2q) (Fix STerm.LTrue) $
+          filter (nonfinals !) [0 .. qCount - 1]
+  final <- Shaper.Helpers.buildFix @buildD nonfinals'
+
+  Just states' <- Afa.IORef.trySeparateQTransitions states
+  ([init1', init', final'], states'') <-
+    Negate.enum
+      @(TypeDict.Name "r" r' :+: TypeDict.Name "q" q' :+: d)
+      [init1 :: r', init :: r', final :: r']
+      states'
+  Sep2.twoFormatIORef init1' final' init' final' states''
+
+prettyToSeparatedMata :: IO ()
+prettyToSeparatedMata = do
+  txt <- TIO.getContents
+  (init, final, states) <- PrettyStranger2.parseIORef (PrettyStranger2.parseDefinitions txt)
+  Just qs1 <- Afa.IORef.trySeparateQTransitions states
+  Machete.formatSeparatedIORef init final qs1
+
+prettyToSeparatedDnfMata ::
+  forall d t r buildTree buildD.
+  ( t ~ T.Text
+  , r ~ Afa.IORef.Ref (STerm.Term t t)
+  , d ~ Afa.IORef.IORefRemoveFinalsD t t r Void
+  , buildTree ~ Shaper.Mk (Shaper.MfnK (STerm.Term t t r) r) [d|buildTree|]
+  , buildD ~ (TypeDict.Name "build" buildTree :+: d)
+  ) =>
+  IO ()
+prettyToSeparatedDnfMata = do
+  txt <- TIO.getContents
+  (init, final, states) <- PrettyStranger2.parseIORef (PrettyStranger2.parseDefinitions txt)
+  Just states' <- Afa.IORef.trySeparateQTransitions states
+  toDnf <- Negate.toDnf @d
+  let sortCube :: [(Bool, Either t t)] -> Maybe [(Bool, Either t t)]
+      sortCube elems =
+        elemMap <&> sortBy compareElem . map (\(x, y) -> (y, x)) . HM.toList
+        where
+          elemMap = foldM step HM.empty elems
+          step hm (sgn, qv) = HM.alterF -$ qv -$ hm $ \case
+            Nothing -> Just (Just sgn)
+            Just sgn0
+              | sgn0 == sgn -> Just (Just sgn0)
+              | otherwise -> Nothing
+          compareElem (_, Left x) (_, Right y) = LT
+          compareElem (_, Right x) (_, Left y) = GT
+          compareElem (_, Left x) (_, Left y) = compareElem' x y
+          compareElem (_, Right x) (_, Right y) = compareElem' x y
+          compareElem' (T.unpack -> x) (T.unpack -> y) =
+            case (readMaybe x, readMaybe y) of
+              (Just (x :: Int), Just (y :: Int)) -> compare x y
+              (Nothing, _) -> LT
+              (_, Nothing) -> GT
+  let buildCube :: [(Bool, Either t t)] -> IO r
+      buildCube cube =
+        Shaper.Helpers.buildFix @buildD $
+          foldr (Fix .: STerm.And) (Fix STerm.LTrue) $
+            cube <&> \(sgn, qv) ->
+              (if sgn then id else Fix . STerm.Not)
+                case qv of
+                  Left q -> Fix (STerm.State q)
+                  Right v -> Fix (STerm.Var v)
+  let buildDisj cubes =
+        Shaper.Helpers.buildFree @buildD $
+          foldr (Free .: STerm.Or . Pure) (Free STerm.LFalse) cubes
+  init'' <- toDnf init >>= mapM buildCube . mapMaybe sortCube >>= buildDisj
+  final'' <- toDnf final >>= mapM buildCube . mapMaybe sortCube >>= buildDisj
+  let (qCount, i2q, i2r, q2i) = states'
+  i2r'' <-
+    listArray (0, qCount - 1) <$> for [0 .. qCount - 1] \i -> do
+      let transitions = i2r i
+      concat <$> for transitions \(a, q) -> do
+        aCubes <- toDnf a
+        qCubes <- toDnf q
+        aCubes' <- mapM buildCube $ mapMaybe sortCube aCubes
+        qCubes' <- mapM buildCube $ mapMaybe sortCube qCubes
+        return [(aCube, qCube) | aCube <- aCubes', qCube <- qCubes']
+
+  Machete.formatSeparatedIORef init'' final'' (qCount, i2q, (i2r'' !), q2i)
+
 prettyToAfasat :: IO ()
 prettyToAfasat = do
   txt <- TIO.getContents
@@ -734,6 +858,8 @@ main = do
     ["treeRepr"] -> treeRepr
     ["range16ToMacheteNfa"] -> range16ToMacheteNfaMain
     ["prettyToMachete"] -> prettyToMachete
+    ["prettyToSeparatedMata"] -> prettyToSeparatedMata
+    ["prettyToSeparatedDnfMata"] -> prettyToSeparatedDnfMata
     ["prettyToSmv"] -> prettyToSmv
     ["prettyToSmv1"] -> prettyToSmv1
     ["prettyToSmvReverse1"] -> prettyToSmvReverse1
@@ -743,6 +869,8 @@ main = do
     ["prettyToDot"] -> prettyToDot
     ["prettySimplify1"] -> prettySimplify1
     ["prettyToPretty1"] -> prettyToPretty1
+    ["prettyToSeparated"] -> prettyToSeparated
+    ["emailFilterBisim", path1, path2] -> emailFilterBisim path1 path2
     _ -> do
       (Opts readers writers) <-
         execParser $

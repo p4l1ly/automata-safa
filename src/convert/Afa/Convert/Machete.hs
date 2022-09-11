@@ -194,7 +194,7 @@ formatFormula = do
   return (convert, readIORef stack)
 
 format ::
-  forall d q v r d'.
+  forall d q v r.
   D.ToConstraint (FormatFormulaD d IO) =>
   [g|r|] ->
   [g|r|] ->
@@ -256,6 +256,9 @@ instance (ShowT q, ShowT v) => ShowT (SyncVar q v) where
   showT (QVar v) = [i|Q#{showT v}|]
   showT FVar = "F"
 
+instance ShowT q => ShowT (Qombo q) where
+  showT (Qombo n q) = [i|C#{n}_#{showT q}|]
+
 decodeChar :: Word16 -> T.Text
 decodeChar w = case toEnum $ fromEnum w of
   '\\' -> "\\\\"
@@ -295,5 +298,70 @@ formatRange16Nfa (AfaC.Range16Nfa states initial finals) = do
       TIO.putStrLn [i|q#{qi} "#{ranges'}" q#{qi'}|]
   return ()
 
-instance ShowT q => ShowT (Qombo q) where
-  showT (Qombo n q) = [i|C#{n}_#{showT q}|]
+formatSeparated ::
+  forall d q v r deref.
+  ( D.ToConstraint (FormatFormulaD d IO)
+  , deref ~ Mk (MfnK [g|r|] (Term [g|q|] [g|v|] [g|r|])) [d|deref|]
+  , MonadFn deref IO
+  ) =>
+  [g|r|] ->
+  [g|r|] ->
+  (Int, Int -> [g|q|], Int -> [([g|r|], [g|r|])], [g|q|] -> Int) ->
+  IO ()
+formatSeparated init final (qCount, i2q, i2r, q2i) = do
+  (convert, getShared) <- formatFormula @d
+
+  TIO.putStr "%InitialFormula "
+  TIO.putStrLn =<< convert init
+  TIO.putStr "%FinalFormula "
+  TIO.putStrLn =<< convert final
+  for_ [0 .. qCount - 1] \i -> do
+    let qtxt = showT $ i2q i
+    for_ (i2r i) \(aterm, qterm) -> do
+      TIO.putStr "q"
+      TIO.putStr qtxt
+      TIO.putStr " "
+      aterm' <- convert aterm
+      qterm' <- convert qterm
+      let notNullary = \case
+            LTrue -> False
+            LFalse -> False
+            State get -> False
+            Var get -> False
+            Not get -> True
+            And get get' -> True
+            Or get get' -> True
+      aParen <- monadfn @deref aterm <&> notNullary
+      if aParen
+        then do
+          TIO.putStr "("
+          TIO.putStr aterm'
+          TIO.putStr ")"
+        else TIO.putStr aterm'
+      TIO.putStr " "
+      qParen <- monadfn @deref qterm <&> notNullary
+      if qParen
+        then do
+          TIO.putStr "("
+          TIO.putStr qterm'
+          TIO.putStrLn ")"
+        else TIO.putStrLn qterm'
+
+  getShared >>= mapM_ \(i, txt) -> do
+    TIO.putStr "f"
+    putStr (show i)
+    TIO.putStr " "
+    TIO.putStrLn txt
+
+formatSeparatedIORef ::
+  forall q v r r' d result.
+  ( r ~ Afa.IORef.Ref (Term q v)
+  , d ~ IORefRemoveFinalsD q v r r'
+  , ShowT q
+  , ShowT v
+  ) =>
+  r ->
+  r ->
+  (Int, Int -> q, Int -> [(r, r)], q -> Int) ->
+  IO ()
+formatSeparatedIORef = Afa.Convert.Machete.formatSeparated @d

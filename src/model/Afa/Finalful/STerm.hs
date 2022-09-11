@@ -82,6 +82,8 @@ data QVFun q v q' v' = QVFun (q -> q') (v -> v')
 newtype QFun q q' = QFun (q -> q')
 newtype RTra (m :: * -> *) (r :: *) (r' :: *) = RTra (r -> m r')
 newtype VarTra (m :: * -> *) (v :: *) (q :: *) (v' :: *) (r' :: *) = VarTra (v -> m (Term q v' r'))
+data QVTra (m :: * -> *) (q :: *) (v :: *) (q' :: *) (v' :: *) (r' :: *)
+  = QVTra (q -> m (Term q' v' r')) (v -> m (Term q' v' r'))
 
 type instance
   FunSelector

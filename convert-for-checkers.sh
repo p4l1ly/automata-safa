@@ -3,7 +3,11 @@ SMVTOAIG=../aiger/smvtoaig
 
 [ -z $1 ] && { echo path argument expected >&2; exit 1 }
 
-find $1 -name '*.afa' | while read -r fAfa; do
+if [ -f $1 ]; then
+  echo $1
+else
+  find $1 -name '*.afa'
+fi | while read -r fAfa; do
   f=${fAfa%????}
   echo Processing $f >&2
   ${Mata:-false} && {
@@ -13,5 +17,6 @@ find $1 -name '*.afa' | while read -r fAfa; do
   ${Smv:-false} && $LTLE_TO_AFA prettyToSmv < $f.afa > $f.smv
   ${Aiger:-false} && $SMVTOAIG $f.smv > $f.aig
   ${Mona:-false} && $LTLE_TO_AFA prettyToMona < $f.afa > $f.mona
-  ${Afasat:-false} && $LTLE_TO_AFA prettyToAfasat < $f.afa > $f.afasat
+  ${Afasat:-false} &&
+    $LTLE_TO_AFA removeFinalsNonsep < $f.afa | $LTLE_TO_AFA prettyToAfasat > $f.afasat
 done

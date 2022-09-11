@@ -33,6 +33,7 @@ import Data.Functor (($>), (<&>))
 import Data.Functor.Compose (Compose (Compose, getCompose))
 import qualified Data.HashMap.Strict as HM
 import qualified Data.HashSet as HS
+import Data.Hashable
 import Data.IORef
 import Data.Monoid (Endo (appEndo))
 import qualified Data.Text as T
@@ -51,6 +52,7 @@ type SN f = StableName (R f)
 type S f = (SN f, R f)
 data Ref f = Ref (S f) | Subtree (FR f)
 data Anyrec
+data Hylo
 data Funrec
 data Build
 data BuildTree
@@ -66,7 +68,6 @@ newtype AnyT f a (m :: * -> *) x = AnyT (ReaderT (Ref f) (AnyTReaderT f a m m) x
   deriving (Functor, Applicative, Monad) via ReaderT (Ref f) (AnyTReaderT f a m m)
 instance MonadTrans (AnyT f a) where
   lift = AnyT . lift . lift
-
 type instance RecTrans (RecK (Ref f) (FR f) a n Anyrec) = AnyT f
 
 instance
@@ -108,6 +109,59 @@ instance (Monad m, MLift n m IO) => Recur0 ( 'K Zero (RecK (Ref f) (f (Ref f)) a
       runReaderT (runReaderT reader r) (cacheIoref, action)
 
 --- /Anyrec
+
+--- Hylo
+
+type HyloTEnv f p a m = (IORef (HM.HashMap (p, StableName (R f)) a), (p, FR f) -> HyloT f p a m a)
+type HyloTReaderT f p a m = ReaderT (HyloTEnv f p a m)
+newtype HyloT f p a (m :: * -> *) x = HyloT (ReaderT (Ref f) (HyloTReaderT f p a m m) x)
+  deriving (Functor, Applicative, Monad) via ReaderT (Ref f) (HyloTReaderT f p a m m)
+instance MonadTrans (HyloT f p a) where
+  lift = HyloT . lift . lift
+type instance RecTrans (RecK (p, Ref f) (p, FR f) a n Hylo) = HyloT f p
+
+instance
+  {-# OVERLAPPING #-}
+  (Monad m, MLift n m IO, Hashable p, Eq p) =>
+  MonadFn ( 'K Zero (MfnK (p, Ref f) a (RecK (p, Ref f) (p, FR f) a n Hylo))) (HyloT f p a m)
+  where
+  monadfn (p, r@(Ref (name, ioref))) = do
+    (cacheIoref, recur) <- HyloT (lift ask)
+    cache <- lift $ mlift @n $ readIORef cacheIoref
+    case HM.lookup (p, name) cache of
+      Just a -> return a
+      Nothing -> do
+        f <- lift $ mlift @n $ readIORef ioref
+        let HyloT action = recur (p, f)
+        a <- HyloT $ local (const r) action
+        cache <- lift $ mlift @n $ readIORef cacheIoref
+        lift $ mlift @n $ writeIORef cacheIoref (HM.insert (p, name) a cache)
+        return a
+  monadfn (p, r@(Subtree f)) = do
+    (_, recur) <- HyloT (lift ask)
+    let HyloT action = recur (p, f)
+    HyloT $ local (const r) action
+
+instance Monad m => MonadFn ( 'K Zero (MfnK () (Ref f) (RecK (p, Ref f) ff a n Hylo))) (HyloT f p a m) where
+  monadfn () = HyloT ask
+
+instance Monad m => MonadFn ( 'K Zero (IsTree (RecK (p, Ref f) ff a n Hylo))) (HyloT f p a m) where
+  monadfn () = HyloT $ ask <&> \case Subtree _ -> True; _ -> False
+
+instance
+  (Monad m, MLift n m IO, Hashable p, Eq p) =>
+  Recur0 ( 'K Zero (RecK (p, Ref f) (p, FR f) a n Hylo)) m
+  where
+  recur (action :: (p, FR f) -> HyloT f p a m a) = do
+    cacheIoref <- mlift @n (newIORef (HM.empty :: HM.HashMap (p, StableName (R f)) a))
+    return \pr@(p, r) -> do
+      let HyloT reader =
+            monadfn
+              @( 'K Zero (MfnK (p, Ref f) a (RecK (p, Ref f) (p, FR f) a n Hylo)))
+              pr
+      runReaderT (runReaderT reader r) (cacheIoref, action)
+
+-- /Hylo
 
 instance MonadFn ( 'K Zero (MfnK (Ref f) Bool RefIsTree)) IO where
   monadfn (Ref _) = return False
@@ -252,7 +306,7 @@ instance
               return r'
         convert' (Subtree f) = Subtree <$> convert f
 
-    return convert'
+    return (convert' >=> rfn)
 
 instance
   (Monad m, MLift n m IO) =>
@@ -272,7 +326,7 @@ instance
     let my_mlift :: IO a -> m a
         my_mlift = mlift @n
 
-    old2new <- mlift @n $ newIORef (HM.empty :: HM.HashMap (SN (Term q v)) (Ref (Term q v')))
+    old2new <- mlift @n $ newIORef HM.empty
 
     let convert (State q) = return (State q)
         convert (Var v) = vfn v
@@ -283,6 +337,50 @@ instance
         convert LFalse = pure LFalse
 
         convert' :: Ref (Term q v) -> m (Ref (Term q v'))
+        convert' (Ref (name, ioref)) = do
+          hmap <- my_mlift $ readIORef old2new
+          case HM.lookup name hmap of
+            Just r' -> return r'
+            Nothing -> do
+              f' <- my_mlift (readIORef ioref) >>= convert
+              ioref' <- my_mlift $ newIORef f'
+              name' <- my_mlift $ makeStableName ioref'
+              let r' = Ref (name', ioref')
+              my_mlift $ writeIORef old2new (HM.insert name r' hmap)
+              return r'
+        convert' (Subtree f) = Subtree <$> convert f
+
+    return convert'
+
+instance
+  (Monad m, MLift n m IO) =>
+  FunRecur
+    ( 'K
+        n
+        ( FRecK
+            (Ref (Term q v))
+            (Ref (Term q' v'))
+            (QVTra m q v q' v' (Ref (Term q' v')))
+            Funrec
+        )
+    )
+    m
+  where
+  funRecur (QVTra qfn vfn) = do
+    let my_mlift :: IO a -> m a
+        my_mlift = mlift @n
+
+    old2new <- mlift @n $ newIORef HM.empty
+
+    let convert (State q) = qfn q
+        convert (Var v) = vfn v
+        convert (And a b) = And <$> convert' a <*> convert' b
+        convert (Or a b) = Or <$> convert' a <*> convert' b
+        convert (Not a) = Not <$> convert' a
+        convert LTrue = pure LTrue
+        convert LFalse = pure LFalse
+
+        convert' :: Ref (Term q v) -> m (Ref (Term q' v'))
         convert' (Ref (name, ioref)) = do
           hmap <- my_mlift $ readIORef old2new
           case HM.lookup name hmap of
@@ -340,6 +438,7 @@ type IORefRemoveFinalsD q v r r' =
     :+: Name "r'" r'
     :+: Name "lock" (Wrap Anyrec)
     :+: Name "any" (Wrap Anyrec)
+    :+: Name "hylo" (Wrap Hylo)
     :+: Name "funr" (Wrap Funrec)
     :+: Name "buildShared" (Wrap (Delit Build Deref))
     :+: Name "buildTree" (Wrap (Delit BuildTree Deref))
