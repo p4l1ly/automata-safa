@@ -402,7 +402,12 @@ findQs f = fold <$> mapM [d'|monadfn|rec|] f
 --       )
 -- :}
 -- ([1,2],Just (Fix (Or (Fix (Not (Fix (State 3)))) (Fix (Not (Fix (State 4)))))))
-type SplitFinalsR r q = ((Any, Endo [q]), Maybe r)
+type SplitFinalsR r q =
+  ( ( Any -- 
+    , Endo [q]  -- negated states under conjunction
+    )
+  , Maybe r
+  )
 type SplitFinalsD d m = SplitFinalsD_ d m (SplitFinalsA d m [g|q|] [g|r|]) [g|q|] [g|v|] [g|r|]
 type SplitFinalsA d m q r =
   Name "self" (Mk (MfnK () r) [d|rec|])
@@ -437,8 +442,10 @@ splitFinals = \case
       (Nothing, Just complex2) -> return $ Just complex2
       (Just complex1, Nothing) -> return $ Just complex1
       (Just complex1, Just complex2)
-        | getAny (fst qs1) && getAny (fst qs2) -> Just <$> [d'|ask|self|]
-        | otherwise -> Just <$> buildInheritShare @d (And complex1 complex2)
+        | getAny (fst qs1) && getAny (fst qs2) ->
+            Just <$> buildInheritShare @d (And complex1 complex2)
+        | otherwise -> Just <$> [d'|ask|self|]
+  LTrue -> return ((Any False, Endo id), Nothing)
   _ -> self'
   where
     self' = [d'|ask|self|] <&> \s -> ((Any False, Endo id), Just s)
