@@ -21,9 +21,10 @@ cat $REGEX_PATH | while read -r regex; do
   echo
 
   echo "%Section t\"Filter$i DNF\" NFA Bits"
-  $LTLE_TO_AFA range16ToPretty < ../data/email75/range16nfa/$i > /tmp/email-filter-nfa/$i.afa
   $LTLE_TO_AFA prettyToSeparatedDnfMata < /tmp/email-filter-nfa/$i.afa
   echo
+
+  cp ../data/email75/range16nfa/$i /tmp/email-filter-nfa/$i.nfa
 
   i=$(($i+1))
 done

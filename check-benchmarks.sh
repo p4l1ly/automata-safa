@@ -7,7 +7,11 @@ TIMEOUT_MS=20000
 mkdir /tmp/afasat-$UUID
 mkdir /tmp/bisim-$UUID
 
-find $1 -name '*.afa' | while read -r fAfa; do
+if [ -f $1 ]; then
+  echo $1
+else
+  find $1 -name '*.afa'
+fi | while read -r fAfa; do
   f=${fAfa%????}
   ffull=$PWD/$f
   echo Processing $f >&2
@@ -31,6 +35,32 @@ find $1 -name '*.afa' | while read -r fAfa; do
           echo 0
         else
           echo -4
+        fi
+      fi
+    }
+    cd -
+  }
+
+  ${Impact:-false} && {
+    cd ../JAltImpact
+    tic=$(date +"%s.%N")
+    timeout $TIMEOUT ant -Dmodel.path=$ffull.ada < /dev/null > /tmp/jimpact.log.$UUID
+    result=$?
+    {
+      echo -n -e "impact\t$f\t"
+      if [ $result = 124 ]; then
+        echo -e "$TIMEOUT_MS\t-2"
+      elif [ $result = 134 ]; then
+        echo -e "$(python3 -c 'import sys; print(float(sys.argv[1]) * 1000)' $(($(date +'%s.%N')-$tic)))\t-3"
+      else
+        if cat /tmp/jimpact.log.$UUID | grep 'NOT EMPTY' > /dev/null; then
+          echo -n -e "$(cat /tmp/jimpact.log.$UUID | grep 'Time Cost' | sed 's/.*: //')\t"
+          echo 1
+        elif cat /tmp/jimpact.log.$UUID | grep 'EMPTY' > /dev/null; then
+          echo -n -e "$(cat /tmp/jimpact.log.$UUID | grep 'Time Cost' | sed 's/.*: //')\t"
+          echo 0
+        else
+          echo "$TIMEOUT_MS\t-4"
         fi
       fi
     }

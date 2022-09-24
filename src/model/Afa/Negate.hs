@@ -97,10 +97,10 @@ type QomboD_ d d' q v r r' =
         )
   :|: D.End
 qombo ::
-  forall d d' q v r r' f fq.
-  (D.ToConstraint (QomboD_ d d' q v r r'), Foldable f) =>
-  [(r, f q, (Int, Int -> q, Int -> r, q -> Int))]
-  -> IO ([r'], [Qombo q], (Int, Int -> Qombo q, Int -> r', Qombo q -> Int))
+  forall d d' q v r r' f ft.
+  (D.ToConstraint (QomboD_ d d' q v r r'), Foldable f, Traversable ft) =>
+  [(r, f q, (Int, Int -> q, Int -> ft r, q -> Int))]
+  -> IO ([r'], [Qombo q], (Int, Int -> Qombo q, Int -> ft r', Qombo q -> Int))
 qombo afas = do
   let qcounts = map (\(_, _, (c, _, _, _)) -> c) afas
   let totalQCount = sum qcounts
@@ -110,7 +110,7 @@ qombo afas = do
   let finals = (`concatMap` zip [0..] afas) \(afai, (_, fs, _)) -> Qombo afai <$> toList fs
   let q2i (Qombo i q) = (offsets ! i) + (q2iArr ! i) q
 
-  qtsArr :: IOArray Int r' <- newArray_ (0, totalQCount - 1)
+  qtsArr :: IOArray Int (ft r') <- newArray_ (0, totalQCount - 1)
   i2qArr :: IOArray Int (Qombo q) <- newArray_ (0, totalQCount - 1)
   inits <- for (zip [0 ..] afas) $
     \(afai, (init, finals, (qCount, i2q, i2r, q2i)))
@@ -122,10 +122,10 @@ qombo afas = do
       for_ [0 .. qCount - 1] \qi -> do
         let qi' = offset + qi
         writeArray i2qArr qi' (Qombo afai (i2q qi))
-        qts <- mapQombo $ i2r qi
+        qts <- for (i2r qi) mapQombo
         writeArray qtsArr qi' qts
       mapQombo init
-  qtsArr' :: Array Int r' <- unsafeFreeze qtsArr
+  qtsArr' :: Array Int (ft r') <- unsafeFreeze qtsArr
   i2qArr' :: Array Int (Qombo q) <- unsafeFreeze i2qArr
 
   return (inits, finals, (totalQCount, (i2qArr' !), (qtsArr' !), q2i))

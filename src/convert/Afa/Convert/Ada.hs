@@ -48,7 +48,6 @@ toAda (BoolAfa bterms (Afa mterms states init)) =
   where
     qcount = rangeSize $ bounds states
     (varCnt, bterms') = CapAfa.varCount bterms
-    qDisj = T.intercalate " | " $ map (\q -> [i|q#{q}|]) [0 .. qcount - 1]
 
     btexts = bterms' & cataScan mapped %~ fromBTerm
     mtexts =

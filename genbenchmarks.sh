@@ -5,10 +5,10 @@ set -x
 # 
 # zsh regexes-to-nfa.sh > benchmarks/email-filter-nfa.mata
 # 
-# python3 abcd-equals-abcde.py 100
+# Impact=true Bisim=true python3 abcd-equals-abcde.py 100
 # mv /tmp/abcd-equals-abcde benchmarks/
 # 
-# python3 abcd-equals-abcde.py 100 --empty
+# Impact=true Bisim=true python3 abcd-equals-abcde.py 100 --empty
 # mv /tmp/abcd-equals-abcde benchmarks/abcd-equals-abcdd
 # 
 # rm -rf benchmarks/cox-unsat-inclusion

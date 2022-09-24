@@ -587,6 +587,7 @@ toQDnf (qCount, i2q, i2r, q2i) = do
   return (qCount, i2q, (i2r' !), q2i)
 
 -- this could be more generic and reside in Negate.deMorganAlg
+-- Why is this called Separated? shouldn't it be WithSimpleFinals?
 negateSeparated ::
   forall q v r r' d morgF d' buildTree f.
   ( r ~ Ref (Term q v)
@@ -611,16 +612,47 @@ negateSeparated init finals (qCount, i2q, i2r, q2i) = do
   let qts'Arr = listArray (0, qCount - 1) qts'
   return (init', finals', (qCount, i2q, (qts'Arr !), q2i))
 
+-- WARNING! the or-and in transition function changes to and-or
+negateSeparated2 ::
+  forall q v r r' d morgF d' buildTree f ft.
+  ( r ~ Ref (Term q v)
+  , d ~ IORefRemoveFinalsD q v r r'
+  , morgF ~ MkN (RecK r (Term q v r) r) [d|lock|]
+  , d' ~ (Name "rec" morgF :+: LiftTags d)
+  , buildTree ~ Mk (MfnK (Term q v r) r) [d|buildTree|]
+  , Foldable f
+  , Traversable ft
+  ) =>
+  r ->
+  f q ->
+  (Int, Int -> q, Int -> ft (r, r), q -> Int) ->
+  IO (r, [q], (Int, Int -> q, Int -> ft (r, r), q -> Int))
+negateSeparated2 init finals (qCount, i2q, i2r, q2i) = do
+  deMorgan <- recur @morgF (Negate.deMorganAlg @d')
+  init' <- deMorgan init
+  let nonfinals =
+        accumArray (\_ _ -> False) True (0, qCount - 1) $
+          map ((,()) . q2i) $ toList finals
+  let finals' = map i2q $ filter (nonfinals !) [0 .. qCount - 1]
+  qts' <- for [0 .. qCount - 1] \i ->
+    for (i2r i) \(ar, qr) -> do
+      ar' <- monadfn @buildTree (Not ar)
+      qr' <- deMorgan qr
+      return (ar', qr')
+  let qts'Arr = listArray (0, qCount - 1) qts'
+  return (init', finals', (qCount, i2q, (qts'Arr !), q2i))
+
 -- this could be more generic and reside in Negate.deMorganAlg
 qombo ::
-  forall q v r r' d f fq.
+  forall q v r r' d f ft.
   ( r ~ Ref (Term q v)
   , r' ~ Ref (Term (Qombo q) v)
   , d ~ IORefRemoveFinalsD q v r r'
   , Foldable f
+  , Traversable ft
   ) =>
-  [(r, f q, (Int, Int -> q, Int -> r, q -> Int))] ->
-  IO ([r'], [Qombo q], (Int, Int -> Qombo q, Int -> r', Qombo q -> Int))
+  [(r, f q, (Int, Int -> q, Int -> ft r, q -> Int))] ->
+  IO ([r'], [Qombo q], (Int, Int -> Qombo q, Int -> ft r', Qombo q -> Int))
 qombo = Negate.qombo @d
 
 -- this could be more generic and reside in Negate.deMorganAlg

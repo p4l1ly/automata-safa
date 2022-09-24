@@ -445,7 +445,7 @@ splitFinals = \case
         | getAny (fst qs1) && getAny (fst qs2) ->
             Just <$> buildInheritShare @d (And complex1 complex2)
         | otherwise -> Just <$> [d'|ask|self|]
-  LTrue -> return ((Any False, Endo id), Nothing)
+  LTrue -> return ((Any True, Endo id), Nothing)
   _ -> self'
   where
     self' = [d'|ask|self|] <&> \s -> ((Any False, Endo id), Just s)

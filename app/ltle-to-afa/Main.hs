@@ -17,6 +17,8 @@ import Afa hiding (simplifyAll)
 import qualified Afa
 import Afa.Bool
 import Afa.Convert.Ada (toAda)
+import qualified Afa.Convert.Ada2 as Ada2
+import qualified Afa.Convert.AdaBits as AdaBits
 import Afa.Convert.Capnp.Afa
 import Afa.Convert.Capnp.CnfAfa (hWriteCnfAfa)
 import qualified Afa.Convert.Capnp.Range16Nfa as Range16Nfa
@@ -60,6 +62,7 @@ import Data.Functor
 import Data.Functor.Base
 import Data.Functor.Compose
 import Data.Functor.Foldable
+import Data.Functor.Identity
 import qualified Data.HashMap.Strict as HM
 import Data.List
 import Data.List.Split
@@ -556,14 +559,7 @@ range16ToPrettyMain = do
   (init2, final2, states2) <- Range16Nfa.convertRangeIORef (init1, final, states1)
   PrettyStranger2.formatIORef init2 final2 states2
 
-range16ToMacheteNfaMain ::
-  forall d buildTree buildD r'.
-  ( r' ~ Afa.IORef.Ref (STerm.Term Word32 Range16Nfa.Range16)
-  , d ~ Afa.IORef.IORefRemoveFinalsD Void Void Void Void
-  , buildTree ~ Shaper.Mk (Shaper.MfnK (STerm.Term Word32 Range16Nfa.Range16 r') r') [d|buildTree|]
-  , buildD ~ (TypeDict.Name "build" buildTree :+: d)
-  ) =>
-  IO ()
+range16ToMacheteNfaMain :: IO ()
 range16ToMacheteNfaMain = do
   hPutStrLn stderr "parsing"
   nfa <- Range16Nfa.hReadNfaRaw stdin
@@ -616,13 +612,14 @@ comboOp op paths = do
   afas <- for paths \path -> do
     f <- openFile path ReadMode
     txt <- TIO.hGetContents f
-    (init, final, qs@(qCount, i2q, _, q2i)) <-
+    (init, final, (qCount, i2q, i2r, q2i)) <-
       PrettyStranger2.parseIORef (PrettyStranger2.parseDefinitions txt)
     (nonfinals, Nothing) <- Afa.IORef.splitFinals final
     let finals = accumArray (\_ _ -> False) True (0, qCount - 1) $ map ((,()) . q2i) nonfinals
     let finals' = map i2q $ filter (finals !) [0 .. qCount - 1]
-    return (init, finals', qs)
-  (inits, finals, states@(qCount, i2q, i2r, q2i)) <- Afa.IORef.qombo afas
+    return (init, finals', (qCount, i2q, Identity . i2r, q2i))
+  (inits, finals, (qCount, i2q, i2r0, q2i)) <- Afa.IORef.qombo afas
+  let i2r = runIdentity . i2r0
   let initFree = op (map Pure inits)
   init <- Shaper.Helpers.buildFree @buildD initFree
   let nonfinals =
@@ -632,7 +629,7 @@ comboOp op paths = do
         foldr (Fix .: STerm.And . Fix . STerm.Not . Fix . STerm.State . i2q) (Fix STerm.LTrue) $
           filter (nonfinals !) [0 .. qCount - 1]
   final' <- Shaper.Helpers.buildFix @buildD nonfinals'
-  PrettyStranger2.formatIORef init final' states
+  PrettyStranger2.formatIORef init final' (qCount, i2q, i2r, q2i)
 
 parseFormat :: IO ()
 parseFormat = do
@@ -687,12 +684,12 @@ emailFilterBisim path1 path2 = do
   [afa1, afa2] <- for [path1, path2] \path -> do
     f <- openFile path ReadMode
     txt <- TIO.hGetContents f
-    (init, final, qs@(qCount, i2q, _, q2i)) <-
+    (init, final, (qCount, i2q, i2r, q2i)) <-
       PrettyStranger2.parseIORef (PrettyStranger2.parseDefinitions txt)
     (nonfinals, Nothing) <- Afa.IORef.splitFinals final
     let finals = accumArray (\_ _ -> False) True (0, qCount - 1) $ map ((,()) . q2i) nonfinals
     let finals' = map i2q $ filter (finals !) [0 .. qCount - 1]
-    return (init, finals', qs)
+    return (init, finals', (qCount, i2q, Identity . i2r, q2i))
   ([init1, init2], finals, states@(qCount, i2q, i2r, q2i)) <- Afa.IORef.qombo [afa1, afa2]
   let initFree = Free $ STerm.And (Pure init1) (Pure init2)
   init <- Shaper.Helpers.buildFree @buildD initFree
@@ -704,7 +701,7 @@ emailFilterBisim path1 path2 = do
           filter (nonfinals !) [0 .. qCount - 1]
   final <- Shaper.Helpers.buildFix @buildD nonfinals'
 
-  Just states' <- Afa.IORef.trySeparateQTransitions states
+  Just states' <- Afa.IORef.trySeparateQTransitions (qCount, i2q, runIdentity . i2r, q2i)
   ([init1', init', final'], states'') <-
     Negate.enum
       @(TypeDict.Name "r" r' :+: TypeDict.Name "q" q' :+: d)
@@ -836,6 +833,67 @@ treeRepr = do
   (init, final, states) <- Negate.unshare @d afa'
   PrettyStranger2.formatIORef init final states
 
+emailFilterAda ::
+  forall d buildTree buildD buildTree2 buildD2 r' r'2.
+  ( r' ~ Afa.IORef.Ref (STerm.Term (Negate.Qombo Word32) Range16Nfa.Range16)
+  , r'2 ~ Afa.IORef.Ref (STerm.Term (Negate.Qombo (Negate.Qombo Word32)) Range16Nfa.Range16)
+  , d ~ Afa.IORef.IORefRemoveFinalsD Void Void Void Void
+  , buildTree ~ Shaper.Mk (Shaper.MfnK (STerm.Term (Negate.Qombo Word32) Range16Nfa.Range16 r') r') [d|buildTree|]
+  , buildD ~ (TypeDict.Name "build" buildTree :+: d)
+  , buildTree2 ~ Shaper.Mk (Shaper.MfnK (STerm.Term (Negate.Qombo (Negate.Qombo Word32)) Range16Nfa.Range16 r'2) r'2) [d|buildTree|]
+  , buildD2 ~ (TypeDict.Name "build" buildTree2 :+: d)
+  ) =>
+  Int ->
+  [String] ->
+  IO ()
+emailFilterAda nSplitAt paths = do
+  let (paths1, paths2) = splitAt nSplitAt paths
+  let wrap (qCount, i2q, i2r, q2i) = (qCount, i2q, Identity . i2r, q2i)
+  let unwrap (qCount, i2q, i2r, q2i) = (qCount, i2q, runIdentity . i2r, q2i)
+  [nfas1, nfas2] <- for [paths1, paths2] \paths -> for paths \path -> do
+    f <- openFile path ReadMode
+    nfa <- Range16Nfa.hReadNfaRaw f
+    (init1, finals, states) <- Range16Nfa.deserializeToIORef nfa
+    states' <- Afa.IORef.unseparateQTransitions states
+    return (init1, finals, wrap states')
+
+  (inits1, finals1, qs1) <- Afa.IORef.qombo nfas1
+  let initFree1 = foldr1 (Free .: STerm.And) (map Pure inits1)
+  init1 <- Shaper.Helpers.buildFree @buildD initFree1
+
+  (inits2, finals2, qs2) <- Afa.IORef.qombo nfas2
+  let initFree2 = foldr1 (Free .: STerm.And) (map Pure inits2)
+  init2 <- Shaper.Helpers.buildFree @buildD initFree2
+
+  (init2', finals2', qs2') <- Afa.IORef.negateSeparated init2 finals2 (unwrap qs2)
+
+  ([init31, init32], finals3, qs3) <-
+    Afa.IORef.qombo [(init1, finals1, qs1), (init2', finals2', wrap qs2')]
+  let initFree3 = Free $ STerm.And (Pure init31) (Pure init32)
+  init3 <- Shaper.Helpers.buildFree @buildD2 initFree3
+
+  Ada2.formatIORef init3 finals3 (unwrap qs3)
+
+prettyToAda :: IO ()
+prettyToAda = do
+  txt <- TIO.getContents
+  (init, final, states@(qCount, i2q, i2r, q2i)) <- PrettyStranger2.parseIORef (PrettyStranger2.parseDefinitions txt)
+  (nonfinals, Nothing) <- Afa.IORef.splitFinals final
+  let finals = accumArray (\_ _ -> False) True (0, qCount - 1) $ map ((,()) . q2i) nonfinals
+  let finals' = map i2q $ filter (finals !) [0 .. qCount - 1]
+  AdaBits.formatIORef init finals' states
+
+newtype Both a = Both {unBoth :: (a, a)}
+
+instance Functor Both where
+  fmap f (Both (x, y)) = Both (f x, f y)
+
+instance Foldable Both where
+  foldMap f (Both (x, y)) = f x <> f y
+
+instance Traversable Both where
+  traverse f (Both (x, y)) = Both .: (,) <$> f x <*> f y
+
 main :: IO ()
 main = do
   args <- getArgs
@@ -855,8 +913,10 @@ main = do
     ("or" : paths) -> comboOp (foldr1 $ Free .: STerm.Or) paths
     ("neq" : paths) -> (`comboOp` paths) \[a, b, na, nb] ->
       Free $ STerm.Or (Free $ STerm.And a nb) (Free $ STerm.And na b)
+    ("emailFilterAda" : nSplitAt : paths) -> emailFilterAda (read nSplitAt) paths
     ["treeRepr"] -> treeRepr
     ["range16ToMacheteNfa"] -> range16ToMacheteNfaMain
+    ["prettyToAda"] -> prettyToAda
     ["prettyToMachete"] -> prettyToMachete
     ["prettyToSeparatedMata"] -> prettyToSeparatedMata
     ["prettyToSeparatedDnfMata"] -> prettyToSeparatedDnfMata

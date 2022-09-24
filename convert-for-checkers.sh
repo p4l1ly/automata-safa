@@ -19,4 +19,5 @@ fi | while read -r fAfa; do
   ${Mona:-false} && $LTLE_TO_AFA prettyToMona < $f.afa > $f.mona
   ${Afasat:-false} &&
     $LTLE_TO_AFA removeFinalsNonsep < $f.afa | $LTLE_TO_AFA prettyToAfasat > $f.afasat
+  ${Ada:-false} && $LTLE_TO_AFA prettyToAda < $f.afa > $f.ada
 done
