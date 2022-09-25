@@ -2,8 +2,12 @@ FROM ubuntu:focal-20210921
 
 RUN \
   apt-get update && \
-  DEBIAN_FRONTEND=noninteractive apt-get install -y unzip wget software-properties-common cargo build-essential cmake libreadline-dev ant ivy default-jdk maven subversion libboost-dev && \
-  ln -s -T /usr/share/java/ivy.jar /usr/share/ant/lib/ivy.jar && \
+  DEBIAN_FRONTEND=noninteractive apt-get install -y unzip wget software-properties-common cargo build-essential cmake libreadline-dev ant ivy default-jdk maven subversion libboost-dev zsh
+
+RUN \
+  ln -s -T /usr/share/java/ivy.jar /usr/share/ant/lib/ivy.jar
+
+RUN \
   add-apt-repository -y ppa:hvr/ghc && \
   apt install -y ghc-8.10.3 cabal-install-3.4 && \
   ln -s /opt/ghc/bin/ghc /usr/local/bin/ghc && \
@@ -63,11 +67,10 @@ RUN \
     } || return 1; \
   }; \
   download p4l1ly lens-recursion-schemes 2dfdf5ec637f8139e3d4cd4b1f0c9803e0477543 && \
-  download p4l1ly automata-safa-capnp 4aed4f30b217a979f6229db5e3c72f979d31bb76 && \
+  download p4l1ly automata-safa-capnp 38437d30a98ab5b77d0122cc2c82da5cac7cfc07 && \
   download p4l1ly ltl-translators 790508599c04df55a2b862eb13611ef9d9d5fd41 && \
-  download p4l1ly automata-safa-bench 93b98caf9c72b95766a408a0b04d4c1b95317c39 && \
   download p4l1ly JAltImpact db157709c2c85142b95b95862c8145262c100109 && \
-  download p4l1ly symbolicautomata 08fa8091de5ad2734c8c888cee6b5c214a8858f7 && \
+  download p4l1ly symbolicautomata 5e27d27059454b607624f8982f97b1aab5f45b5f && \
   download p4l1ly afaminisat 378c06cc720c06cda7e6d48e1685f24fd1c03f78 && \
   rm /tmp/download.zip && \
   mkdir automata-safa
