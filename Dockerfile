@@ -151,3 +151,4 @@ RUN echo 'packages: lens-recursion-schemes automata-safa-capnp automata-safa ltl
 RUN cd automata-safa && cargo build --release && cp target/release/libautomata_safa.so /usr/lib
 RUN cabal install ltle-to-afa ltl-generator-exe ltl-randgen-exe
 RUN echo 'export PATH=$PATH:/root/.cabal/bin' >> /root/.bashrc
+RUN echo 'export PATH=$PATH:/root/.cabal/bin' >> /root/.zshrc
