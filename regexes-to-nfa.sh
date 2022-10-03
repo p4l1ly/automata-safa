@@ -7,20 +7,21 @@ LTLE_TO_AFA=dist-newstyle/build/x86_64-linux/ghc-8.10.7/automata-safa-0.1.0.0/x/
 
 i=0
 cat $REGEX_PATH | while read -r regex; do
-  echo "%Section t\"Filter$i\" Regex"
-  echo "$regex"
+  echo "@Regex t\"Filter$i\""
+  echo "%Main $regex"
   echo
 
-  echo "%Section t\"Filter$i\" NFA CharRanges"
+  echo "@NFA-intervals t\"Filter$i\""
+  echo "%Alphabet chars"
   $LTLE_TO_AFA range16ToMacheteNfa < ../data/email75/range16nfa/$i
   echo
 
-  echo "%Section t\"Filter$i\" NFA Bits"
+  echo "@NFA-bits t\"Filter$i\""
   $LTLE_TO_AFA range16ToPretty < ../data/email75/range16nfa/$i > /tmp/email-filter-nfa/$i.afa
   $LTLE_TO_AFA prettyToSeparatedMata < /tmp/email-filter-nfa/$i.afa
   echo
 
-  echo "%Section t\"Filter$i DNF\" NFA Bits"
+  echo "@NFA-bits t\"Filter$i\" t\"%DNF\""
   $LTLE_TO_AFA prettyToSeparatedDnfMata < /tmp/email-filter-nfa/$i.afa
   echo
 

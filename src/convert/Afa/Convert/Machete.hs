@@ -203,9 +203,9 @@ format ::
 format init final (qCount, i2q, i2r, q2i) = do
   (convert, getShared) <- formatFormula @d
 
-  TIO.putStr "%InitialFormula "
+  TIO.putStr "%Initial "
   TIO.putStrLn =<< convert init
-  TIO.putStr "%FinalFormula "
+  TIO.putStr "%Final "
   TIO.putStrLn =<< convert final
   for_ [0 .. qCount - 1] \i -> do
     TIO.putStr "q"
@@ -311,9 +311,9 @@ formatSeparated ::
 formatSeparated init final (qCount, i2q, i2r, q2i) = do
   (convert, getShared) <- formatFormula @d
 
-  TIO.putStr "%InitialFormula "
+  TIO.putStr "%Initial "
   TIO.putStrLn =<< convert init
-  TIO.putStr "%FinalFormula "
+  TIO.putStr "%Final "
   TIO.putStrLn =<< convert final
   for_ [0 .. qCount - 1] \i -> do
     let qtxt = showT $ i2q i
@@ -348,7 +348,7 @@ formatSeparated init final (qCount, i2q, i2r, q2i) = do
         else TIO.putStrLn qterm'
 
   getShared >>= mapM_ \(i, txt) -> do
-    TIO.putStr "f"
+    TIO.putStr "n"
     putStr (show i)
     TIO.putStr " "
     TIO.putStrLn txt
