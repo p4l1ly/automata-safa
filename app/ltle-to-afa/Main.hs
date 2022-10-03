@@ -819,6 +819,20 @@ prettyToPretty1 = do
   txt <- TIO.getContents
   TIO.putStrLn $ PrettyStranger.formatAfa $ PrettyStranger.parseAfa txt
 
+treeReprUninit ::
+  forall t d.
+  ( t ~ T.Text
+  , d ~ Afa.IORef.IORefRemoveFinalsD t t (Afa.IORef.Ref (STerm.Term t t)) Void
+  ) =>
+  IO ()
+treeReprUninit = do
+  hPutStrLn stderr "parsing"
+  txt <- TIO.hGetContents stdin
+  afa <- PrettyStranger2.parseIORef (PrettyStranger2.parseDefinitions txt)
+  afa' <- Negate.unInitState @d afa
+  (init, final, states) <- Negate.unshare @d afa'
+  PrettyStranger2.formatIORef init final states
+
 treeRepr ::
   forall t d.
   ( t ~ T.Text
@@ -829,8 +843,7 @@ treeRepr = do
   hPutStrLn stderr "parsing"
   txt <- TIO.hGetContents stdin
   afa <- PrettyStranger2.parseIORef (PrettyStranger2.parseDefinitions txt)
-  afa' <- Negate.unInitState @d afa
-  (init, final, states) <- Negate.unshare @d afa'
+  (init, final, states) <- Negate.unshare @d afa
   PrettyStranger2.formatIORef init final states
 
 emailFilterAda ::
@@ -915,6 +928,7 @@ main = do
       Free $ STerm.Or (Free $ STerm.And a nb) (Free $ STerm.And na b)
     ("emailFilterAda" : nSplitAt : paths) -> emailFilterAda (read nSplitAt) paths
     ["treeRepr"] -> treeRepr
+    ["treeReprUninit"] -> treeReprUninit
     ["range16ToMacheteNfa"] -> range16ToMacheteNfaMain
     ["prettyToAda"] -> prettyToAda
     ["prettyToMachete"] -> prettyToMachete
