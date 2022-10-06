@@ -130,6 +130,7 @@ data Definition
   | DFinalStates {dterm :: STermStr}
   | DFormula {name :: T.Text, dterm :: STermStr}
   | DState {name :: T.Text, dterm :: STermStr}
+  deriving (Show)
 
 parseOne :: T.Text -> T.Text -> Definition
 parseOne name value = case T.uncons name of

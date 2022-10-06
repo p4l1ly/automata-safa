@@ -74,10 +74,6 @@ RUN \
   download p4l1ly afaminisat 378c06cc720c06cda7e6d48e1685f24fd1c03f78 && \
   rm /tmp/download.zip && \
   mkdir automata-safa
-ADD automata-safa.cabal Cargo.lock Cargo.toml CHANGELOG.md LICENSE Setup.hs automata-safa/
-ADD app/ automata-safa/app/
-ADD src/ automata-safa/src/
-ADD test/ automata-safa/test/
 
 RUN \
   cd automata-safa-capnp && \
@@ -147,8 +143,14 @@ RUN \
   cmake --build build && \
   mvn package
 
+ADD automata-safa.cabal Cargo.lock Cargo.toml CHANGELOG.md LICENSE Setup.hs automata-safa/
+ADD app/ automata-safa/app/
+ADD src/ automata-safa/src/
+ADD test/ automata-safa/test/
+
 RUN echo 'packages: lens-recursion-schemes automata-safa-capnp automata-safa ltl-translators' > cabal.project
 RUN cd automata-safa && cargo build --release && cp target/release/libautomata_safa.so /usr/lib
 RUN cabal install ltle-to-afa ltl-generator-exe ltl-randgen-exe
 RUN echo 'export PATH=$PATH:/root/.cabal/bin' >> /root/.bashrc
 RUN echo 'export PATH=$PATH:/root/.cabal/bin' >> /root/.zshrc
+ENV LANG='C.UTF-8' LANGUAGE='' LC_ALL='C.UTF-8'
