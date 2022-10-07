@@ -24,7 +24,7 @@
 module Afa.Convert.AdaBits where
 
 import Afa.Finalful
-import Afa.Finalful.STerm (Term (..))
+import Afa.Finalful.STerm (Term (..), VarTra (..))
 import Afa.IORef
 import Afa.Lib (listArray')
 import Afa.Negate (Qombo (Qombo))
@@ -39,6 +39,8 @@ import Data.Composition ((.:))
 import Data.Foldable
 import Data.Functor ((<&>))
 import qualified Data.HashMap.Strict as HM
+import qualified Data.HashSet as S
+import Data.Hashable
 import Data.IORef
 import Data.List.NonEmpty (NonEmpty ((:|)))
 import qualified Data.List.NonEmpty as NE
@@ -87,7 +89,7 @@ formatFormula = do
           LTrue -> return "true"
           LFalse -> return "false"
           State q -> return $ T.cons 'q' (showT q)
-          Var v -> return $ T.cons 'v' (showT v)
+          Var v -> return [i|(= v#{showT v}v1 0)|]
           Not !r -> do
             !r' <- rec r
             return $ T.concat ["(not ", r', ")"]
@@ -138,91 +140,18 @@ instance (ShowT q, ShowT v) => ShowT (SyncVar q v) where
 instance ShowT q => ShowT (Qombo q) where
   showT (Qombo n q) = [i|C#{n}_#{showT q}|]
 
-formatSeparated ::
-  forall d deref.
-  ( D.ToConstraint (FormatFormulaD d IO)
-  , deref ~ Mk (MfnK [g|r|] (Term [g|q|] [g|v|] [g|r|])) [d|deref|]
-  , MonadFn deref IO
-  ) =>
-  [g|r|] ->
-  [[g|q|]] ->
-  (Int, Int -> [g|q|], Int -> V.Vector ([g|r|], [g|r|]), [g|q|] -> Int) ->
-  IO ()
-formatSeparated init finals (qCount, i2q, i2r, q2i) = do
-  let showState q = [i|q#{showT q}|]
-
-  convert <- formatFormula @d
-
-  TIO.putStrLn "STATES"
-  if qCount == 0
-    then TIO.putStrLn "q"
-    else TIO.putStrLn $ T.unwords $ map (showState . i2q) [0 .. qCount - 1]
-  TIO.putStrLn ""
-
-  TIO.putStrLn "INITIAL"
-  TIO.putStrLn =<< convert init
-  TIO.putStrLn ""
-
-  TIO.putStrLn "FINAL"
-  TIO.putStrLn $ T.unwords $ map showState finals
-  TIO.putStrLn ""
-
-  TIO.putStrLn "SYMBOLS"
-  TIO.putStrLn "a"
-  TIO.putStrLn ""
-
-  TIO.putStrLn "VARIABLES"
-  TIO.putStrLn "v"
-  TIO.putStrLn ""
-
-  let printGuardAndSucc (aterm, qterm) = do
-        aterm' <- monadfn @deref aterm
-        qterm' <- monadfn @deref qterm
-        case (aterm', qterm') of
-          (LFalse, _) -> TIO.putStr "false"
-          (_, LFalse) -> TIO.putStr "false"
-          (LTrue, _) -> TIO.putStr =<< convert qterm
-          (_, LTrue) -> TIO.putStr =<< convert aterm
-          _ -> do
-            TIO.putStr "(and "
-            TIO.putStr =<< convert aterm
-            TIO.putStr " "
-            TIO.putStr =<< convert qterm
-            TIO.putStr ")"
-
-  TIO.putStrLn "TRANSITIONS"
-  for_ [0 .. qCount - 1] \qi -> do
-    TIO.putStrLn [i|a q#{showT $ i2q qi}|]
-    let transitions = i2r qi
-    case V.length transitions of
-      0 -> TIO.putStr "false"
-      1 -> printGuardAndSucc (transitions V.! 0)
-      _ -> do
-        TIO.putStr "(or"
-        for_ transitions \t -> do
-          TIO.putStr " "
-          printGuardAndSucc t
-        TIO.putStr ")"
-    TIO.putStrLn "\n#"
-
-formatSeparatedIORef ::
-  forall q v r r' d result.
-  ( r ~ Afa.IORef.Ref (Term q v)
-  , d ~ IORefRemoveFinalsD q v r r'
-  , ShowT q
-  , ShowT v
-  ) =>
-  r ->
-  [q] ->
-  (Int, Int -> q, Int -> V.Vector (r, r), q -> Int) ->
-  IO ()
-formatSeparatedIORef = Afa.Convert.AdaBits.formatSeparated @d
-
 format ::
-  forall d deref.
+  forall d deref allVars q v r.
   ( D.ToConstraint (FormatFormulaD d IO)
-  , deref ~ Mk (MfnK [g|r|] (Term [g|q|] [g|v|] [g|r|])) [d|deref|]
+  , q ~ [g|q|]
+  , v ~ [g|v|]
+  , r ~ [g|r|]
+  , deref ~ Mk (MfnK r (Term q v r)) [d|deref|]
+  , allVars ~ Mk (FRecK r r (VarTra IO v q v r)) [d|funr|]
+  , FunRecur allVars IO
   , MonadFn deref IO
+  , Eq v
+  , Hashable v
   ) =>
   [g|r|] ->
   [[g|q|]] ->
@@ -234,25 +163,30 @@ format init finals (qCount, i2q, i2r, q2i) = do
   convert <- formatFormula @d
 
   TIO.putStrLn "STATES"
-  if qCount == 0
-    then TIO.putStrLn "q"
-    else TIO.putStrLn $ T.unwords $ map (showState . i2q) [0 .. qCount - 1]
+  TIO.putStrLn $ T.unwords $ "QInit" : "QFinal" : map (showState . i2q) [0 .. qCount - 1]
   TIO.putStrLn ""
 
   TIO.putStrLn "INITIAL"
-  TIO.putStrLn =<< convert init
+  TIO.putStrLn "QInit"
   TIO.putStrLn ""
 
   TIO.putStrLn "FINAL"
-  TIO.putStrLn $ T.unwords $ map showState finals
+  TIO.putStrLn $ T.unwords $ "QFinal" : map showState finals
   TIO.putStrLn ""
 
   TIO.putStrLn "SYMBOLS"
   TIO.putStrLn "a"
   TIO.putStrLn ""
 
+  varsV <- newIORef S.empty
+  loadVars <- funRecur @allVars $ VarTra \v ->
+    Var v <$ modifyIORef varsV (S.insert v)
+  loadVars init
+  for_ [0 .. qCount - 1] (loadVars . i2r)
+  vars <- readIORef varsV
+
   TIO.putStrLn "VARIABLES"
-  TIO.putStrLn "v"
+  TIO.putStrLn $ T.intercalate " " $ S.toList vars <&> \v -> [i|v#{showT v}v|]
   TIO.putStrLn ""
 
   let printGuardAndSucc (aterm, qterm) = do
@@ -271,6 +205,9 @@ format init finals (qCount, i2q, i2r, q2i) = do
             TIO.putStr ")"
 
   TIO.putStrLn "TRANSITIONS"
+  TIO.putStrLn "a QInit"
+  TIO.putStrLn =<< convert init
+  TIO.putStrLn "#"
   for_ [0 .. qCount - 1] \qi -> do
     TIO.putStrLn [i|a q#{showT $ i2q qi}|]
     TIO.putStrLn =<< convert (i2r qi)
@@ -282,6 +219,8 @@ formatIORef ::
   , d ~ IORefRemoveFinalsD q v r r'
   , ShowT q
   , ShowT v
+  , Eq v
+  , Hashable v
   ) =>
   r ->
   [q] ->

@@ -23,6 +23,7 @@
 
 module Afa.Convert.Machete where
 
+import qualified Afa.Convert.PrettyStranger2 as Pretty
 import Afa.Finalful
 import Afa.Finalful.STerm (Term (..))
 import Afa.IORef
@@ -32,9 +33,13 @@ import qualified Capnp.Gen.Afa.Model.Separated.Pure as AfaC
 import qualified Capnp.GenHelpers.ReExports.Data.Vector as V
 import Control.Applicative
 import Control.Lens (itraverse, (&))
+import Control.Monad.Free
 import Control.Monad.State.Strict
 import Control.Monad.Trans (lift)
 import Data.Array
+import Data.Attoparsec.Expr
+import Data.Attoparsec.Text
+import qualified Data.Attoparsec.Text as Parsec
 import Data.Char
 import Data.Composition ((.:))
 import Data.Foldable
@@ -214,7 +219,7 @@ format init final (qCount, i2q, i2r, q2i) = do
     TIO.putStrLn =<< convert (i2r i)
 
   getShared >>= mapM_ \(i, txt) -> do
-    TIO.putStr "f"
+    TIO.putStr "n"
     putStr (show i)
     TIO.putStr " "
     TIO.putStrLn txt
@@ -365,3 +370,58 @@ formatSeparatedIORef ::
   (Int, Int -> q, Int -> [(r, r)], q -> Int) ->
   IO ()
 formatSeparatedIORef = Afa.Convert.Machete.formatSeparated @d
+
+parseWhole :: Parser a -> T.Text -> a
+parseWhole parser str = case Parsec.parse parser str of
+  Fail i ctxs err -> error $ show (i, ctxs, err)
+  Partial p -> case p "" of
+    Fail i ctxs err -> error $ show (i, ctxs, err)
+    Partial _ -> error "expr double partial"
+    Done _ x -> x
+  Done _ x -> x
+
+parseDefinitions :: T.Text -> [Pretty.Definition]
+parseDefinitions str =
+  flip mapMaybe rows \row ->
+    case T.uncons row of
+      Just ('#', _) -> Nothing
+      Nothing -> Nothing
+      Just _ ->
+        let (header, T.uncons -> Just (' ', contents)) = T.break (== ' ') row
+         in Just $ parseOne header (unspace contents)
+  where
+    unspace = T.filter (not . isSpace)
+    rows = T.lines str
+
+parseOne :: T.Text -> T.Text -> Pretty.Definition
+parseOne name value = case T.uncons name of
+  Just ('n', name') -> Pretty.DFormula name' $ parseWhole expr value
+  Just ('q', name') -> Pretty.DState name' $ parseWhole expr value
+  Just ('%', keyword) -> case keyword of
+    "Initial" -> Pretty.DInitialStates $ parseWhole expr value
+    "Final" -> Pretty.DFinalStates $ parseWhole expr value
+    _ -> error [i|unknown keyword #{keyword}|]
+  Just (t, _) -> error [i|unknown type #{t}|]
+  Nothing -> error "empty identifier"
+
+expr :: Parser Pretty.STermStr
+expr = buildExpressionParser table term <?> "expression"
+  where
+    table =
+      [ [Infix (Free .: And <$ char '&') AssocLeft]
+      , [Infix (Free .: Or <$ char '|') AssocLeft]
+      ]
+
+identifier :: Parser T.Text
+identifier = Parsec.takeWhile (\case '_' -> True; '\'' -> True; x -> isAlphaNum x)
+
+term :: Parser Pretty.STermStr
+term =
+  "(" *> expr <* ")"
+    <|> (Free . Not <$> (char '!' *> term))
+    <|> (Free . State <$> ("q" *> identifier))
+    <|> (Pure <$> ("n" *> identifier))
+    <|> (Free LTrue <$ "true")
+    <|> (Free LFalse <$ "false")
+    <|> (Free . Var <$> ("a" *> identifier))
+    <?> "expected a term"

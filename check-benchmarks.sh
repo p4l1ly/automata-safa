@@ -1,6 +1,6 @@
 [ -z $1 ] && { echo path argument expected >&2; exit 1 }
 
-UUID=$(uuidgen)
+UUID=${UUID:-$(uuidgen)}
 TIMEOUT=20
 TIMEOUT_MS=20000
 

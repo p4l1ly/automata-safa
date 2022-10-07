@@ -147,8 +147,7 @@ expr :: Parser STermStr
 expr = buildExpressionParser table term <?> "expression"
   where
     table =
-      [ [Prefix $ Free . Not <$ char '!']
-      , [Infix (Free .: And <$ char '&') AssocLeft]
+      [ [Infix (Free .: And <$ char '&') AssocLeft]
       , [Infix (Free .: Or <$ char '|') AssocLeft]
       ]
 
@@ -158,6 +157,7 @@ identifier = Parsec.takeWhile (\case '_' -> True; x -> isAlphaNum x)
 term :: Parser STermStr
 term =
   "(" *> expr <* ")"
+    <|> (Free . Not <$> (char '!' *> term))
     <|> (Free . State <$> ("s" *> identifier))
     <|> (Pure <$> ("f" *> identifier))
     <|> (Free LTrue <$ "kTrue")

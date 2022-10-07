@@ -421,15 +421,19 @@ removeFinalsMain = do
 strangerToMachete :: IO ()
 strangerToMachete = do
   txt <- getContents
-  hPutStrLn stderr "parsing"
   (init, final, qs) <- PrettyStranger2.parseIORef $ Stranger2.parseDefinitions $ T.pack txt
   Machete.formatIORef init final qs
 
 strangerToPretty :: IO ()
 strangerToPretty = do
   txt <- getContents
-  hPutStrLn stderr "parsing"
   (init, final, qs) <- PrettyStranger2.parseIORef $ Stranger2.parseDefinitions $ T.pack txt
+  PrettyStranger2.formatIORef init final qs
+
+mataToPretty :: IO ()
+mataToPretty = do
+  txt <- getContents
+  (init, final, qs) <- PrettyStranger2.parseIORef $ Machete.parseDefinitions $ T.pack txt
   PrettyStranger2.formatIORef init final qs
 
 removeFinalsPrettyMain ::
@@ -929,7 +933,8 @@ main = do
     ("emailFilterAda" : nSplitAt : paths) -> emailFilterAda (read nSplitAt) paths
     ["treeRepr"] -> treeRepr
     ["treeReprUninit"] -> treeReprUninit
-    ["range16ToMacheteNfa"] -> range16ToMacheteNfaMain
+    ["mataToPretty"] -> mataToPretty
+    ["prettyToAda"] -> prettyToAda
     ["prettyToAda"] -> prettyToAda
     ["prettyToMachete"] -> prettyToMachete
     ["prettyToSeparatedMata"] -> prettyToSeparatedMata

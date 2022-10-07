@@ -19,7 +19,7 @@ import qualified Data.Text as T
 import Data.Traversable (for)
 import Debug.Trace
 
-data VarT = DeBruijn Int | Ctx STermStr STermStr | RealVar T.Text
+data VarT = DeBruijn Int | Ctx STermStr STermStr | RealVar T.Text deriving (Show)
 type STermStr = Free (Term T.Text VarT) T.Text
 
 parseExpr :: T.Text -> STermStr
@@ -35,19 +35,19 @@ expr :: Parser STermStr
 expr = buildExpressionParser table term <?> "expression"
   where
     table =
-      [ [Prefix $ Free . Not <$ (char '¬' <|> char '!')]
-      , [Infix (Free .: And <$ (char '∧' <|> char '&')) AssocLeft]
+      [ [Infix (Free .: And <$ (char '∧' <|> char '&')) AssocLeft]
       , [Infix (Free .: Or <$ (char '∨' <|> char '|')) AssocLeft]
       ]
 
 term :: Parser STermStr
 term =
   "(" *> expr <* ")"
+    <|> (Free . Not <$> ((char '¬' <|> char '!') *> term))
     <|> (Free . State <$> ("s_" *> decimal <&> T.pack . show))
     -- <|> (Pure <$> ("f_" *> decimal <&> T.pack . show))
     <|> (Free LTrue <$ "True")
     <|> (Free LFalse <$ "False")
-    <|> (Free . Var .: Ctx <$> (char '[' *> expr <* char ']') <*> expr)
+    <|> (Free . Var .: Ctx <$> (char '[' *> expr <* char ']') <*> term)
     <|> (Free . Var . DeBruijn <$> try (char '_' *> decimal))
     <|> (Free . Var . RealVar <$> takeWhile1 (\case '_' -> True; x -> isAlphaNum x))
     <?> "expected a term"
