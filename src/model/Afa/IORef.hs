@@ -407,7 +407,12 @@ instance
   MonadFn ( 'K Zero (MfnK (Term q v r) r (Delit xBuild xDeref))) m
   where
   monadfn = \case
-    fr@(Not r) -> deref r >>= build . \case LTrue -> LFalse; LFalse -> LTrue; _ -> fr
+    fr@(Not r) ->
+      deref r >>= \case
+        LTrue -> build LFalse
+        LFalse -> build LTrue
+        Not r' -> return r'
+        _ -> build fr
     fr@(And a b) ->
       deref a >>= \case
         LTrue -> return b
