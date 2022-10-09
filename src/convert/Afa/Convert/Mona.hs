@@ -28,8 +28,6 @@ import Afa.Finalful.STerm (Term (..), VarTra (..))
 import Afa.IORef
 import Afa.Lib (listArray')
 import Afa.Negate (Qombo (Qombo))
-import qualified Capnp.Gen.Afa.Model.Separated.Pure as AfaC
-import qualified Capnp.GenHelpers.ReExports.Data.Vector as V
 import Control.Applicative
 import Control.Lens (itraverse, (&))
 import Control.Monad.State.Strict
@@ -156,7 +154,7 @@ formatFormula = do
                     False -> return b'
                 return $ T.concat [a'', " | ", b'']
 
-  convert <- recur @ [d'|recur|] algebra
+  convert <- recur @[d'|recur|] algebra
   return (convert, readIORef stack)
 
 format ::

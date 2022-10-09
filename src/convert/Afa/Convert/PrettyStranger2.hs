@@ -1,4 +1,5 @@
 {-# LANGUAGE AllowAmbiguousTypes #-}
+{-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE BangPatterns #-}
 {-# LANGUAGE BlockArguments #-}
 {-# LANGUAGE ConstraintKinds #-}
@@ -28,8 +29,7 @@ import Afa.Finalful.STerm (Term (..))
 import Afa.IORef
 import Afa.Lib (listArray')
 import Afa.Negate (Qombo (Qombo))
-import qualified Capnp.Gen.Afa.Model.Separated.Pure as AfaC
-import qualified Capnp.GenHelpers.ReExports.Data.Vector as V
+import qualified Capnp.Gen.Afa.Model.Separated as AfaC
 import Control.Applicative
 import Control.Lens (itraverse, (&))
 import Control.Monad.Free
@@ -55,6 +55,7 @@ import qualified Data.Text as T
 import qualified Data.Text.IO as TIO
 import qualified Data.Text.Read as TR
 import Data.Traversable
+import qualified Data.Vector as V
 import Data.Word
 import Debug.Trace
 import DepDict (DepDict ((:|:)))
@@ -274,7 +275,7 @@ formatFormula = do
                     False -> return b'
                 return $ T.concat [a'', " | ", b'']
 
-  convert <- recur @ [d'|recur|] algebra
+  convert <- recur @[d'|recur|] algebra
   return (convert, readIORef stack)
 
 format ::
@@ -337,7 +338,7 @@ instance ShowT Word32 where
 instance ShowT Word8 where
   showT = T.pack . show
 
-instance ShowT AfaC.Range16 where
+instance ShowT (AfaC.Parsed AfaC.Range16) where
   showT (AfaC.Range16 a b) = [i|R#{a}_#{b}|]
 
 instance ShowT q => ShowT (SyncQs q) where
@@ -349,7 +350,7 @@ instance (ShowT q, ShowT v) => ShowT (SyncVar q v) where
   showT (QVar v) = [i|Q#{showT v}|]
   showT FVar = "F"
 
-formatRange16Nfa :: AfaC.Range16Nfa -> IO ()
+formatRange16Nfa :: AfaC.Parsed AfaC.Range16Nfa -> IO ()
 formatRange16Nfa (AfaC.Range16Nfa states initial finals) = do
   TIO.putStrLn [i|@kInitialFormula: s#{initial}|]
   let nonfinals =

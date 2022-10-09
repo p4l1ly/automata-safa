@@ -3,17 +3,17 @@
 module Afa.Convert.Capnp.CnfAfa where
 
 import qualified Capnp
-import qualified Capnp.Gen.Afa.Model.CnfAfa.Pure as Schema
-import qualified Capnp.GenHelpers.ReExports.Data.Vector as V
+import qualified Capnp.Gen.Afa.Model.CnfAfa as Schema
 import Data.Array
+import qualified Data.Vector as V
 import System.IO
 
 import Afa.Convert.CnfAfa (CnfAfa (..), Lit (..))
 
 hWriteCnfAfa :: CnfAfa -> Handle -> IO ()
-hWriteCnfAfa afa h = Capnp.hPutValue h $ serializeCnfAfa afa
+hWriteCnfAfa afa h = Capnp.hPutParsed h $ serializeCnfAfa afa
 
-serializeCnfAfa :: CnfAfa -> Schema.Afa
+serializeCnfAfa :: CnfAfa -> Capnp.Parsed Schema.Afa
 serializeCnfAfa (CnfAfa states varCount clauses) =
   Schema.Afa
     { Schema.variableCount = fromIntegral varCount
@@ -21,6 +21,6 @@ serializeCnfAfa (CnfAfa states varCount clauses) =
     , Schema.clauses = V.fromList $ map (V.fromList . map toSchemaLit) clauses
     }
 
-toSchemaLit :: Lit -> Schema.Lit
+toSchemaLit :: Lit -> Capnp.Parsed Schema.Lit
 toSchemaLit (Lit ix sign) =
   Schema.Lit{Schema.var = fromIntegral ix, Schema.positive = sign}

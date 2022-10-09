@@ -91,41 +91,41 @@ algebra (Ltl.Var i) = lift do [d'|monadfn|buildShared|] $ Var $ OtherV i
 algebra (Ltl.Not afa) = lift do [d'|monadfn|buildShared|] $ Not afa
 algebra (Ltl.And afas) = lift do
   true <- [d'|monadfn|buildTree|] LTrue
-  buildFree @ [g'|buildTreeD|] $ foldr (AndF . Pure) (Pure true) afas
+  buildFree @[g'|buildTreeD|] $ foldr (AndF . Pure) (Pure true) afas
 algebra (Ltl.Or afas) = lift do
   false <- [d'|monadfn|buildTree|] LFalse
-  buildFree @ [g'|buildTreeD|] $ foldr (OrF . Pure) (Pure false) afas
+  buildFree @[g'|buildTreeD|] $ foldr (OrF . Pure) (Pure false) afas
 algebra (Ltl.Next afa) = do
   q <- newAcyclicState @n afa
-  lift $ buildFree @ [g'|buildTreeD|] $ AndF (StateF q) (NotF $ VarF SyncV)
+  lift $ buildFree @[g'|buildTreeD|] $ AndF (StateF q) (NotF $ VarF SyncV)
 algebra (Ltl.Until predicate end) = do
   q <- newState @n
   qr <- lift do [d'|monadfn|buildShared|] (State q)
   let f = OrF (Pure end) (AndF (Pure predicate) (AndF (NotF $ VarF SyncV) (Pure qr)))
-  t <- lift $ buildFree @ [g'|buildTreeD|] f
+  t <- lift $ buildFree @[g'|buildTreeD|] f
   setTransition @n t
   return qr
 algebra (Ltl.WeakUntil predicate end) = do
   q1 <- newState @n
   q2 <- newState @n
   predicate' <- lift do
-    buildFree @ [g'|buildTreeD|] (AndF (Pure predicate) (NotF $ VarF SyncV))
+    buildFree @[g'|buildTreeD|] (AndF (Pure predicate) (NotF $ VarF SyncV))
       >>= [d'|monadfn|shareTree|]
   globx <- lift do
-    buildFree @ [g'|buildTreeD|] (AndF (Pure predicate') (StateF q2))
+    buildFree @[g'|buildTreeD|] (AndF (Pure predicate') (StateF q2))
       >>= [d'|monadfn|shareTree|]
   result <- lift do
-    buildFree @ [g'|buildTreeD|]
+    buildFree @[g'|buildTreeD|]
       (OrF (Pure globx) (OrF (Pure end) (AndF (Pure predicate') (StateF q1))))
       >>= [d'|monadfn|shareTree|]
   setTransition @n result
   setTransition @n
-    =<< lift do buildFree @ [g'|buildTreeD|] (OrF (VarF SyncV) (Pure globx))
+    =<< lift do buildFree @[g'|buildTreeD|] (OrF (VarF SyncV) (Pure globx))
   return result
 algebra (Ltl.Globally afa) = do
   q <- newState @n
   result <- lift do
-    buildFree @ [g'|buildTreeD|]
+    buildFree @[g'|buildTreeD|]
       (AndF (Pure afa) (OrF (VarF SyncV) (StateF q)))
       >>= [d'|monadfn|shareTree|]
   setTransition @n result
@@ -133,7 +133,7 @@ algebra (Ltl.Globally afa) = do
 algebra (Ltl.Finally afa) = do
   q <- newState @n
   result <- lift do
-    buildFree @ [g'|buildTreeD|]
+    buildFree @[g'|buildTreeD|]
       (OrF (Pure afa) (AndF (NotF $ VarF SyncV) (StateF q)))
       >>= [d'|monadfn|shareTree|]
   setTransition @n result

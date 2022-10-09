@@ -29,9 +29,8 @@ import Afa.IORef
 import Afa.Lib (listArray')
 import Afa.Negate (Qombo (Qombo))
 import qualified Capnp
-import qualified Capnp.Gen.Afa.Model.Separated.Pure as AfaC
-import qualified Capnp.Gen.Afa.Model.Term.Pure as TermC
-import qualified Capnp.GenHelpers.ReExports.Data.Vector as V
+import qualified Capnp.Gen.Afa.Model.Separated as AfaC
+import qualified Capnp.Gen.Afa.Model.Term as TermC
 import Control.Applicative
 import Control.Arrow ((>>>))
 import Control.Lens (itraverse, (&))
@@ -52,6 +51,7 @@ import Data.Maybe
 import Data.Monoid (Endo (..))
 import Data.String.Interpolate.IsString (i)
 import Data.Traversable
+import qualified Data.Vector as V
 import Data.Word
 import Debug.Trace
 import DepDict (DepDict ((:|:)))
@@ -86,12 +86,12 @@ formatQFormula ::
   D.ToConstraint (FormatFormulaD_ d IO d' r) =>
   IO
     ( r -> IO Word32
-    , IORef [TermC.QTerm11]
+    , IORef [Capnp.Parsed TermC.QTerm11]
     )
 formatQFormula = do
   let rec x = [d'|monadfn|rec|] x
   fIxV <- newIORef (0 :: Word32)
-  shareds <- newIORef ([] :: [TermC.QTerm11])
+  shareds <- newIORef ([] :: [Capnp.Parsed TermC.QTerm11])
 
   let algebra x = do
         term <- contents
@@ -101,22 +101,23 @@ formatQFormula = do
         return fIx
         where
           contents =
-            case x of
-              LTrue -> return TermC.QTerm11'litTrue
-              LFalse -> error "LFalse in qFormula"
-              State q -> return $ TermC.QTerm11'state (fromIntegral q)
-              Var v -> error "Var in qFormula"
-              Not !r -> error "Not in qFormula"
-              And !a !b -> do
-                !a' <- rec a
-                !b' <- rec b
-                return $ TermC.QTerm11'and (V.fromList [a', b'])
-              Or !a !b -> do
-                !a' <- rec a
-                !b' <- rec b
-                return $ TermC.QTerm11'or (V.fromList [a', b'])
+            (\x -> TermC.QTerm11{union' = x})
+              <$> case x of
+                LTrue -> return TermC.QTerm11'litTrue
+                LFalse -> error "LFalse in qFormula"
+                State q -> return $ TermC.QTerm11'state (fromIntegral q)
+                Var v -> error "Var in qFormula"
+                Not !r -> error "Not in qFormula"
+                And !a !b -> do
+                  !a' <- rec a
+                  !b' <- rec b
+                  return $ TermC.QTerm11'and (V.fromList [a', b'])
+                Or !a !b -> do
+                  !a' <- rec a
+                  !b' <- rec b
+                  return $ TermC.QTerm11'or (V.fromList [a', b'])
 
-  convert <- recur @ [d'|recur|] algebra
+  convert <- recur @[d'|recur|] algebra
   return (convert, shareds)
 
 formatAFormula ::
@@ -124,12 +125,12 @@ formatAFormula ::
   D.ToConstraint (FormatFormulaD_ d IO d' r) =>
   IO
     ( r -> IO Word32
-    , IORef [TermC.BoolTerm11]
+    , IORef [Capnp.Parsed TermC.BoolTerm11]
     )
 formatAFormula = do
   let rec x = [d'|monadfn|rec|] x
   fIxV <- newIORef (0 :: Word32)
-  shareds <- newIORef ([] :: [TermC.BoolTerm11])
+  shareds <- newIORef ([] :: [Capnp.Parsed TermC.BoolTerm11])
 
   let algebra x = do
         term <- contents
@@ -139,24 +140,25 @@ formatAFormula = do
         return fIx
         where
           contents =
-            case x of
-              LTrue -> return TermC.BoolTerm11'litTrue
-              LFalse -> return TermC.BoolTerm11'litFalse
-              State q -> error "State in aFormula"
-              Var v -> return $ TermC.BoolTerm11'predicate (fromIntegral v)
-              Not !r -> do
-                !r' <- rec r
-                return $ TermC.BoolTerm11'not r'
-              And !a !b -> do
-                !a' <- rec a
-                !b' <- rec b
-                return $ TermC.BoolTerm11'and (V.fromList [a', b'])
-              Or !a !b -> do
-                !a' <- rec a
-                !b' <- rec b
-                return $ TermC.BoolTerm11'or (V.fromList [a', b'])
+            (\x -> TermC.BoolTerm11{union' = x})
+              <$> case x of
+                LTrue -> return TermC.BoolTerm11'litTrue
+                LFalse -> return TermC.BoolTerm11'litFalse
+                State q -> error "State in aFormula"
+                Var v -> return $ TermC.BoolTerm11'predicate (fromIntegral v)
+                Not !r -> do
+                  !r' <- rec r
+                  return $ TermC.BoolTerm11'not r'
+                And !a !b -> do
+                  !a' <- rec a
+                  !b' <- rec b
+                  return $ TermC.BoolTerm11'and (V.fromList [a', b'])
+                Or !a !b -> do
+                  !a' <- rec a
+                  !b' <- rec b
+                  return $ TermC.BoolTerm11'or (V.fromList [a', b'])
 
-  convert <- recur @ [d'|recur|] algebra
+  convert <- recur @[d'|recur|] algebra
   return (convert, shareds)
 
 format ::
@@ -199,7 +201,7 @@ format init final (qCount, i2q, i2r, q2i) = do
   qterms <- readIORef qSharedsV
   aterms <- readIORef aSharedsV
 
-  Capnp.hPutValue stdout $
+  Capnp.hPutParsed stdout $
     AfaC.BoolAfa2
       { AfaC.aterms = V.reverse $ V.fromList aterms
       , AfaC.qterms = V.reverse $ V.fromList qterms
@@ -267,7 +269,7 @@ twoFormat init1 final1 init2 final2 (qCount, i2q, i2r, q2i) = do
   qterms <- readIORef qSharedsV
   aterms <- readIORef aSharedsV
 
-  Capnp.hPutValue stdout $
+  Capnp.hPutParsed stdout $
     AfaC.TwoBoolAfas
       { AfaC.aterms = V.reverse $ V.fromList aterms
       , AfaC.qterms = V.reverse $ V.fromList qterms

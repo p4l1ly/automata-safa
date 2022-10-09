@@ -28,7 +28,6 @@ import Afa.Finalful.STerm (Term (..), VarTra (..))
 import Afa.IORef
 import Afa.Lib (listArray')
 import Afa.Negate (Qombo (Qombo))
-import qualified Capnp.GenHelpers.ReExports.Data.Vector as V
 import Control.Applicative
 import Control.Lens (itraverse, (&))
 import Control.Monad.State.Strict
@@ -59,6 +58,7 @@ import Lift (Inc, K (K), LiftCount, Unwrap)
 import Shaper
 import Shaper.Helpers (BuildD, buildFree)
 import TypeDict
+import qualified Data.Vector as V
 
 type FormatFormulaD d m =
   FormatFormulaD_ d m (FormatFormulaA d (Term [g|q|] [g|v|] [g|r|]) [g|r|]) [g|q|] [g|v|] [g|r|]
@@ -114,7 +114,7 @@ formatFormula = do
                   | otherwise = b'
             return $ T.concat ["(or ", a'', " ", b'', ")"]
 
-  recur @ [d'|recur|] algebra
+  recur @[d'|recur|] algebra
 
 class ShowT a where
   showT :: a -> T.Text

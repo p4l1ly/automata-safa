@@ -2,13 +2,17 @@
 {-# LANGUAGE DeriveGeneric #-}
 {-# LANGUAGE DeriveTraversable #-}
 {-# LANGUAGE DerivingVia #-}
+{-# LANGUAGE StandaloneDeriving #-}
+{-# LANGUAGE TemplateHaskell #-}
 {-# LANGUAGE TupleSections #-}
 {-# LANGUAGE TypeFamilies #-}
+{-# LANGUAGE TypeOperators #-}
 
 module Ltl where
 
 import Control.Monad.Free (Free (..))
 import Data.Bifunctor
+import Data.Eq.Deriving
 import Data.Functor.Classes
 import Data.Functor.Foldable
 import Data.Hashable
@@ -34,8 +38,11 @@ data Ltl rec
   | Finally rec
   | Release rec rec
   deriving
-    (Functor, Foldable, Traversable, Show, Eq, Generic, Generic1, Hashable, Hashable1)
+    (Functor, Foldable, Traversable, Show, Eq, Generic, Generic1, Hashable)
   deriving (Show1) via (Generically1 Ltl)
+
+deriveEq1 ''Ltl
+deriving instance Hashable1 Ltl
 
 deRelease :: Ltl t -> Ltl (Free Ltl t)
 deRelease (Release x y) = WeakUntil (Pure y) (Free $ And [Pure x, Pure y])

@@ -13,6 +13,7 @@
 {-# LANGUAGE TypeOperators #-}
 {-# LANGUAGE UndecidableInstances #-}
 {-# LANGUAGE ViewPatterns #-}
+{-# LANGUAGE StandaloneKindSignatures #-}
 
 module Afa.Finalful where
 
@@ -175,6 +176,7 @@ removeFinals init final (qCount, i2q, i2r, q2i) = do
 type SplitFinals'D d m = SplitFinals'D_ d m
   (SplitFinals'A d [g|q|] [g|v|] [g|r|] [g|r'|] m)
   [g|q|] [g|v|] [g|r|] [g|r'|]
+type SplitFinals'A :: TypeDict -> * -> * -> * -> * -> (* -> *) -> TypeDict
 type SplitFinals'A d q v r r' m =
   SplitFinals'A1 d
     ( Name "term" (Term q v r)
@@ -196,6 +198,7 @@ type SplitFinals'A3 d d' q r r' =
   Name "splitF" (MkN (RecK r [g'|term|] (SplitFinalsR r q)) [d|lock|])
     :+: Name "findQs" (MkN (RecK r [g'|term|] (Endo [q])) [d|any|])
     :+: d'
+type SplitFinals'D_ :: TypeDict -> (* -> *) -> TypeDict -> * -> * -> * -> * -> DepDict
 type SplitFinals'D_ d m d' q v r r' =
   D.Name "aliases" (QVR d q v r, d' ~ SplitFinals'A d q v r r' m, r' ~ [g|r'|])
     :|: D.Name "splitF" (D.Name "" (RecRecur [d'|splitF|] m) :|: D.Remove "rec" (SplitFinalsD [g'|refdeD|] m))

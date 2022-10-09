@@ -28,8 +28,7 @@ import Afa.Finalful.STerm (Term (..))
 import Afa.IORef
 import Afa.Lib (listArray')
 import Afa.Negate (Qombo (Qombo))
-import qualified Capnp.Gen.Afa.Model.Separated.Pure as AfaC
-import qualified Capnp.GenHelpers.ReExports.Data.Vector as V
+import qualified Capnp.Gen.Afa.Model.Separated as AfaC
 import Control.Applicative
 import Control.Lens (itraverse, (&))
 import Control.Monad.State.Strict
@@ -50,6 +49,7 @@ import qualified Data.Text as T
 import qualified Data.Text.IO as TIO
 import qualified Data.Text.Read as TR
 import Data.Traversable
+import qualified Data.Vector as V
 import Data.Word
 import Debug.Trace
 import DepDict (DepDict ((:|:)))
@@ -59,7 +59,7 @@ import Shaper
 import Shaper.Helpers (BuildD, buildFree)
 import TypeDict
 
-type V = AfaC.Range16
+type V = AfaC.Parsed AfaC.Range16
 type FormatFormulaD d m =
   FormatFormulaD_ d m (FormatFormulaA d (Term [g|q|] V [g|r|]) [g|r|]) [g|q|] [g|r|]
 type FormatFormulaA (d :: TypeDict) x r =
@@ -120,7 +120,7 @@ formatFormula = do
                   | otherwise = b'
             return $ T.concat ["(or ", a'', " ", b'', ")"]
 
-  recur @ [d'|recur|] algebra
+  recur @[d'|recur|] algebra
 
 class ShowT a where
   showT :: a -> T.Text

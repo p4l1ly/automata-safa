@@ -13,16 +13,16 @@
 module Afa.Convert.Capnp.Range16Nfa where
 
 import qualified Capnp
-import qualified Capnp.Gen.Afa.Model.Separated.Pure as AfaC
-import qualified Capnp.GenHelpers.ReExports.Data.Vector as V
+import qualified Capnp.Gen.Afa.Model.Separated as AfaC
 import Control.Arrow
 import Control.Monad.Free
 import Data.Array
-import Data.Bits
+import Data.Bits hiding (And (..))
 import Data.Foldable
 import Data.Functor
 import Data.List.NonEmpty (NonEmpty (..), nonEmpty)
 import qualified Data.List.NonEmpty as NE
+import qualified Data.Vector as V
 import Data.Void
 import Data.Word
 import System.IO
@@ -45,12 +45,12 @@ import Shaper.Helpers (BuildD, buildFix)
 import TypeDict (Named (Name), TypeDict (End, (:+:)), d, d', g')
 
 hReadNfa :: Handle -> IO (BoolAfaUnswallowed Int)
-hReadNfa h = deserializeNfa <$> Capnp.hGetValue h maxBound
+hReadNfa h = deserializeNfa <$> Capnp.hGetParsed h maxBound
 
-hReadNfaRaw :: Handle -> IO AfaC.Range16Nfa
-hReadNfaRaw h = Capnp.hGetValue h maxBound
+hReadNfaRaw :: Handle -> IO (AfaC.Parsed AfaC.Range16Nfa)
+hReadNfaRaw h = Capnp.hGetParsed h maxBound
 
-deserializeNfa :: AfaC.Range16Nfa -> BoolAfaUnswallowed Int
+deserializeNfa :: AfaC.Parsed AfaC.Range16Nfa -> BoolAfaUnswallowed Int
 deserializeNfa (AfaC.Range16Nfa states (fromIntegral -> initial) finals) =
   unswallow
     BoolAfa
@@ -95,7 +95,7 @@ deserializeNfa (AfaC.Range16Nfa states (fromIntegral -> initial) finals) =
         then Free $ MTerm.Or $ finalSym :| [mkState initial]
         else Free $ MTerm.And $ nonfinalSym :| [mkState initial]
 
-convertRange :: AfaC.Range16 -> BoolTermIFree Int
+convertRange :: Range16 -> BoolTermIFree Int
 convertRange (AfaC.Range16 0x0000 0xffff) = Pure 35 -- True
 convertRange (AfaC.Range16 begin end) = Free $ BTerm.And $ diff' :| map byBeg common
   where
@@ -127,7 +127,7 @@ convertRange (AfaC.Range16 begin end) = Free $ BTerm.And $ diff' :| map byBeg co
         else Free $ BTerm.And $ neg x :| [lte rest]
     lte [] = Pure 35 -- True
 
-convertRange2 :: AfaC.Range16 -> Fix (Term q Word8)
+convertRange2 :: Range16 -> Fix (Term q Word8)
 convertRange2 (AfaC.Range16 0x0000 0xffff) = Fix LTrue
 convertRange2 (AfaC.Range16 begin end) = foldr (Fix .: And . byBeg) diff' common
   where
@@ -159,7 +159,7 @@ convertRange2 (AfaC.Range16 begin end) = foldr (Fix .: And . byBeg) diff' common
     lte [] = Fix LTrue
 
 type DeserializeNfaA d r =
-  DeserializeNfaA1 d (Name "termF" (Term Word32 AfaC.Range16) :+: End) r
+  DeserializeNfaA1 d (Name "termF" (Term Word32 (AfaC.Parsed AfaC.Range16)) :+: End) r
 type DeserializeNfaA1 d d' r =
   DeserializeNfaA2 d (Name "buildTree" (Mk (MfnK ([g'|termF|] r) r) [d|buildTree|]) :+: d')
 type DeserializeNfaA2 d d' = Name "buildD" (Name "build" [d'|buildTree|] :+: d) :+: d'
@@ -171,34 +171,34 @@ type DeserializeNfaD_ d m d' r =
 deserializeNfa2 ::
   forall (d :: TypeDict) r m (d' :: TypeDict).
   ToConstraint (DeserializeNfaD_ d m d' r) =>
-  AfaC.Range16Nfa ->
+  AfaC.Parsed AfaC.Range16Nfa ->
   m (r, V.Vector Word32, (Int, Int -> Word32, Int -> V.Vector (r, r), Word32 -> Int))
 deserializeNfa2 (AfaC.Range16Nfa states init finals) = do
   initR <- [d'|monadfn|buildTree|] (State init)
   states' <- for states \ts ->
     for ts \(AfaC.ConjunctR16Q ranges q) -> do
       let a = foldr (Fix .: Or . Fix . Var) (Fix LFalse) ranges
-      ar <- buildFix @ [g'|buildD|] a
+      ar <- buildFix @[g'|buildD|] a
       qr <- [d'|monadfn|buildTree|] (State q)
       return (ar, qr)
   return (initR, finals, (V.length states, fromIntegral, (states' V.!), fromIntegral))
 
 deserializeToIORef ::
   forall q v r r' d.
-  ( r ~ Afa.IORef.Ref (Term Word32 AfaC.Range16)
-  , d ~ Afa.IORef.IORefRemoveFinalsD Word32 AfaC.Range16 r r'
+  ( r ~ Afa.IORef.Ref (Term Word32 Range16)
+  , d ~ Afa.IORef.IORefRemoveFinalsD Word32 Range16 r r'
   ) =>
-  AfaC.Range16Nfa ->
+  AfaC.Parsed AfaC.Range16Nfa ->
   IO (r, V.Vector Word32, (Int, Int -> Word32, Int -> V.Vector (r, r), Word32 -> Int))
 deserializeToIORef = deserializeNfa2 @d
 
 convertRangeIORef ::
   forall q v r r' d buildD derange.
-  ( r ~ Afa.IORef.Ref (Term q AfaC.Range16)
+  ( r ~ Afa.IORef.Ref (Term q Range16)
   , r' ~ Afa.IORef.Ref (Term q Word8)
-  , d ~ Afa.IORef.IORefRemoveFinalsD Word32 AfaC.Range16 r r'
+  , d ~ Afa.IORef.IORefRemoveFinalsD Word32 Range16 r r'
   , buildD ~ (Name "build" (Mk (MfnK (Term q Word8 r') r') [d|buildTree|]) :+: d)
-  , derange ~ Mk (FRecK r r' (VarTra IO AfaC.Range16 q Word8 r')) [d|funr|]
+  , derange ~ Mk (FRecK r r' (VarTra IO Range16 q Word8 r')) [d|funr|]
   ) =>
   (r, r, (Int, Int -> q, Int -> r, q -> Int)) ->
   IO (r', r', (Int, Int -> q, Int -> r', q -> Int))
@@ -211,4 +211,4 @@ convertRangeIORef (init, final, (qCount, i2q, i2r, q2i)) = do
   i2rArr <- listArray (0, qCount - 1) <$> mapM (derange . i2r) [0 .. qCount - 1]
   return (init', final', (qCount, i2q, (i2rArr !), q2i))
 
-type Range16 = AfaC.Range16
+type Range16 = AfaC.Parsed AfaC.Range16
