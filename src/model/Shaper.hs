@@ -20,10 +20,7 @@ import Control.Monad.Reader (Reader, ReaderT (ReaderT, runReaderT), asks, local,
 import Control.Monad.Trans (MonadTrans (lift))
 import Data.Fix (Fix (Fix))
 import Data.Kind (Constraint)
-import DepDict (DepDict ((:|:)))
-import qualified DepDict as D
-import Lift (K (K), LiftCount, Pean (Succ, Zero), Unwrap, Wrap)
-import TypeDict (d)
+import InversionOfControl.Lift (K (K), LiftCount, Pean (Succ, Zero), Unwrap)
 
 class MLift (n :: Pean) (m' :: * -> *) (m :: * -> *) where
   mlift :: m a -> m' a
@@ -33,12 +30,6 @@ instance (MLift n m' m, MonadTrans mt, Monad m') => MLift (Succ n) (mt m') m whe
 
 instance MLift n m m where
   mlift = id
-
-type family Mk (mk :: * -> *) (k :: K) :: K where
-  Mk mk k = 'K (LiftCount k) (mk (Unwrap k))
-
-type family MkN (mk :: Pean -> * -> *) (k :: K) :: K where
-  MkN mk k = 'K Zero (mk (LiftCount k) (Unwrap k))
 
 type family MfnA (k :: *) :: *
 type family MfnB (k :: *) :: *

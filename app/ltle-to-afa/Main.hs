@@ -10,6 +10,7 @@
 {-# LANGUAGE TypeFamilies #-}
 {-# LANGUAGE TypeOperators #-}
 {-# LANGUAGE ViewPatterns #-}
+{-# OPTIONS_GHC -fplugin InversionOfControl.TcPlugin #-}
 
 module Main where
 
@@ -83,8 +84,8 @@ import System.Directory
 import System.Environment (getArgs)
 import System.IO
 import Text.Read
-import TypeDict (TypeDict ((:+:)), d)
-import qualified TypeDict
+import InversionOfControl.TypeDict
+import InversionOfControl.Lift
 
 data Opts = Opts
   { readers :: Fix (Compose IO (ListF (String, BoolAfaUnswallowed Int)))
@@ -396,8 +397,8 @@ removeFinalsMain ::
   , v' ~ Finalful.SyncVar t t
   , r' ~ Afa.IORef.Ref (STerm.Term q' v')
   , d ~ Afa.IORef.IORefRemoveFinalsD t t r r
-  , buildTree ~ Shaper.Mk (Shaper.MfnK (STerm.Term q' v' r') r') [d|buildTree|]
-  , buildD ~ (TypeDict.Name "build" buildTree :+: d)
+  , buildTree ~ Mk (Shaper.MfnK (STerm.Term q' v' r') r') [d|buildTree|]
+  , buildD ~ (Name "build" buildTree :+: d)
   ) =>
   IO ()
 removeFinalsMain = do
@@ -443,8 +444,8 @@ removeFinalsPrettyMain ::
   , v' ~ Finalful.SyncVar t t
   , r' ~ Afa.IORef.Ref (STerm.Term q' v')
   , d ~ Afa.IORef.IORefRemoveFinalsD t t r r
-  , buildTree ~ Shaper.Mk (Shaper.MfnK (STerm.Term q' v' r') r') [d|buildTree|]
-  , buildD ~ (TypeDict.Name "build" buildTree :+: d)
+  , buildTree ~ Mk (Shaper.MfnK (STerm.Term q' v' r') r') [d|buildTree|]
+  , buildD ~ (Name "build" buildTree :+: d)
   ) =>
   IO ()
 removeFinalsPrettyMain = do
@@ -472,8 +473,8 @@ removeFinalsNonsepMain ::
   , v' ~ Finalful.SyncVar t t
   , r' ~ Afa.IORef.Ref (STerm.Term q' v')
   , d ~ Afa.IORef.IORefRemoveFinalsD t t r r
-  , buildTree ~ Shaper.Mk (Shaper.MfnK (STerm.Term q' v' r') r') [d|buildTree|]
-  , buildD ~ (TypeDict.Name "build" buildTree :+: d)
+  , buildTree ~ Mk (Shaper.MfnK (STerm.Term q' v' r') r') [d|buildTree|]
+  , buildD ~ (Name "build" buildTree :+: d)
   ) =>
   IO ()
 removeFinalsNonsepMain = do
@@ -520,8 +521,8 @@ range16ToPrettyRangeVarsMain ::
   forall d buildTree buildD r'.
   ( r' ~ Afa.IORef.Ref (STerm.Term Word32 Range16Nfa.Range16)
   , d ~ Afa.IORef.IORefRemoveFinalsD Void Void Void Void
-  , buildTree ~ Shaper.Mk (Shaper.MfnK (STerm.Term Word32 Range16Nfa.Range16 r') r') [d|buildTree|]
-  , buildD ~ (TypeDict.Name "build" buildTree :+: d)
+  , buildTree ~ Mk (Shaper.MfnK (STerm.Term Word32 Range16Nfa.Range16 r') r') [d|buildTree|]
+  , buildD ~ (Name "build" buildTree :+: d)
   ) =>
   IO ()
 range16ToPrettyRangeVarsMain = do
@@ -543,8 +544,8 @@ range16ToPrettyMain ::
   forall d buildTree buildD r'.
   ( r' ~ Afa.IORef.Ref (STerm.Term Word32 Range16Nfa.Range16)
   , d ~ Afa.IORef.IORefRemoveFinalsD Void Void Void Void
-  , buildTree ~ Shaper.Mk (Shaper.MfnK (STerm.Term Word32 Range16Nfa.Range16 r') r') [d|buildTree|]
-  , buildD ~ (TypeDict.Name "build" buildTree :+: d)
+  , buildTree ~ Mk (Shaper.MfnK (STerm.Term Word32 Range16Nfa.Range16 r') r') [d|buildTree|]
+  , buildD ~ (Name "build" buildTree :+: d)
   ) =>
   IO ()
 range16ToPrettyMain = do
@@ -573,8 +574,8 @@ negateLang ::
   forall d buildTree buildD r'.
   ( r' ~ Afa.IORef.Ref (STerm.Term T.Text T.Text)
   , d ~ Afa.IORef.IORefRemoveFinalsD Void Void Void Void
-  , buildTree ~ Shaper.Mk (Shaper.MfnK (STerm.Term T.Text T.Text r') r') [d|buildTree|]
-  , buildD ~ (TypeDict.Name "build" buildTree :+: d)
+  , buildTree ~ Mk (Shaper.MfnK (STerm.Term T.Text T.Text r') r') [d|buildTree|]
+  , buildD ~ (Name "build" buildTree :+: d)
   ) =>
   IO ()
 negateLang = do
@@ -604,8 +605,8 @@ comboOp ::
   , d ~ Afa.IORef.IORefRemoveFinalsD Void Void Void Void
   , q' ~ Negate.Qombo t
   , r' ~ Afa.IORef.Ref (STerm.Term q' t)
-  , buildTree ~ Shaper.Mk (Shaper.MfnK (STerm.Term q' t r') r') [d|buildTree|]
-  , buildD ~ (TypeDict.Name "build" buildTree :+: d)
+  , buildTree ~ Mk (Shaper.MfnK (STerm.Term q' t r') r') [d|buildTree|]
+  , buildD ~ (Name "build" buildTree :+: d)
   , freeTerm ~ Free (STerm.Term q' t) r'
   ) =>
   ([freeTerm] -> freeTerm) ->
@@ -676,8 +677,8 @@ emailFilterBisim ::
   forall t d buildD buildTree q' r'.
   ( t ~ T.Text
   , d ~ Afa.IORef.IORefRemoveFinalsD t t (Afa.IORef.Ref (STerm.Term t t)) Void
-  , buildTree ~ Shaper.Mk (Shaper.MfnK (STerm.Term q' t r') r') [d|buildTree|]
-  , buildD ~ (TypeDict.Name "build" buildTree :+: d)
+  , buildTree ~ Mk (Shaper.MfnK (STerm.Term q' t r') r') [d|buildTree|]
+  , buildD ~ (Name "build" buildTree :+: d)
   , q' ~ Negate.Qombo t
   , r' ~ Afa.IORef.Ref (STerm.Term q' t)
   ) =>
@@ -708,7 +709,7 @@ emailFilterBisim path1 path2 = do
   Just states' <- Afa.IORef.trySeparateQTransitions (qCount, i2q, runIdentity . i2r, q2i)
   ([init1', init', final'], states'') <-
     Negate.enum
-      @(TypeDict.Name "r" r' :+: TypeDict.Name "q" q' :+: d)
+      @(Name "r" r' :+: Name "q" q' :+: d)
       [init1 :: r', init :: r', final :: r']
       states'
   Sep2.twoFormatIORef init1' final' init' final' states''
@@ -765,8 +766,8 @@ prettyToSeparatedDnfMata ::
   ( t ~ T.Text
   , r ~ Afa.IORef.Ref (STerm.Term t t)
   , d ~ Afa.IORef.IORefRemoveFinalsD t t r Void
-  , buildTree ~ Shaper.Mk (Shaper.MfnK (STerm.Term t t r) r) [d|buildTree|]
-  , buildD ~ (TypeDict.Name "build" buildTree :+: d)
+  , buildTree ~ Mk (Shaper.MfnK (STerm.Term t t r) r) [d|buildTree|]
+  , buildD ~ (Name "build" buildTree :+: d)
   ) =>
   IO ()
 prettyToSeparatedDnfMata = do
@@ -895,10 +896,10 @@ emailFilterAda ::
   ( r' ~ Afa.IORef.Ref (STerm.Term (Negate.Qombo Word32) Range16Nfa.Range16)
   , r'2 ~ Afa.IORef.Ref (STerm.Term (Negate.Qombo (Negate.Qombo Word32)) Range16Nfa.Range16)
   , d ~ Afa.IORef.IORefRemoveFinalsD Void Void Void Void
-  , buildTree ~ Shaper.Mk (Shaper.MfnK (STerm.Term (Negate.Qombo Word32) Range16Nfa.Range16 r') r') [d|buildTree|]
-  , buildD ~ (TypeDict.Name "build" buildTree :+: d)
-  , buildTree2 ~ Shaper.Mk (Shaper.MfnK (STerm.Term (Negate.Qombo (Negate.Qombo Word32)) Range16Nfa.Range16 r'2) r'2) [d|buildTree|]
-  , buildD2 ~ (TypeDict.Name "build" buildTree2 :+: d)
+  , buildTree ~ Mk (Shaper.MfnK (STerm.Term (Negate.Qombo Word32) Range16Nfa.Range16 r') r') [d|buildTree|]
+  , buildD ~ (Name "build" buildTree :+: d)
+  , buildTree2 ~ Mk (Shaper.MfnK (STerm.Term (Negate.Qombo (Negate.Qombo Word32)) Range16Nfa.Range16 r'2) r'2) [d|buildTree|]
+  , buildD2 ~ (Name "build" buildTree2 :+: d)
   ) =>
   Int ->
   [String] ->

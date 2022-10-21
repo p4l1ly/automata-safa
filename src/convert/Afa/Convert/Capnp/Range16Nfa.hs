@@ -9,6 +9,7 @@
 {-# LANGUAGE TypeFamilies #-}
 {-# LANGUAGE TypeOperators #-}
 {-# LANGUAGE ViewPatterns #-}
+{-# OPTIONS_GHC -fplugin InversionOfControl.TcPlugin #-}
 
 module Afa.Convert.Capnp.Range16Nfa where
 
@@ -38,11 +39,10 @@ import qualified Afa.IORef
 import Data.Composition ((.:))
 import Data.Fix (Fix (Fix))
 import Data.Traversable (for)
-import DepDict (DepDict ((:|:)), ToConstraint)
-import qualified DepDict as D
 import Shaper
 import Shaper.Helpers (BuildD, buildFix)
-import TypeDict (Named (Name), TypeDict (End, (:+:)), d, d', g')
+import InversionOfControl.TypeDict
+import InversionOfControl.Lift
 
 hReadNfa :: Handle -> IO (BoolAfaUnswallowed Int)
 hReadNfa h = deserializeNfa <$> Capnp.hGetParsed h maxBound
@@ -164,10 +164,10 @@ type DeserializeNfaA1 d d' r =
   DeserializeNfaA2 d (Name "buildTree" (Mk (MfnK ([g'|termF|] r) r) [d|buildTree|]) :+: d')
 type DeserializeNfaA2 d d' = Name "buildD" (Name "build" [d'|buildTree|] :+: d) :+: d'
 type DeserializeNfaD_ d m d' r =
-  D.Name "aliases" (d' ~ DeserializeNfaA d r)
-    :|: D.Name "build" (MonadFn [d'|buildTree|] m)
-    :|: D.Name "buildD" (BuildD [g'|buildD|] [g'|termF|] r m)
-    :|: D.End
+  Name "aliases" (d' ~ DeserializeNfaA d r)
+    :+: Name "build" (MonadFn [d'|buildTree|] m)
+    :+: Name "buildD" (BuildD [g'|buildD|] [g'|termF|] r m)
+    :+: End
 deserializeNfa2 ::
   forall (d :: TypeDict) r m (d' :: TypeDict).
   ToConstraint (DeserializeNfaD_ d m d' r) =>

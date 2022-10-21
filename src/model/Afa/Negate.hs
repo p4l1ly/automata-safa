@@ -12,17 +12,16 @@
 {-# LANGUAGE TupleSections #-}
 {-# LANGUAGE DeriveAnyClass #-}
 {-# LANGUAGE DeriveGeneric #-}
+{-# OPTIONS_GHC -fplugin InversionOfControl.TcPlugin #-}
 
 module Afa.Negate where
 
 import Shaper.Helpers (BuildD, BuildInheritShareD, buildInheritShare)
 
 import Afa.Finalful.STerm (Term (..), QVR(Q), create, Create, Creation, VarTra (VarTra), QVTra(QVTra))
-import qualified DepDict as D
-import TypeDict
-    ( d, g, d', g', Named(Name), TypeDict((:+:)), TypeDict(End, LiftTags) )
-import Shaper (MonadFn(monadfn), ask, Mk, IsTree, MfnK, FRecK, FunRecur, funRecur, Recur, MkN, RecK, Recur0(recur))
-import DepDict (DepDict((:|:)))
+import InversionOfControl.TypeDict
+import InversionOfControl.Lift
+import Shaper (MonadFn(monadfn), ask, IsTree, MfnK, FRecK, FunRecur, funRecur, Recur, RecK, Recur0(recur))
 import Data.Traversable (for)
 import Data.Function.Apply ((-$))
 import Control.Monad (foldM)
@@ -31,7 +30,6 @@ import Data.Array.MArray
 import Data.Array.IO (IOArray)
 import Data.Array (listArray, (!), Array)
 import Data.Array.Unsafe (unsafeFreeze)
-import Lift (K(K), Inc)
 import qualified Data.HashMap.Strict as M
 import Data.IORef
 import Data.Hashable
@@ -48,20 +46,20 @@ type DeMorganAlgA d q v r =  -- keyword aliases
               :+: d
           )
     :+: End
-type DeMorganAlgD_ :: TypeDict -> (* -> *) -> TypeDict -> * -> * -> * -> DepDict
+type DeMorganAlgD_ :: TypeDict -> (* -> *) -> TypeDict -> * -> * -> * -> TypeDict
 type DeMorganAlgD_ d m d' q v r =
-  D.Name "aliases" (q ~ [g|q|], v ~ [g|v|], r ~ [g|r|], d' ~ DeMorganAlgA d q v r)
-  :|: D.Name "rec"
-        ( D.Name "self" (MonadFn [d'|self|] m)
-            :|: D.Name "rec" (MonadFn [d'|rec|] m)
-            :|: D.Name "isTree" (MonadFn (Mk IsTree [d|rec|]) m)
-            :|: D.End
+  Name "aliases" (q ~ [g|q|], v ~ [g|v|], r ~ [g|r|], d' ~ DeMorganAlgA d q v r)
+  :+: Name "rec"
+        ( Name "self" (MonadFn [d'|self|] m)
+            :+: Name "rec" (MonadFn [d'|rec|] m)
+            :+: Name "isTree" (MonadFn (Mk IsTree [d|rec|]) m)
+            :+: End
         )
-  :|: D.Name "build" (D.Remove "isTree" (BuildInheritShareD [g'|buildD|] (Term q v r) r m))
-  :|: D.End
+  :+: Name "build" (Remove "isTree" (BuildInheritShareD [g'|buildD|] (Term q v r) r m))
+  :+: End
 deMorganAlg ::
   forall d m d' q v r.
-  D.ToConstraint (DeMorganAlgD_ d m d' q v r) =>
+  ToConstraint (DeMorganAlgD_ d m d' q v r) =>
   Term q v r -> m r
 deMorganAlg LTrue = buildInheritShare @[g'|buildD|] LFalse
 deMorganAlg LFalse = buildInheritShare @[g'|buildD|] LTrue
@@ -89,16 +87,16 @@ type QomboA1 d d' r r' =
   Name "qombo" (Mk (FRecK r r' (Creation [g'|qomboF|] [g'|qomboFn|])) [d|funr|])
     :+: d'
 type QomboD_ d d' q v r r' =
-  D.Name "aliases" (q ~ [g|q|], v ~ [g|v|], r ~ [g|r|], r' ~ [g|r'|], d' ~ QomboA d q v r r')
-  :|: D.Name "build" (MonadFn [d'|buildTree|] IO)
-  :|: D.Name "enumStates"
+  Name "aliases" (q ~ [g|q|], v ~ [g|v|], r ~ [g|r|], r' ~ [g|r'|], d' ~ QomboA d q v r r')
+  :+: Name "build" (MonadFn [d'|buildTree|] IO)
+  :+: Name "enumStates"
         ( Create [g'|qomboF|] (q -> Qombo q)
         , FunRecur [d'|qombo|] IO
         )
-  :|: D.End
+  :+: End
 qombo ::
   forall d d' q v r r' f ft.
-  (D.ToConstraint (QomboD_ d d' q v r r'), Foldable f, Traversable ft) =>
+  (ToConstraint (QomboD_ d d' q v r r'), Foldable f, Traversable ft) =>
   [(r, f q, (Int, Int -> q, Int -> ft r, q -> Int))]
   -> IO ([r'], [Qombo q], (Int, Int -> Qombo q, Int -> ft r', Qombo q -> Int))
 qombo afas = do
@@ -137,27 +135,27 @@ type UnshareAlgA d f r =  -- keyword aliases
     :+: Name "buildTree" (Mk (MfnK (f r) r) [d|buildTree|])
     :+: End
 type UnshareAlgD_ d m d' f r =
-  D.Name "aliases" (d' ~ UnshareAlgA d f r)
-  :|: D.Name "rec" (D.Name "rec" (MonadFn [d'|rec|] m) :|: D.End)
-  :|: D.Name "build" (MonadFn [d'|buildTree|] m)
-  :|: D.End
+  Name "aliases" (d' ~ UnshareAlgA d f r)
+  :+: Name "rec" (Name "rec" (MonadFn [d'|rec|] m) :+: End)
+  :+: Name "build" (MonadFn [d'|buildTree|] m)
+  :+: End
 unshareAlg ::
   forall d m d' f r.
-  (D.ToConstraint (UnshareAlgD_ d m d' f r), Traversable f) =>
+  (ToConstraint (UnshareAlgD_ d m d' f r), Traversable f) =>
   f r -> m r
 unshareAlg fr = mapM [d'|monadfn|rec|] fr >>= [d'|monadfn|buildTree|]
 
 type UnshareA d q v r = Name "recK" (MkN (RecK r (Term q v r) r) [d|any|]) :+: End
 type UnshareD_ d m d' q v r =
-  D.Name "aliases" (d' ~ UnshareA d q v r, q ~ [g|q|], v ~ [g|v|], r ~ [g|r|])
-    :|: D.Name "rec"
-          ( D.Name "" (Recur [d'|recK|] m)
-              :|: D.Remove "rec" (UnshareAlgD d (Term q v) r m)
+  Name "aliases" (d' ~ UnshareA d q v r, q ~ [g|q|], v ~ [g|v|], r ~ [g|r|])
+    :+: Name "rec"
+          ( Name "" (Recur [d'|recK|] m)
+              :+: Remove "rec" (UnshareAlgD d (Term q v) r m)
           )
-    :|: D.End
+    :+: End
 unshare ::
   forall d m d' q v r n x.
-  (D.ToConstraint (UnshareD_ d m d' q v r), [d|buildTree|] ~ 'K n x) =>  -- TODO explicit Inc invariant
+  (ToConstraint (UnshareD_ d m d' q v r), [d|buildTree|] ~ 'K n x) =>  -- TODO explicit Inc invariant
   (r, r, (Int, Int -> q, Int -> r, q -> Int)) ->
   m (r, r, (Int, Int -> q, Int -> r, q -> Int))
 unshare (init, final, (qCount, i2q, i2r, q2i)) = do
@@ -169,12 +167,12 @@ unshare (init, final, (qCount, i2q, i2r, q2i)) = do
 
 type UnInitStateA d q v r = Name "deref" (Mk (MfnK r (Term q v r)) [d|deref|]) :+: End
 type UnInitStateD_ d m d' q v r =
-  D.Name "aliases" (d' ~ UnInitStateA d q v r, q ~ [g|q|], v ~ [g|v|], r ~ [g|r|])
-    :|: D.Name "deref" (MonadFn [d'|deref|] m)
-    :|: D.End
+  Name "aliases" (d' ~ UnInitStateA d q v r, q ~ [g|q|], v ~ [g|v|], r ~ [g|r|])
+    :+: Name "deref" (MonadFn [d'|deref|] m)
+    :+: End
 unInitState ::
   forall d m d' q v r.
-  D.ToConstraint (UnInitStateD_ d m d' q v r) =>
+  ToConstraint (UnInitStateD_ d m d' q v r) =>
   (r, r, (Int, Int -> q, Int -> r, q -> Int)) ->
   m (r, r, (Int, Int -> q, Int -> r, q -> Int))
 unInitState afa@(init, final, states@(_, _, i2r, q2i)) = do
@@ -187,18 +185,18 @@ type EnumA d q v r r' =
   Name "funr" (Mk (FRecK r r' (QVTra IO q v Int Int r')) [d|funr|])
     :+: End
 type EnumD_ d m d' q v r r' =
-  D.Name "aliases"
+  Name "aliases"
     ( d' ~ EnumA d q v r r'
     , q ~ [g|q|]
     , v ~ [g|v|]
     , r ~ [g|r|]
     )
-    :|: D.Name "funr" (FunRecur [d'|funr|] m)
-    :|: D.Name "hashable" (Eq v, Hashable v, Eq q, Hashable q)
-    :|: D.End
+    :+: Name "funr" (FunRecur [d'|funr|] m)
+    :+: Name "hashable" (Eq v, Hashable v, Eq q, Hashable q)
+    :+: End
 enum ::
   forall d d' q v r r'.
-  D.ToConstraint (EnumD_ d IO d' q v r r') =>
+  ToConstraint (EnumD_ d IO d' q v r r') =>
   [r] ->
   (Int, Int -> q, Int -> [(r, r)], q -> Int) ->
   IO ([r'], (Int, Int -> Int, Int -> [(r', r')], Int -> Int))
@@ -244,17 +242,17 @@ type ToDnfA1 d' q v r =
   Name "rec" (Mk (MfnK (Bool, r) [[(Bool, Either q v)]]) [d'|recur|])
     :+: d'
 type ToDnfD_ d m d' q v r =
-  D.Name "aliases"
+  Name "aliases"
     ( d' ~ ToDnfA d q v r
     , q ~ [g|q|]
     , v ~ [g|v|]
     , r ~ [g|r|]
     )
-    :|: D.Name "rec" (Recur [d'|recur|] m)
-    :|: D.End
+    :+: Name "rec" (Recur [d'|recur|] m)
+    :+: End
 toDnf ::
   forall d d' q v r m.
-  D.ToConstraint (ToDnfD_ d m d' q v r) =>
+  ToConstraint (ToDnfD_ d m d' q v r) =>
   m (r -> m [[(Bool, Either q v)]])
 toDnf = do
   let

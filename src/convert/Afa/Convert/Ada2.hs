@@ -20,6 +20,7 @@
 {-# LANGUAGE TypeOperators #-}
 {-# LANGUAGE UndecidableInstances #-}
 {-# LANGUAGE ViewPatterns #-}
+{-# OPTIONS_GHC -fplugin InversionOfControl.TcPlugin #-}
 
 module Afa.Convert.Ada2 where
 
@@ -52,12 +53,10 @@ import Data.Traversable
 import qualified Data.Vector as V
 import Data.Word
 import Debug.Trace
-import DepDict (DepDict ((:|:)))
-import qualified DepDict as D
-import Lift (Inc, K (K), LiftCount, Unwrap)
 import Shaper
 import Shaper.Helpers (BuildD, buildFree)
-import TypeDict
+import InversionOfControl.TypeDict
+import InversionOfControl.Lift
 
 type V = AfaC.Parsed AfaC.Range16
 type FormatFormulaD d m =
@@ -73,14 +72,14 @@ type FormatFormulaA1 d' r =
   Name "rec" (Mk (MfnK r T.Text) [d'|recur|])
     :+: d'
 type FormatFormulaD_ d (m :: * -> *) (d' :: TypeDict) (q :: *) (r :: *) =
-  D.Name "aliases" (q ~ [g|q|], V ~ [g|v|], r ~ [g|r|], d' ~ FormatFormulaA d (Term q V r) r)
-    :|: D.Name "show" (ShowT q)
-    :|: D.Name "rec" (RecRecur [d'|recur|] m)
-    :|: D.Name "deref" (MonadFn [d'|deref|] m)
-    :|: D.End
+  Name "aliases" (q ~ [g|q|], V ~ [g|v|], r ~ [g|r|], d' ~ FormatFormulaA d (Term q V r) r)
+    :+: Name "show" (ShowT q)
+    :+: Name "rec" (RecRecur [d'|recur|] m)
+    :+: Name "deref" (MonadFn [d'|deref|] m)
+    :+: End
 formatFormula ::
   forall d q r d'.
-  D.ToConstraint (FormatFormulaD_ d IO d' q r) =>
+  ToConstraint (FormatFormulaD_ d IO d' q r) =>
   IO (r -> IO T.Text)
 formatFormula = do
   let rec x = [d'|monadfn|rec|] x
@@ -148,7 +147,7 @@ instance ShowT q => ShowT (Qombo q) where
 
 formatSeparated ::
   forall d deref.
-  ( D.ToConstraint (FormatFormulaD d IO)
+  ( ToConstraint (FormatFormulaD d IO)
   , deref ~ Mk (MfnK [g|r|] (Term [g|q|] [g|v|] [g|r|])) [d|deref|]
   , MonadFn deref IO
   ) =>
@@ -227,7 +226,7 @@ formatSeparatedIORef = Afa.Convert.Ada2.formatSeparated @d
 
 format ::
   forall d deref.
-  ( D.ToConstraint (FormatFormulaD d IO)
+  ( ToConstraint (FormatFormulaD d IO)
   , deref ~ Mk (MfnK [g|r|] (Term [g|q|] [g|v|] [g|r|])) [d|deref|]
   , MonadFn deref IO
   ) =>

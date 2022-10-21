@@ -20,6 +20,7 @@
 {-# LANGUAGE TypeOperators #-}
 {-# LANGUAGE UndecidableInstances #-}
 {-# LANGUAGE ViewPatterns #-}
+{-# OPTIONS_GHC -fplugin InversionOfControl.TcPlugin #-}
 
 module Afa.Convert.Separated2 where
 
@@ -54,13 +55,11 @@ import Data.Traversable
 import qualified Data.Vector as V
 import Data.Word
 import Debug.Trace
-import DepDict (DepDict ((:|:)))
-import qualified DepDict as D
-import Lift (Inc, K (K), LiftCount, Unwrap)
 import Shaper
 import Shaper.Helpers (BuildD, buildFree)
 import System.IO
-import TypeDict
+import InversionOfControl.TypeDict
+import InversionOfControl.Lift
 
 type FormatFormulaD d m =
   FormatFormulaD_ d m (FormatFormulaA d (Term Int Int [g|r|]) [g|r|]) [g|r|]
@@ -76,14 +75,14 @@ type FormatFormulaA1 d' r =
     :+: Name "self" (Mk (MfnK () r) [d'|recur|])
     :+: d'
 type FormatFormulaD_ d (m :: * -> *) (d' :: TypeDict) (r :: *) =
-  D.Name "aliases" (Int ~ [g|q|], Int ~ [g|v|], r ~ [g|r|], d' ~ FormatFormulaA d (Term Int Int r) r)
-    :|: D.Name "rec" (RecRecur [d'|recur|] m)
-    :|: D.Name "deref" (MonadFn [d'|deref|] m)
-    :|: D.End
+  Name "aliases" (Int ~ [g|q|], Int ~ [g|v|], r ~ [g|r|], d' ~ FormatFormulaA d (Term Int Int r) r)
+    :+: Name "rec" (RecRecur [d'|recur|] m)
+    :+: Name "deref" (MonadFn [d'|deref|] m)
+    :+: End
 
 formatQFormula ::
   forall d r d'.
-  D.ToConstraint (FormatFormulaD_ d IO d' r) =>
+  ToConstraint (FormatFormulaD_ d IO d' r) =>
   IO
     ( r -> IO Word32
     , IORef [Capnp.Parsed TermC.QTerm11]
@@ -122,7 +121,7 @@ formatQFormula = do
 
 formatAFormula ::
   forall d r d'.
-  D.ToConstraint (FormatFormulaD_ d IO d' r) =>
+  ToConstraint (FormatFormulaD_ d IO d' r) =>
   IO
     ( r -> IO Word32
     , IORef [Capnp.Parsed TermC.BoolTerm11]
@@ -163,9 +162,9 @@ formatAFormula = do
 
 format ::
   forall d r d' allVars.
-  ( D.ToConstraint (FormatFormulaD d IO)
+  ( ToConstraint (FormatFormulaD d IO)
   , r ~ [g|r|]
-  , D.ToConstraint (SplitFinals'D d IO)
+  , ToConstraint (SplitFinals'D d IO)
   , allVars ~ Mk (FRecK r r (VarTra IO Int Int Int r)) [d|funr|]
   , FunRecur allVars IO
   ) =>
@@ -224,9 +223,9 @@ formatIORef = Afa.Convert.Separated2.format @d
 
 twoFormat ::
   forall d r d' allVars.
-  ( D.ToConstraint (FormatFormulaD d IO)
+  ( ToConstraint (FormatFormulaD d IO)
   , r ~ [g|r|]
-  , D.ToConstraint (SplitFinals'D d IO)
+  , ToConstraint (SplitFinals'D d IO)
   , allVars ~ Mk (FRecK r r (VarTra IO Int Int Int r)) [d|funr|]
   , FunRecur allVars IO
   ) =>

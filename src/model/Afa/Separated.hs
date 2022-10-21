@@ -9,23 +9,25 @@
 {-# LANGUAGE QuasiQuotes #-}
 {-# LANGUAGE DeriveTraversable #-}
 {-# LANGUAGE BlockArguments #-}
+{-# OPTIONS_GHC -fplugin InversionOfControl.TcPlugin #-}
 
 module Afa.Separated where
 
 import Afa.Finalful.STerm (Term(..))
-import TypeDict
 import Shaper
 import Data.Kind (Constraint)
 import Shaper.Helpers
-import DepDict ( ToConstraint, DepDict((:|:)) )
-import qualified DepDict as D
 import Data.Functor ((<&>))
 import Data.Traversable (for)
+
+import InversionOfControl.TypeDict
+import InversionOfControl.Lift
 
 data AQ1 r = A1 r | Q1 r | AQAnd1 r r deriving (Show, Functor, Foldable, Traversable)
 data AQ r = A r | Q r | AQAnd r r | AQOr [AQ1 r] deriving (Show, Functor, Foldable, Traversable)
 
 type TrySeparateAlgD d m = TrySeparateAlgD_ d m (TrySeparateAlgA d [g|q|] [g|v|] [g|r|]) [g|q|] [g|v|] [g|r|]
+type TrySeparateAlgA :: TypeDict -> * -> * -> * -> TypeDict
 type TrySeparateAlgA d q v r =  -- keyword aliases
   Name "rec" (Mk (MfnK r (AQ r)) [d|rec|])
     :+: Name "self" (Mk (MfnK () r) [d|rec|])
@@ -36,18 +38,18 @@ type TrySeparateAlgA d q v r =  -- keyword aliases
               :+: d
           )
     :+: End
-type TrySeparateAlgD_ :: TypeDict -> (* -> *) -> TypeDict -> * -> * -> * -> DepDict
+type TrySeparateAlgD_ :: TypeDict -> (* -> *) -> TypeDict -> * -> * -> * -> TypeDict
 type TrySeparateAlgD_ d m d' q v r =
-  D.Name "aliases" (q ~ [g|q|], v ~ [g|v|], r ~ [g|r|], d' ~ TrySeparateAlgA d q v r)
-  :|: D.Name "rec"
-        ( D.Name "self" (MonadFn [d'|self|] m)
-            :|: D.Name "rec" (MonadFn [d'|rec|] m)
-            :|: D.Name "isTree" (MonadFn (Mk IsTree [d|rec|]) m)
-            :|: D.End
+  Name "aliases" (q ~ [g|q|], v ~ [g|v|], r ~ [g|r|], d' ~ TrySeparateAlgA d q v r)
+  :+: Name "rec"
+        ( Name "self" (MonadFn [d'|self|] m)
+            :+: Name "rec" (MonadFn [d'|rec|] m)
+            :+: Name "isTree" (MonadFn (Mk IsTree [d|rec|]) m)
+            :+: End
         )
-  :|: D.Name "fail" (MonadFn [d'|fail|] m)
-  :|: D.Name "build" (D.Remove "isTree" (BuildInheritShareD [g'|buildD|] (Term q v r) r m))
-  :|: D.End
+  :+: Name "fail" (MonadFn [d'|fail|] m)
+  :+: Name "build" (Remove "isTree" (BuildInheritShareD [g'|buildD|] (Term q v r) r m))
+  :+: End
 trySeparateAlg ::
   forall d q v r m d'.
   ToConstraint (TrySeparateAlgD_ d m d' q v r) =>
@@ -90,17 +92,17 @@ type BoomSeparateAlgA d q v r =  -- keyword aliases
               :+: d
           )
     :+: End
-type BoomSeparateAlgD_ :: TypeDict -> (* -> *) -> TypeDict -> * -> * -> * -> DepDict
+type BoomSeparateAlgD_ :: TypeDict -> (* -> *) -> TypeDict -> * -> * -> * -> TypeDict
 type BoomSeparateAlgD_ d m d' q v r =
-  D.Name "aliases" (q ~ [g|q|], v ~ [g|v|], r ~ [g|r|], d' ~ BoomSeparateAlgA d q v r)
-  :|: D.Name "rec"
-        ( D.Name "self" (MonadFn [d'|self|] m)
-            :|: D.Name "rec" (MonadFn [d'|rec|] m)
-            :|: D.Name "isTree" (MonadFn (Mk IsTree [d|rec|]) m)
-            :|: D.End
+  Name "aliases" (q ~ [g|q|], v ~ [g|v|], r ~ [g|r|], d' ~ BoomSeparateAlgA d q v r)
+  :+: Name "rec"
+        ( Name "self" (MonadFn [d'|self|] m)
+            :+: Name "rec" (MonadFn [d'|rec|] m)
+            :+: Name "isTree" (MonadFn (Mk IsTree [d|rec|]) m)
+            :+: End
         )
-  :|: D.Name "build" (D.Remove "isTree" (BuildInheritShareD [g'|buildD|] (Term q v r) r m))
-  :|: D.End
+  :+: Name "build" (Remove "isTree" (BuildInheritShareD [g'|buildD|] (Term q v r) r m))
+  :+: End
 boomSeparateAlg ::
   forall d q v r m d'.
   ToConstraint (BoomSeparateAlgD_ d m d' q v r) =>

@@ -14,6 +14,9 @@
 {-# LANGUAGE UndecidableInstances #-}
 {-# LANGUAGE ViewPatterns #-}
 {-# LANGUAGE StandaloneKindSignatures #-}
+-- {-# OPTIONS_GHC -ddump-tc-trace -ddump-to-file #-}
+-- {-# OPTIONS_GHC -dcore-lint #-}
+{-# OPTIONS_GHC -fplugin InversionOfControl.TcPlugin #-}
 
 module Afa.Finalful where
 
@@ -29,12 +32,10 @@ import Data.Foldable (toList, fold)
 import Data.Functor ((<&>))
 import Data.Monoid ( Any(..), Endo(..) )
 import Data.Traversable (for)
-import DepDict (DepDict ((:|:)))
-import qualified DepDict as D
-import Shaper (FRecK, FunRecur (funRecur), MfnK, Mk, MkN, MonadFn (monadfn), MonadFn', RecK, RecRecur, Recur0 (recur), Recur, ask, IsTree)
+import Shaper (FRecK, FunRecur (funRecur), MfnK, MonadFn (monadfn), MonadFn', RecK, RecRecur, Recur0 (recur), Recur, ask, IsTree)
 import Shaper.Helpers (BuildInheritShareD, BuildD, buildInheritShare, buildFix, buildFree)
-import TypeDict (Named(Name), TypeDict (End, LiftTags, (:+:)), d, d', g, g')
-import Debug.Trace
+import InversionOfControl.TypeDict
+import InversionOfControl.Lift
 
 data SyncVar q v = VVar v | FVar | QVar q deriving (Eq, Show)
 data SyncQs q = QState q | SyncState deriving (Eq, Show)
@@ -47,6 +48,7 @@ type QVR d (q :: *) (v :: *) (r :: *) = (q ~ [g|q|], v ~ [g|v|], r ~ [g|r|])
 type RemoveFinalsD d m = RemoveFinalsD_ d m
   (RemoveFinalsA d [g|q|] [g|v|] [g|r|] [g|r'|] m)
   [g|q|] [g|v|] [g|r|] [g|r'|]
+type RemoveFinalsA :: TypeDict -> * -> * -> * -> * -> (* -> *) -> TypeDict
 type RemoveFinalsA d q v r r' m =
   RemoveFinalsA1 d
     ( Name "term'" (Term (SyncQs q) (SyncVar q v) r')
@@ -76,27 +78,30 @@ type RemoveFinalsA3 d d' q r r' =
     :+: Name "finalConstrD" (Name "r" r' :+: [g'|refdeD'|])
     :+: Name "redirect" (Mk (FRecK r' r' (Creation [g'|redirectF|] [g'|redirectFn|])) [d|funr|])
     :+: d'
+type RemoveFinalsD_ :: TypeDict -> (* -> *) -> TypeDict -> * -> * -> * -> * -> TypeDict
 type RemoveFinalsD_ d m d' q v r r' =
-  D.Name "aliases" (QVR d q v r, d' ~ RemoveFinalsA d q v r r' m, r' ~ [g|r'|])
-    :|: D.Name "splitF" (SplitFinals'D d m)
-    :|: D.Name
+  Name "aliases"
+    (QVR d q v r, d' ~ RemoveFinalsA d q v r r' m, r' ~ [g|r'|])
+    :+: Name "buildD'" (BuildD [g'|refdeDTree'|] [g'|termF'|] r' m)
+    :+: Name "splitF" (SplitFinals'D d m)
+    :+: Name
           "functorRecur"
           ( FunRecur [d'|alphabet|] m
           , Create [g'|alphabetF|] [g'|alphabetFn|]
           , FunRecur [d'|redirect|] m
           , Create [g'|redirectF|] [g'|redirectFn|]
           )
-    :|: D.Name
+    :+: Name
           "finalConstr"
-          ( D.Name "" (RecRecur [d'|finalConstr|] m)
-              :|: D.Remove "rec" (BuildFinalConstraintD [g'|finalConstrD|] m)
+          ( Name "" (RecRecur [d'|finalConstr|] m)
+              :+: Remove "rec" (BuildFinalConstraintD [g'|finalConstrD|] m)
           )
-    :|: D.Name "buildD'" (BuildD [g'|refdeDTree'|] [g'|termF'|] r' m)
-    :|: D.Name "deref'" (MonadFn [d'|deref'|] m)
-    :|: D.End
+    :+: Name "buildD'" (BuildD [g'|refdeDTree'|] ([g'|termF'|] :: * -> *) r' m)
+    :+: Name "deref'" (MonadFn [d'|deref'|] m)
+    :+: End
 removeFinals ::
   forall d q v r r' m d'.
-  D.ToConstraint (RemoveFinalsD_ d m d' q v r r') =>
+  ToConstraint (RemoveFinalsD_ d m d' q v r r') =>
   r ->
   r ->
   (Int, Int -> q, Int -> r, q -> Int) ->
@@ -198,15 +203,15 @@ type SplitFinals'A3 d d' q r r' =
   Name "splitF" (MkN (RecK r [g'|term|] (SplitFinalsR r q)) [d|lock|])
     :+: Name "findQs" (MkN (RecK r [g'|term|] (Endo [q])) [d|any|])
     :+: d'
-type SplitFinals'D_ :: TypeDict -> (* -> *) -> TypeDict -> * -> * -> * -> * -> DepDict
+type SplitFinals'D_ :: TypeDict -> (* -> *) -> TypeDict -> * -> * -> * -> * -> TypeDict
 type SplitFinals'D_ d m d' q v r r' =
-  D.Name "aliases" (QVR d q v r, d' ~ SplitFinals'A d q v r r' m, r' ~ [g|r'|])
-    :|: D.Name "splitF" (D.Name "" (RecRecur [d'|splitF|] m) :|: D.Remove "rec" (SplitFinalsD [g'|refdeD|] m))
-    :|: D.Name "findQs" (D.Name "" (Recur [d'|findQs|] m) :|: D.Remove "rec" (FindQsD d m))
-    :|: D.End
+  Name "aliases" (QVR d q v r, d' ~ SplitFinals'A d q v r r' m, r' ~ [g|r'|])
+    :+: Name "splitF" (Name "" (RecRecur [d'|splitF|] m) :+: Remove "rec" (SplitFinalsD [g'|refdeD|] m))
+    :+: Name "findQs" (Name "" (Recur [d'|findQs|] m) :+: Remove "rec" (FindQsD d m))
+    :+: End
 splitFinals' ::
   forall d q v r r' m d'.
-  D.ToConstraint (SplitFinals'D_ d m d' q v r r') =>
+  ToConstraint (SplitFinals'D_ d m d' q v r r') =>
   r ->
   Int ->  -- qCount
   (q -> Int) ->  -- q2i
@@ -255,24 +260,24 @@ type RemoveFinalsHindA3 d d' q r r' =
     :+: Name "finalConstrD" (Name "r" r' :+: [g'|refdeD'|])
     :+: d'
 type RemoveFinalsHindD_ d m d' q v r r' =
-  D.Name "aliases" (QVR d q v r, d' ~ RemoveFinalsHindA d q v r r' m, r' ~ [g|r'|])
-    :|: D.Name "splitF" (SplitFinals'D d m)
-    :|: D.Name
+  Name "aliases" (QVR d q v r, d' ~ RemoveFinalsHindA d q v r r' m, r' ~ [g|r'|])
+    :+: Name "splitF" (SplitFinals'D d m)
+    :+: Name
           "functorRecur"
           ( FunRecur [d'|alphabet|] m
           , Create [g'|alphabetF|] [g'|alphabetFn|]
           )
-    :|: D.Name
+    :+: Name
           "finalConstr"
-          ( D.Name "" (RecRecur [d'|finalConstr|] m)
-              :|: D.Remove "rec" (BuildFinalConstraintD [g'|finalConstrD|] m)
+          ( Name "" (RecRecur [d'|finalConstr|] m)
+              :+: Remove "rec" (BuildFinalConstraintD [g'|finalConstrD|] m)
           )
-    :|: D.Name "buildD'" (BuildD [g'|refdeDTree'|] [g'|termF'|] r' m)
-    :|: D.Name "deref'" (MonadFn [d'|deref'|] m)
-    :|: D.End
+    :+: Name "buildD'" (BuildD [g'|refdeDTree'|] [g'|termF'|] r' m)
+    :+: Name "deref'" (MonadFn [d'|deref'|] m)
+    :+: End
 removeFinalsHind ::
   forall d q v r r' m d'.
-  D.ToConstraint (RemoveFinalsHindD_ d m d' q v r r') =>
+  ToConstraint (RemoveFinalsHindD_ d m d' q v r r') =>
   r ->
   r ->
   (Int, Int -> q, Int -> [(r, r)], q -> Int) ->
@@ -344,19 +349,19 @@ type BuildFinalConstraintA d m r =  -- keyword aliases
     :+: Name "rec" (Mk (MfnK r r) [d|rec|])
     :+: End
 type BuildFinalConstraintD_ d m d' q v r =  -- dependencies
-  D.Name "aliases" (QVR d q v r, d' ~ BuildFinalConstraintA d m r)
-    :|: D.Name
+  Name "aliases" (QVR d q v r, d' ~ BuildFinalConstraintA d m r)
+    :+: Name
           "rec"
-          ( D.Name "self" (MonadFn [d'|self|] m)
-              :|: D.Name "rec" (MonadFn [d'|rec|] m)
-              :|: D.Name "isTree" (MonadFn (Mk IsTree [d|rec|]) m)
-              :|: D.End
+          ( Name "self" (MonadFn [d'|self|] m)
+              :+: Name "rec" (MonadFn [d'|rec|] m)
+              :+: Name "isTree" (MonadFn (Mk IsTree [d|rec|]) m)
+              :+: End
           )
-    :|: D.Name "build" (D.Remove "isTree" (BuildInheritShareD d (Term (SyncQs q) (SyncVar q v) r) r m))
-    :|: D.End
+    :+: Name "build" (Remove "isTree" (BuildInheritShareD d (Term (SyncQs q) (SyncVar q v) r) r m))
+    :+: End
 buildFinalConstraint ::
   forall d q v r m d'.
-  D.ToConstraint (BuildFinalConstraintD_ d m d' q v r) =>
+  ToConstraint (BuildFinalConstraintD_ d m d' q v r) =>
   Term (SyncQs q) (SyncVar q v) r ->
   m r
 buildFinalConstraint (State (QState q)) = buildInheritShare @d $ Var (QVar q)
@@ -373,11 +378,12 @@ buildFinalConstraint _ = [d'|ask|self|]
 type FindQsD d m = FindQsD_ d m (FindQsA d [g|q|] [g|r|]) [g|q|] [g|v|] [g|r|]
 type FindQsA d q r = Name "rec" (Mk (MfnK r (Endo [q])) [d|rec|]) :+: End
 type FindQsD_ d m d' q v r =
-  D.Name "aliases" (QVR d q v r, d' ~ FindQsA d q r)
-  :|: D.Name "rec" (MonadFn [d'|rec|] m) :|: D.End
+  Name "aliases" (QVR d q v r, d' ~ FindQsA d q r)
+  :+: Name "rec" (MonadFn [d'|rec|] m)
+  :+: End
 findQs ::
   forall d q v r m d'.
-  D.ToConstraint (FindQsD_ d m d' q v r)
+  ToConstraint (FindQsD_ d m d' q v r)
   => Term q v r -> m (Endo [q])
 findQs (State q) = return $ Endo (q :)
 findQs f = fold <$> mapM [d'|monadfn|rec|] f
@@ -417,20 +423,20 @@ type SplitFinalsA d m q r =
     :+: Name "rec" (Mk (MfnK r (SplitFinalsR r q)) [d|rec|])
     :+: End
 type SplitFinalsD_ d m d' q v r =
-  D.Name "aliases" (QVR d q v r, d' ~ SplitFinalsA d m q r)
-    :|: D.Name "deref" (MonadFn' [d|deref|] r (Term q v r) m)
-    :|: D.Name
+  Name "aliases" (QVR d q v r, d' ~ SplitFinalsA d m q r)
+    :+: Name "deref" (MonadFn' [d|deref|] r (Term q v r) m)
+    :+: Name
           "rec"
-          ( D.Name "self" (MonadFn [d'|self|] m)
-              :|: D.Name "rec" (MonadFn [d'|rec|] m)
-              :|: D.Name "isTree" (MonadFn (Mk IsTree [d|rec|]) m)
-              :|: D.End
+          ( Name "self" (MonadFn [d'|self|] m)
+              :+: Name "rec" (MonadFn [d'|rec|] m)
+              :+: Name "isTree" (MonadFn (Mk IsTree [d|rec|]) m)
+              :+: End
           )
-    :|: D.Name "build" (D.Remove "isTree" (BuildInheritShareD d (Term q v r) r m))
-    :|: D.End
+    :+: Name "build" (Remove "isTree" (BuildInheritShareD d (Term q v r) r m))
+    :+: End
 splitFinals ::
   forall d q v r m d'.
-  D.ToConstraint (SplitFinalsD_ d m d' q v r) =>
+  ToConstraint (SplitFinalsD_ d m d' q v r) =>
   Term q v r ->
   m (SplitFinalsR r q)
 splitFinals = \case

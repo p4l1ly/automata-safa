@@ -13,6 +13,8 @@
 {-# LANGUAGE TypeFamilies #-}
 {-# LANGUAGE TypeOperators #-}
 {-# LANGUAGE ViewPatterns #-}
+{-# LANGUAGE StandaloneKindSignatures #-}
+{-# OPTIONS_GHC -fplugin InversionOfControl.TcPlugin #-}
 
 module Afa.IORef where
 
@@ -38,13 +40,13 @@ import Data.IORef
 import Data.Monoid (Endo (appEndo))
 import qualified Data.Text as T
 import Data.Traversable (for)
-import Lift
-import Shaper (FRecK, FunRecur, IsTree, MLift (mlift), MfnK, Mk, MkN, MonadFn (monadfn), RecK, RecTrans, Recur0 (recur))
+import Shaper (FRecK, FunRecur, IsTree, MLift (mlift), MfnK, MonadFn (monadfn), RecK, RecTrans, Recur0 (recur))
 import qualified Shaper
 import Shaper.Helpers (buildFree)
 import System.IO
 import System.Mem.StableName
-import TypeDict
+import InversionOfControl.Lift
+import InversionOfControl.TypeDict
 
 type FR f = f (Ref f)
 type R f = IORef (FR f)
@@ -108,9 +110,9 @@ instance (Monad m, MLift n m IO) => Recur0 ( 'K Zero (RecK (Ref f) (f (Ref f)) a
               r
       runReaderT (runReaderT reader r) (cacheIoref, action)
 
---- /Anyrec
+-- /Anyrec
 
---- Hylo
+-- Hylo
 
 type HyloTEnv f p a m = (IORef (HM.HashMap (p, StableName (R f)) a), (p, FR f) -> HyloT f p a m a)
 type HyloTReaderT f p a m = ReaderT (HyloTEnv f p a m)
@@ -436,6 +438,7 @@ instance
       deref = monadfn @(DelitKDeref q v r xDeref)
       build = monadfn @(DelitKBuild q v r xBuild)
 
+type IORefRemoveFinalsD :: * -> * -> * -> * -> TypeDict
 type IORefRemoveFinalsD q v r r' =
   Name "q" q
     :+: Name "v" v
@@ -649,7 +652,7 @@ negateSeparated2 init finals (qCount, i2q, i2r, q2i) = do
 
 -- this could be more generic and reside in Negate.deMorganAlg
 qombo ::
-  forall q v r r' d f ft.
+  forall (q :: *) v r r' d f ft.
   ( r ~ Ref (Term q v)
   , r' ~ Ref (Term (Qombo q) v)
   , d ~ IORefRemoveFinalsD q v r r'

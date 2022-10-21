@@ -9,17 +9,17 @@
 {-# LANGUAGE QuasiQuotes #-}
 {-# LANGUAGE DeriveTraversable #-}
 {-# LANGUAGE BangPatterns #-}
+{-# OPTIONS_GHC -fplugin InversionOfControl.TcPlugin #-}
 
 module Afa.DnfStates where
 
 import Afa.Finalful.STerm (Term(..))
-import TypeDict
 import Shaper
 import Data.Kind (Constraint)
 import Shaper.Helpers
-import DepDict ( ToConstraint, DepDict((:|:)) )
-import qualified DepDict as D
 import Data.Functor ((<&>))
+import InversionOfControl.TypeDict
+import InversionOfControl.Lift
 
 type QDnfAlgD d m = QDnfAlgD_ d m (QDnfAlgA d [g|q|] [g|v|] [g|r|]) [g|q|] [g|v|] [g|r|]
 type QDnfAlgA d q v r =  -- keyword aliases
@@ -32,17 +32,17 @@ type QDnfAlgA d q v r =  -- keyword aliases
               :+: d
           )
     :+: End
-type QDnfAlgD_ :: TypeDict -> (* -> *) -> TypeDict -> * -> * -> * -> DepDict
+type QDnfAlgD_ :: TypeDict -> (* -> *) -> TypeDict -> * -> * -> * -> TypeDict
 type QDnfAlgD_ d m d' q v r =
-  D.Name "aliases" (q ~ [g|q|], v ~ [g|v|], r ~ [g|r|], d' ~ QDnfAlgA d q v r)
-  :|: D.Name "rec"
-        ( D.Name "self" (MonadFn [d'|self|] m)
-            :|: D.Name "rec" (MonadFn [d'|rec|] m)
-            :|: D.Name "isTree" (MonadFn (Mk IsTree [d|rec|]) m)
-            :|: D.End
+  Name "aliases" (q ~ [g|q|], v ~ [g|v|], r ~ [g|r|], d' ~ QDnfAlgA d q v r)
+  :+: Name "rec"
+        ( Name "self" (MonadFn [d'|self|] m)
+            :+: Name "rec" (MonadFn [d'|rec|] m)
+            :+: Name "isTree" (MonadFn (Mk IsTree [d|rec|]) m)
+            :+: End
         )
-  :|: D.Name "build" (D.Remove "isTree" (BuildInheritShareD [g'|buildD|] (Term q v r) r m))
-  :|: D.End
+  :+: Name "build" (Remove "isTree" (BuildInheritShareD [g'|buildD|] (Term q v r) r m))
+  :+: End
 qdnfAlg ::
   forall d q v r m d'.
   ToConstraint (QDnfAlgD_ d m d' q v r) =>

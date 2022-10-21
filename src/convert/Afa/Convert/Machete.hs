@@ -21,6 +21,7 @@
 {-# LANGUAGE TypeOperators #-}
 {-# LANGUAGE UndecidableInstances #-}
 {-# LANGUAGE ViewPatterns #-}
+{-# OPTIONS_GHC -fplugin InversionOfControl.TcPlugin #-}
 
 module Afa.Convert.Machete where
 
@@ -58,12 +59,10 @@ import Data.Traversable
 import qualified Data.Vector as V
 import Data.Word
 import Debug.Trace
-import DepDict (DepDict ((:|:)))
-import qualified DepDict as D
-import Lift (Inc, K (K), LiftCount, Unwrap)
 import Shaper
 import Shaper.Helpers (BuildD, buildFree)
-import TypeDict
+import InversionOfControl.TypeDict
+import InversionOfControl.Lift
 
 type FormatFormulaD d m =
   FormatFormulaD_ d m (FormatFormulaA d (Term [g|q|] [g|v|] [g|r|]) [g|r|]) [g|q|] [g|v|] [g|r|]
@@ -81,15 +80,15 @@ type FormatFormulaA1 d' r =
     :+: Name "self" (Mk (MfnK () r) [d'|recur|])
     :+: d'
 type FormatFormulaD_ d (m :: * -> *) (d' :: TypeDict) (q :: *) (v :: *) (r :: *) =
-  D.Name "aliases" (q ~ [g|q|], v ~ [g|v|], r ~ [g|r|], d' ~ FormatFormulaA d (Term q v r) r)
-    :|: D.Name "show" (ShowT v, ShowT q)
-    :|: D.Name "rec" (RecRecur [d'|recur|] m)
-    :|: D.Name "deref" (MonadFn [d'|deref|] m)
-    :|: D.Name "refIsTree" (MonadFn [d'|refIsTree|] m)
-    :|: D.End
+  Name "aliases" (q ~ [g|q|], v ~ [g|v|], r ~ [g|r|], d' ~ FormatFormulaA d (Term q v r) r)
+    :+: Name "show" (ShowT v, ShowT q)
+    :+: Name "rec" (RecRecur [d'|recur|] m)
+    :+: Name "deref" (MonadFn [d'|deref|] m)
+    :+: Name "refIsTree" (MonadFn [d'|refIsTree|] m)
+    :+: End
 formatFormula ::
   forall d q v r d'.
-  D.ToConstraint (FormatFormulaD_ d IO d' q v r) =>
+  ToConstraint (FormatFormulaD_ d IO d' q v r) =>
   IO (r -> IO T.Text, IO [(Int, T.Text)])
 formatFormula = do
   let rec x = [d'|monadfn|rec|] x
@@ -201,7 +200,7 @@ formatFormula = do
 
 format ::
   forall d q v r.
-  D.ToConstraint (FormatFormulaD d IO) =>
+  ToConstraint (FormatFormulaD d IO) =>
   [g|r|] ->
   [g|r|] ->
   (Int, Int -> [g|q|], Int -> [g|r|], [g|q|] -> Int) ->
@@ -306,7 +305,7 @@ formatRange16Nfa (AfaC.Range16Nfa states initial finals) = do
 
 formatSeparated ::
   forall d q v r deref.
-  ( D.ToConstraint (FormatFormulaD d IO)
+  ( ToConstraint (FormatFormulaD d IO)
   , deref ~ Mk (MfnK [g|r|] (Term [g|q|] [g|v|] [g|r|])) [d|deref|]
   , MonadFn deref IO
   ) =>
