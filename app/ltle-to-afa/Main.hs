@@ -973,6 +973,7 @@ main = do
     ("emailFilterAda" : nSplitAt : paths) -> emailFilterAda (read nSplitAt) paths
     ["treeRepr"] -> treeRepr
     ["treeReprUninit"] -> treeReprUninit
+    ["range16ToMacheteNfa"] -> range16ToMacheteNfaMain
     ["mataToPretty"] -> mataToPretty
     ["prettyToAda"] -> prettyToAda
     ["prettyToAda"] -> prettyToAda
