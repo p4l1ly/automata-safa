@@ -29,9 +29,9 @@ while read -r line; do
     cd -
     cp $DANTONI/regexNfas/0 $GEN_AUT_DIR/$name.range16nfa
     $LTLE_TO_AFA range16ToPretty < $GEN_AUT_DIR/$name.range16nfa > $GEN_AUT_DIR/$name.afa 2>/dev/null
-    echo "@NFA-intervals" > $GEN_AUT_DIR/$name-ranges.mata
-    echo "%Alphabet chars" >> $GEN_AUT_DIR/$name-ranges.mata
-    $LTLE_TO_AFA range16ToMacheteNfa < $GEN_AUT_DIR/$name.range16nfa >> $GEN_AUT_DIR/$name-ranges.mata 2>/dev/null
+    # echo "@NFA-intervals" > $GEN_AUT_DIR/$name-ranges.mata
+    # echo "%Alphabet chars" >> $GEN_AUT_DIR/$name-ranges.mata
+    # $LTLE_TO_AFA range16ToMacheteNfa < $GEN_AUT_DIR/$name.range16nfa >> $GEN_AUT_DIR/$name-ranges.mata 2>/dev/null
     echo "@NFA-bits" > $GEN_AUT_DIR/$name.mata
     $LTLE_TO_AFA prettyToSeparatedMata < $GEN_AUT_DIR/$name.afa >> $GEN_AUT_DIR/$name.mata 2>/dev/null
     # $LTLE_TO_AFA prettyToMachete
@@ -42,7 +42,7 @@ while read -r line; do
     operands2=(${${operands[@]/%/.afa}/#/$GEN_AUT_DIR/})
 
     echo "$line"
-    echo "$line" >> "$WORKDIR/results.emp"
+    echo "$line" >> "$WORKDIR/result.emp"
     # echo name "$name"
     # echo operator "$operator"
     # echo operands "$operands2"
@@ -58,7 +58,7 @@ while read -r line; do
     name=$(sed -r 's/^is_empty //' <<< "$line")
 
     echo "$line"
-    echo "$line" >> "$WORKDIR/results.emp"
+    echo "$line" >> "$WORKDIR/result.emp"
 
     # echo out
     # echo name "$name"
