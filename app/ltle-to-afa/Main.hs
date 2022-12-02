@@ -713,6 +713,46 @@ emailFilterBisim path1 path2 = do
       states'
   Sep2.twoFormatIORef init1' final' init' final' states''
 
+eqBisim ::
+  forall t d buildD buildTree q' r'.
+  ( t ~ T.Text
+  , d ~ Afa.IORef.IORefRemoveFinalsD t t (Afa.IORef.Ref (STerm.Term t t)) Void
+  , buildTree ~ Shaper.Mk (Shaper.MfnK (STerm.Term q' t r') r') [d|buildTree|]
+  , buildD ~ (TypeDict.Name "build" buildTree :+: d)
+  , q' ~ Negate.Qombo t
+  , r' ~ Afa.IORef.Ref (STerm.Term q' t)
+  ) =>
+  String ->
+  String ->
+  IO ()
+eqBisim path1 path2 = do
+  [afa1, afa2] <- for [path1, path2] \path -> do
+    f <- openFile path ReadMode
+    txt <- TIO.hGetContents f
+    (init, final, (qCount, i2q, i2r, q2i)) <-
+      PrettyStranger2.parseIORef (PrettyStranger2.parseDefinitions txt)
+    (nonfinals, Nothing) <- Afa.IORef.splitFinals final
+    let finals = accumArray (\_ _ -> False) True (0, qCount - 1) $ map ((,()) . q2i) nonfinals
+    let finals' = map i2q $ filter (finals !) [0 .. qCount - 1]
+    return (init, finals', (qCount, i2q, Identity . i2r, q2i))
+  ([init1, init2], finals, states@(qCount, i2q, i2r, q2i)) <- Afa.IORef.qombo [afa1, afa2]
+  let nonfinals =
+        accumArray (\_ _ -> False) True (0, qCount - 1) $
+          map ((,()) . q2i) $ toList finals
+  let nonfinals' =
+        foldr (Fix .: STerm.And . Fix . STerm.Not . Fix . STerm.State . i2q) (Fix STerm.LTrue) $
+          filter (nonfinals !) [0 .. qCount - 1]
+  final <- Shaper.Helpers.buildFix @buildD nonfinals'
+
+  Just states' <- Afa.IORef.trySeparateQTransitions (qCount, i2q, runIdentity . i2r, q2i)
+  ([init1', init2', final'], states'') <-
+    Negate.enum
+      @(TypeDict.Name "r" r' :+: TypeDict.Name "q" q' :+: d)
+      [init1 :: r', init2 :: r', final :: r']
+      states'
+  Sep2.twoFormatIORef init1' final' init2' final' states''
+
+
 prettyToSeparatedMata :: IO ()
 prettyToSeparatedMata = do
   txt <- TIO.getContents
@@ -950,6 +990,7 @@ main = do
     ["prettyToPretty1"] -> prettyToPretty1
     ["prettyToSeparated"] -> prettyToSeparated
     ["emailFilterBisim", path1, path2] -> emailFilterBisim path1 path2
+    ["eqBisim", path1, path2] -> eqBisim path1 path2
     _ -> do
       (Opts readers writers) <-
         execParser $

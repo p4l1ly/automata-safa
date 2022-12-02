@@ -41,7 +41,7 @@ RUN \
   }; \
   download p4l1ly lens-recursion-schemes 2dfdf5ec637f8139e3d4cd4b1f0c9803e0477543 && \
   download p4l1ly automata-safa-capnp 38437d30a98ab5b77d0122cc2c82da5cac7cfc07 && \
-  download p4l1ly ltl-translators 790508599c04df55a2b862eb13611ef9d9d5fd41 && \
+  download p4l1ly ltl-translators cda4316523d836bd7139a0363d80768fbc3d556b && \
   download p4l1ly JAltImpact db157709c2c85142b95b95862c8145262c100109 && \
   download jurajsic symbolicautomata 0150d2f8adf509ff48fe8f47fcd19f135582df17 && \
   download jurajsic afaminisat 41288a30262223dbb0a50035e8c51da0ef6b7786 && \
