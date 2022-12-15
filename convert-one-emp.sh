@@ -14,6 +14,7 @@ mkdir $DANTONI/regexNfas
 
 WORKDIR="$1"
 GEN_AUT_DIR="$WORKDIR/gen_aut"
+LOGFILE="$WORKDIR/log"
 mkdir "$GEN_AUT_DIR"
 
 while read -r line; do
@@ -22,18 +23,19 @@ while read -r line; do
     regex=$(sed -r 's/^load_regex [^ ]+ //' <<< "$line")
 
     echo "load_automaton $name"
+    echo "load_automaton $name" >>$LOGFILE
     echo "load_automaton $name" >> "$WORKDIR/result.emp"
 
     cd $DANTONI
-    zsh runtutor <<< "$regex" >/dev/null 2>&1
+    zsh runtutor <<< "$regex" >>$LOGFILE 2>&1
     cd -
-    cp $DANTONI/regexNfas/0 $GEN_AUT_DIR/$name.range16nfa
-    $LTLE_TO_AFA range16ToPretty < $GEN_AUT_DIR/$name.range16nfa > $GEN_AUT_DIR/$name.afa 2>/dev/null
+    cp $DANTONI/regexNfas/0 $GEN_AUT_DIR/$name.range16nfa 2>>$LOGFILE
+    $LTLE_TO_AFA range16ToPretty < $GEN_AUT_DIR/$name.range16nfa > $GEN_AUT_DIR/$name.afa 2>>$LOGFILE
     # echo "@NFA-intervals" > $GEN_AUT_DIR/$name-ranges.mata
     # echo "%Alphabet chars" >> $GEN_AUT_DIR/$name-ranges.mata
     # $LTLE_TO_AFA range16ToMacheteNfa < $GEN_AUT_DIR/$name.range16nfa >> $GEN_AUT_DIR/$name-ranges.mata 2>/dev/null
     echo "@NFA-bits" > $GEN_AUT_DIR/$name.mata
-    $LTLE_TO_AFA prettyToSeparatedMata < $GEN_AUT_DIR/$name.afa >> $GEN_AUT_DIR/$name.mata 2>/dev/null
+    $LTLE_TO_AFA prettyToSeparatedMata < $GEN_AUT_DIR/$name.afa >> $GEN_AUT_DIR/$name.mata 2>>$LOGFILE
     # $LTLE_TO_AFA prettyToMachete
   elif grep '=' <<< "$line" > /dev/null; then
     name=$(sed -r 's/^([^ ]+) .*/\1/' <<< "$line")
@@ -42,6 +44,7 @@ while read -r line; do
     operands2=(${${operands[@]/%/.afa}/#/$GEN_AUT_DIR/})
 
     echo "$line"
+    echo "$line" >>$LOGFILE
     echo "$line" >> "$WORKDIR/result.emp"
     # echo name "$name"
     # echo operator "$operator"
@@ -49,9 +52,9 @@ while read -r line; do
     # echo
 
     case $operator in
-      compl) $LTLE_TO_AFA negate < ${operands2[1]} > $GEN_AUT_DIR/$name.afa 2>/dev/null;;
-      inter) $LTLE_TO_AFA and $operands2 > $GEN_AUT_DIR/$name.afa 2>/dev/null;;
-      union) $LTLE_TO_AFA or $operands2 > $GEN_AUT_DIR/$name.afa 2>/dev/null;;
+      compl) $LTLE_TO_AFA negate < ${operands2[1]} > $GEN_AUT_DIR/$name.afa 2>>$LOGFILE;;
+      inter) $LTLE_TO_AFA and $operands2 > $GEN_AUT_DIR/$name.afa 2>>$LOGFILE;;
+      union) $LTLE_TO_AFA or $operands2 > $GEN_AUT_DIR/$name.afa 2>>$LOGFILE;;
     esac
 
   elif grep '^is_empty' <<< "$line" > /dev/null; then
@@ -71,6 +74,6 @@ while read -r line; do
     export Bisim=true
     export Afasat=true
     export Mata=true
-    zsh "$CONVERT_FOR_CHECKERS" $WORKDIR/result.afa >/dev/null 2>&1
+    zsh "$CONVERT_FOR_CHECKERS" $WORKDIR/result.afa >>$LOGFILE 2>&1
   fi
 done
