@@ -36,7 +36,8 @@ while read -r line; do
     # $LTLE_TO_AFA range16ToMacheteNfa < $GEN_AUT_DIR/$name.range16nfa >> $GEN_AUT_DIR/$name-ranges.mata 2>/dev/null
     echo "@NFA-bits" > $GEN_AUT_DIR/$name.mata
     $LTLE_TO_AFA prettyToSeparatedMata < $GEN_AUT_DIR/$name.afa >> $GEN_AUT_DIR/$name.mata 2>>$LOGFILE
-    $LTLE_TO_AFA prettyToSeparatedDnfMata < $GEN_AUT_DIR/$name.afa >> $GEN_AUT_DIR/$name.mata 2>>$LOGFILE
+    echo "@NFA-bits" > $GEN_AUT_DIR/"$name"_mona.mata
+    $LTLE_TO_AFA prettyToSeparatedDnfMata < $GEN_AUT_DIR/$name.afa >> $GEN_AUT_DIR/"$name"_mona.mata 2>>$LOGFILE
     # $LTLE_TO_AFA prettyToMachete
   elif grep '=' <<< "$line" > /dev/null; then
     name=$(sed -r 's/^([^ ]+) .*/\1/' <<< "$line")

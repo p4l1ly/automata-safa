@@ -4,7 +4,7 @@ echo -e '%Section t"Input regex filter equality." Formula FileSection\n'
 echo "%File email-filter-nfa.mata"
 echo "%Expression (sFilter$1 & sFilter$2 & sFilter$3 & sFilter$4) == (sFilter$1 & sFilter$2 & sFilter$3 & sFilter$4 & sFilter$5)"
 
-LTLE_TO_AFA=dist-newstyle/build/x86_64-linux/ghc-8.10.7/automata-safa-0.1.0.0/x/ltle-to-afa/noopt/build/ltle-to-afa/ltle-to-afa
+LTLE_TO_AFA=ltle-to-afa
 
 $LTLE_TO_AFA and /tmp/email-filter-nfa/$1.afa /tmp/email-filter-nfa/$2.afa /tmp/email-filter-nfa/$3.afa /tmp/email-filter-nfa/$4.afa > /tmp/abcd-equals-abcde/abcd.afa
 $LTLE_TO_AFA and /tmp/email-filter-nfa/$1.afa /tmp/email-filter-nfa/$2.afa /tmp/email-filter-nfa/$3.afa /tmp/email-filter-nfa/$4.afa /tmp/email-filter-nfa/$5.afa > /tmp/abcd-equals-abcde/abcde.afa
