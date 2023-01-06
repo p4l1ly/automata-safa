@@ -752,13 +752,59 @@ eqBisim path1 path2 = do
       states'
   Sep2.twoFormatIORef init1' final' init2' final' states''
 
-
 prettyToSeparatedMata :: IO ()
 prettyToSeparatedMata = do
   txt <- TIO.getContents
   (init, final, states) <- PrettyStranger2.parseIORef (PrettyStranger2.parseDefinitions txt)
   Just qs1 <- Afa.IORef.trySeparateQTransitions states
   Machete.formatSeparatedIORef init final qs1
+
+initToDnf ::
+  forall d t r buildTree buildD.
+  ( t ~ T.Text
+  , r ~ Afa.IORef.Ref (STerm.Term t t)
+  , d ~ Afa.IORef.IORefRemoveFinalsD t t r Void
+  , buildTree ~ Shaper.Mk (Shaper.MfnK (STerm.Term t t r) r) [d|buildTree|]
+  , buildD ~ (TypeDict.Name "build" buildTree :+: d)
+  ) =>
+  IO ()
+initToDnf = do
+  txt <- TIO.getContents
+  (init, final, states) <- PrettyStranger2.parseIORef (PrettyStranger2.parseDefinitions txt)
+  toDnf <- Negate.toDnf @d
+  let sortCube :: [(Bool, Either t t)] -> Maybe [(Bool, Either t t)]
+      sortCube elems =
+        elemMap <&> sortBy compareElem . map (\(x, y) -> (y, x)) . HM.toList
+        where
+          elemMap = foldM step HM.empty elems
+          step hm (sgn, qv) = HM.alterF -$ qv -$ hm $ \case
+            Nothing -> Just (Just sgn)
+            Just sgn0
+              | sgn0 == sgn -> Just (Just sgn0)
+              | otherwise -> Nothing
+          compareElem (_, Left x) (_, Right y) = LT
+          compareElem (_, Right x) (_, Left y) = GT
+          compareElem (_, Left x) (_, Left y) = compareElem' x y
+          compareElem (_, Right x) (_, Right y) = compareElem' x y
+          compareElem' (T.unpack -> x) (T.unpack -> y) =
+            case (readMaybe x, readMaybe y) of
+              (Just (x :: Int), Just (y :: Int)) -> compare x y
+              (Nothing, _) -> LT
+              (_, Nothing) -> GT
+  let buildCube :: [(Bool, Either t t)] -> IO r
+      buildCube cube =
+        Shaper.Helpers.buildFix @buildD $
+          foldr (Fix .: STerm.And) (Fix STerm.LTrue) $
+            cube <&> \(sgn, qv) ->
+              (if sgn then id else Fix . STerm.Not)
+                case qv of
+                  Left q -> Fix (STerm.State q)
+                  Right v -> Fix (STerm.Var v)
+  let buildDisj cubes =
+        Shaper.Helpers.buildFree @buildD $
+          foldr (Free .: STerm.Or . Pure) (Free STerm.LFalse) cubes
+  init' <- toDnf init >>= mapM buildCube . mapMaybe sortCube >>= buildDisj
+  PrettyStranger2.formatIORef init' final states
 
 prettyToSeparatedDnfMata ::
   forall d t r buildTree buildD.
@@ -870,12 +916,31 @@ treeReprUninit ::
   ) =>
   IO ()
 treeReprUninit = do
-  hPutStrLn stderr "parsing"
   txt <- TIO.hGetContents stdin
   afa <- PrettyStranger2.parseIORef (PrettyStranger2.parseDefinitions txt)
   afa' <- Negate.unInitState @d afa
   (init, final, states) <- Negate.unshare @d afa'
   PrettyStranger2.formatIORef init final states
+
+data AddInitQ q = AddInitQ | OtherQ !q deriving (Eq, Show)
+
+addInit ::
+  forall t d r r' deref.
+  ( t ~ T.Text
+  , r ~ (Afa.IORef.Ref (STerm.Term t t))
+  , r' ~ (Afa.IORef.Ref (STerm.Term (Negate.AddInit t) t))
+  , d ~ Afa.IORef.IORefRemoveFinalsD t t r r'
+  , deref ~ Shaper.Mk (Shaper.MfnK r (STerm.Term t t r)) [d|deref|]
+  ) =>
+  IO ()
+addInit = do
+  txt <- TIO.hGetContents stdin
+  afa@(init, _, _) <- PrettyStranger2.parseIORef (PrettyStranger2.parseDefinitions txt)
+  Shaper.monadfn @deref init >>= \case
+    STerm.State _ -> TIO.putStr txt
+    _ -> do
+      (init', final', states') <- Negate.addInitState @d afa
+      PrettyStranger2.formatIORef init' final' states'
 
 treeRepr ::
   forall t d.
@@ -973,6 +1038,8 @@ main = do
     ("emailFilterAda" : nSplitAt : paths) -> emailFilterAda (read nSplitAt) paths
     ["treeRepr"] -> treeRepr
     ["treeReprUninit"] -> treeReprUninit
+    ["addInit"] -> addInit
+    ["initToDnf"] -> initToDnf
     ["range16ToMacheteNfa"] -> range16ToMacheteNfaMain
     ["mataToPretty"] -> mataToPretty
     ["prettyToAda"] -> prettyToAda

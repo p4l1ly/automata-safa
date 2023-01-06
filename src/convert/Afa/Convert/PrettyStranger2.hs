@@ -27,7 +27,7 @@ import Afa.Finalful
 import Afa.Finalful.STerm (Term (..))
 import Afa.IORef
 import Afa.Lib (listArray')
-import Afa.Negate (Qombo (Qombo))
+import Afa.Negate (Qombo (Qombo), AddInit(..))
 import qualified Capnp.Gen.Afa.Model.Separated.Pure as AfaC
 import qualified Capnp.GenHelpers.ReExports.Data.Vector as V
 import Control.Applicative
@@ -370,3 +370,7 @@ formatRange16Nfa (AfaC.Range16Nfa states initial finals) = do
 
 instance ShowT q => ShowT (Qombo q) where
   showT (Qombo n q) = [i|C#{n}_#{showT q}|]
+
+instance ShowT q => ShowT (AddInit q) where
+  showT AddInitInit = [i|II|]
+  showT (AddInitOther q) = [i|IO#{showT q}|]
