@@ -10,27 +10,35 @@ fi
 if [ -f $1 ]; then
   echo $1
 else
-  find $1 -name '*.afa'
+  find $1 -name 'result.afa'
 fi | while read -r fAfa; do
   f=${fAfa%????}
   echo Processing $f >&2
   ${Mata:-false} && {
+    echo "Transforming to .mata"
     echo "@AFA-bits" > $f.mata
     # TODO: is this pipe correct? especially treeRepr? what is treeReprUninit?
-    $LTLE_TO_AFA boomSeparate < $f.afa | $LTLE_TO_AFA removeFinals | $LTLE_TO_AFA treeRepr | $LTLE_TO_AFA prettyToMachete >> $f.mata
+    $LTLE_TO_AFA boomSeparate < $f.afa | $LTLE_TO_AFA removeFinals | $LTLE_TO_AFA treeRepr | $LTLE_TO_AFA initToDnf | $LTLE_TO_AFA prettyToMachete >> $f.mata
   }
   ${Aiger:-false} && {
+    echo "Transforming to .aig"
     $LTLE_TO_AFA prettyToSmv < $f.afa | $SMVTOAIG > $f.aig
   }
-  ${Mona:-false} && $LTLE_TO_AFA prettyToMona < $f.afa > $f.mona
+  ${Mona:-false} && {
+    echo "Transforming to .mona"
+    $LTLE_TO_AFA prettyToMona < $f.afa > $f.mona
+  }
   ${Afasat:-false} && {
+    echo "Transforming to .afasat"
     $LTLE_TO_AFA removeFinalsNonsep < $f.afa | $LTLE_TO_AFA prettyToAfasat > $f.afasat
   }
   ${Ada:-false} && {
+    echo "Transforming to .ada"
     $LTLE_TO_AFA prettyToAda < $f.afa > $f.ada 2> /dev/null || \
     $LTLE_TO_AFA removeFinalsNonsep < $f.afa | $LTLE_TO_AFA prettyToAda > $f.ada
   }
   ${Bisim:-false} && {
+    echo "Transforming to .bisim"
     TMP_DIR=$(mktemp -d)
     $LTLE_TO_AFA boomSeparate < $f.afa | $LTLE_TO_AFA removeFinals > "$TMP_DIR/0"
     echo "@kInitialFormula: s0
