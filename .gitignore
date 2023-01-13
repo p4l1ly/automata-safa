@@ -1,3 +1,6 @@
 dist-newstyle/
 cabal.project.local
 Session.vim
+target/
+.dockerignore
+.vim/

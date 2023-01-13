@@ -2,240 +2,56 @@ cabal-version:       3.0
 name:                automata-safa
 version:             0.1.0.0
 synopsis:            symbolic alternating finite automata
--- description:
--- bug-reports:
 license:             BSD-3-Clause
 license-file:        LICENSE
 author:              Pavol Vargovcik
 maintainer:          pavol.vargovcik@gmail.com
--- copyright:
 category:            Math
 extra-source-files:  CHANGELOG.md
 
 library
   exposed-modules:
-    Afa
-    Afa.Term.Mix
-    Afa.Term.Mix.Simplify
-    Afa.Term.Bool
-    Afa.Term.Bool.Simplify
-    Afa.Bool
     Afa.IORef
-    Afa.Finalful
-    Afa.Finalful.STerm
+    Afa.Delit
+    Afa.Term
     Afa.Lib
-    Afa.Lib.LiftArray
-    Afa.Lib.QMinCut
-    Afa.Lib.Free
-    Afa.Ops.Goblin
-    Afa.Ops.Goblin2
-    Afa.Ops.QMinCut
-    Afa.Ops.Compound
-    Afa.Ops.Randomize
-    Afa.Ops.Boolean
-    Afa.Separated
-    Afa.Negate
-    Afa.DnfStates
-    Shaper
-    Shaper.Helpers
-    Create
   build-depends:
     base >=4.17.0.0 && <4.18,
-    recursion-schemes ^>=5.2.1,
-    array ^>=0.5.4.0,
-    mtl ^>=2.2.2,
     generic-data ^>=1.0.0.0,
-    lens ^>=5.2,
-    hashable ^>=1.4.1.0,
-    containers ^>=0.6.2.1,
-    unordered-containers ^>=0.2.12.0,
-    data-fix ^>=0.3.0,
-    ghc ^>=9.4.2,
-    transformers ^>=0.5.6.2,
-    free ^>=5.1.4,
-    random ^>=1.2.0,
-    MonadRandom ^>=0.5.2,
-    random-shuffle ^>=0.0.4,
-    carray ^>=0.1.6.8,
-    interpolate ^>=0.2.1,
-    capability ^>=0.5.0.1,
-    primitive ^>=0.7.1.0,
-    composition ^>=1.0.2.2,
-    composition-extra ^>=2.0.0,
+    mtl ^>=2.2.2 && <2.4,
+    unordered-containers ^>=0.2.19.1,
+    hashable ^>=1.4.2.0,
     template-haskell ^>=2.19.0.0,
-    th-abstraction ^>=0.4.3.0,
-    ghc-prim ^>=0.9.0,
-    lens-recursion-schemes,
-    attoparsec ^>=0.14.4,
-    attoparsec-expr ^>=0.1.1.2,
-    text ^>=2.0.1,
+    composition-extra ^>=2.0.0,
     inversion-of-control,
   hs-source-dirs:      src/model
-  default-language:    Haskell2010
-  extra-libraries:     automata_safa
-
-library ltl
-  visibility: public
-  exposed-modules:
-    Ltl
-    Ltl.Lib
-    Ltl.Parser
-  build-depends:
-    base >=4.17.0.0 && <4.18,
-    recursion-schemes ^>=5.2.1,
-    parsec ^>=3.1.0.0,
-    composition ^>=1.0.2.1,
-    generic-data ^>=1.0.0.0,
-    free ^>=5.1.4,
-    hashable ^>=1.4.1.0,
-    data-fix ^>=0.3.0,
-    deriving-compat ^>=0.6.1,
-  hs-source-dirs:      src/ltl
   default-language:    Haskell2010
 
 library convert
   visibility: public
   exposed-modules:
-    Afa.Convert.Ltle
-    -- Afa.Convert.Pretty
-    Afa.Convert.Dot
-    Afa.Convert.Stranger
-    Afa.Convert.Stranger2
     Afa.Convert.PrettyStranger
-    Afa.Convert.PrettyStranger2
-    Afa.Convert.Machete
-    Afa.Convert.Smv
-    Afa.Convert.Smv2
-    Afa.Convert.Mona
-    Afa.Convert.Ada
-    Afa.Convert.Ada2
-    Afa.Convert.AdaBits
-    Afa.Convert.CnfAfa
-    Afa.Convert.Separated
-    Afa.Convert.Separated2
-    Afa.Convert.Separated.Model
-    Afa.Convert.Separated.ToDnf
-    Afa.Convert.Capnp.Afa
-    Afa.Convert.Capnp.CnfAfa
-    Afa.Convert.Capnp.Separated
-    Afa.Convert.Capnp.Range16Nfa
+    Afa.Convert.Identifier
   build-depends:
     base >=4.17.0.0 && <4.18,
-    free ^>=5.1.4,
-    mtl ^>= 2.2.2,
-    array ^>= 0.5.4.0,
-    recursion-schemes ^>=5.2.1,
-    parsec ^>=3.1.0.0,
     attoparsec ^>=0.14.4,
     attoparsec-expr ^>=0.1.1.2,
-    composition ^>=1.0.2.1,
-    containers ^>=0.6.2.1,
-    interpolate ^>=0.2.1,
-    automata-safa-capnp ^>=0.1.0.0,
-    capnp ^>=0.16.0.0,
-    hashable ^>=1.4.1.0,
-    unordered-containers ^>=0.2.12.0,
-    generic-data ^>=1.0.0.0,
-    lens ^>=5.2,
-    data-fix ^>=0.3.0,
-    transformers ^>=0.5.6.2,
     text ^>=2.0.1,
-    vector ^>=0.13.0.0,
+    interpolate ^>=0.2.1,
+    free ^>=5.1.10,
+    unordered-containers ^>=0.2.19.1,
     automata-safa,
-    ltl,
-    lens-recursion-schemes,
     inversion-of-control,
   hs-source-dirs:      src/convert
   default-language:    Haskell2010
-  extra-libraries:     automata_safa
 
-test-suite automata-safa-test
-  default-language:    Haskell2010
-  type:                exitcode-stdio-1.0
-  hs-source-dirs:      test
-  main-is:             Main.hs
-  other-modules:
-    Test.Afa.Simplify
-    Test.Afa.Goblin
-    Test.Afa.QMinCut
-    Test.Afa.Convert.Separated
-    Test.Afa.Convert.Stranger
-  build-depends:
-    base >=4.17.0.0 && <4.18,
-    HUnit ^>= 1.6.0.0,
-    array ^>= 0.5.4.0,
-    data-fix ^>=0.3.0,
-    free ^>=5.1.4,
-    text ^>= 2.0.1,
-    automata-safa,
-    automata-safa:convert,
-  extra-libraries:     automata_safa
-
-executable ltle-to-afa
-  main-is:             Main.hs
-  build-depends:
-    base >=4.17.0.0 && <4.18,
-    optparse-applicative ^>=0.17.0.0,
-    recursion-schemes ^>=5.2.1,
-    data-fix ^>=0.3.0,
-    mtl ^>= 2.2.2,
-    time ^>= 1.12.2,
-    array ^>= 0.5.4.0,
-    directory ^>= 1.3.6.0,
-    text ^>=2.0.1,
-    stm ^>=2.5.0.0,
-    split ^>=0.2.3.4,
-    composition ^>=1.0.2.2,
-    composition-extra ^>=2.0.0,
-    free ^>=5.1.7,
-    interpolate ^>=0.2.1,
-    unordered-containers ^>=0.2.19.1,
-    automata-safa,
-    automata-safa:ltl,
-    automata-safa:convert,
-    inversion-of-control,
-  hs-source-dirs:      app/ltle-to-afa
-  default-language:    Haskell2010
-  ghc-options: -threaded
-  extra-libraries:     automata_safa
-
--- executable ltle-sat
+-- executable automata-safa-one
 --   main-is:             Main.hs
 --   build-depends:
---     base >=4.13.0.0 && <4.15,
---     capnp ^>=0.10.0.0,
---     network-simple ^>=0.4.5,
---     automata-safa-capnp ^>=0.1.0.0,
---     automata-safa:automata-safa,
---     automata-safa:ltl,
---     automata-safa:convert,
---     primitive ^>=0.7.1.0,
---   hs-source-dirs:      app/ltle-sat
---   default-language:    Haskell2010
--- 
--- executable dir-checker
---   main-is:             Main.hs
---   build-depends:
---     base >=4.13.0.0 && <4.15,
---     capnp ^>=0.10.0.0,
---     network-simple ^>=0.4.5,
---     automata-safa-capnp ^>=0.1.0.0,
---     primitive ^>=0.7.1.0,
---     directory ^>=1.3.6.0,
---   hs-source-dirs:      app/dir-checker
---   default-language:    Haskell2010
-
--- test-suite automata-safa-doctest
---   default-language:    Haskell2010
---   type:                exitcode-stdio-1.0
---   hs-source-dirs:      test
---   main-is:             Doctest.hs
---   ghc-options:
---     -threaded
---     -rtsopts
---     -with-rtsopts=-N
---   build-depends:
---     base,
+--     base >=4.17.0.0 && <4.18,
 --     automata-safa,
---     doctest,
---   extra-libraries:     automata_safa
+--     automata-safa:convert,
+--     inversion-of-control,
+--   hs-source-dirs:      app/automata-safa-one
+--   default-language:    Haskell2010
+--   ghc-options: -threaded

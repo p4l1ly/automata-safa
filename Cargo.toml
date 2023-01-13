@@ -1,8 +1,0 @@
-[package]
-name = "automata_safa"
-version = "0.1.0"
-authors = ["Pavol Vargovcik <pavol.vargovcik@gmail.com>"]
-
-[lib]
-name = "automata_safa"
-crate-type = ["dylib"]
