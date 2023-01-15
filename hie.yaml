@@ -3,26 +3,14 @@ cradle:
     - path: "../afapipe/./"
       component: "lib:automata-safa-capnp"
 
+    - path: "../afapipe/./"
+      component: "lib:inversion-of-control"
+
     - path: "src/model"
       component: "lib:automata-safa"
-
-    - path: "src/ltl"
-      component: "automata-safa:lib:ltl"
 
     - path: "src/convert"
       component: "automata-safa:lib:convert"
 
-    - path: "test"
-      component: "automata-safa:test:automata-safa-test"
-
-    - path: "app/ltle-to-afa/Main.hs"
-      component: "automata-safa:exe:ltle-to-afa"
-
-    - path: "app/ltle-sat/Main.hs"
-      component: "automata-safa:exe:ltle-sat"
-
-    - path: "app/dir-checker/Main.hs"
-      component: "automata-safa:exe:dir-checker"
-
-    - path: "../../../hobby/lens-recursion-schemes/./src"
-      component: "lib:lens-recursion-schemes"
+    - path: "app/automata-safa-one"
+      component: "automata-safa:exe:automata-safa-one"

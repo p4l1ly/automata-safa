@@ -10,6 +10,7 @@
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE TemplateHaskell #-}
 {-# OPTIONS_GHC -fplugin InversionOfControl.TcPlugin #-}
+{-# LANGUAGE ConstraintKinds #-}
 
 module Afa.Lib where
 
@@ -17,6 +18,28 @@ import InversionOfControl.TypeDict
 import InversionOfControl.MonadFn
 import InversionOfControl.Lift
 import Afa.Term
+import Data.Fix
+import Control.Monad.Free
+import Control.Monad
+
+type BuildI k f r m =
+  ( MonadFn k m
+  , f r ~ Param (Unwrap k)
+  , r ~ Result (Unwrap k)
+  , Traversable f
+  )
+
+buildFix :: forall k f r m. BuildI k f r m => Fix f -> m r
+buildFix (Fix fa) = traverse (buildFix @k) fa >>= monadfn @k
+
+buildFree :: forall k f r m.
+  ( MonadFn k m
+  , f r ~ Param (Unwrap k)
+  , r ~ Result (Unwrap k)
+  , Traversable f
+  ) =>
+  Free f r -> m r
+buildFree = iterM (monadfn @k <=< sequence)
 
 data UnInitStateA d
 type instance Definition (UnInitStateA d) =

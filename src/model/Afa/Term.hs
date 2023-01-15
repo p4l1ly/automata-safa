@@ -12,7 +12,18 @@
 {-# LANGUAGE TypeOperators #-}
 {-# LANGUAGE UndecidableInstances #-}
 
-module Afa.Term where
+module Afa.Term (
+  Term (..),
+  QVR (..),
+  q,
+  v,
+  r,
+  QVFun,
+  QFun,
+  RTra,
+  VarTra,
+  QVTra,
+) where
 
 import Data.Functor.Classes (Eq1, Show1)
 import GHC.Generics (Generic, Generic1)

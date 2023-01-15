@@ -23,6 +23,8 @@ library
     hashable ^>=1.4.2.0,
     template-haskell ^>=2.19.0.0,
     composition-extra ^>=2.0.0,
+    data-fix ^>=0.3.2,
+    free ^>=5.1.10,
     inversion-of-control,
   hs-source-dirs:      src/model
   default-language:    Haskell2010
@@ -40,18 +42,22 @@ library convert
     interpolate ^>=0.2.1,
     free ^>=5.1.10,
     unordered-containers ^>=0.2.19.1,
+    composition ^>=1.0.2.2,
+    mtl ^>=2.2.2 && < 2.4,
+    array ^>=0.5.4.0,
     automata-safa,
     inversion-of-control,
   hs-source-dirs:      src/convert
   default-language:    Haskell2010
 
--- executable automata-safa-one
---   main-is:             Main.hs
---   build-depends:
---     base >=4.17.0.0 && <4.18,
---     automata-safa,
---     automata-safa:convert,
---     inversion-of-control,
---   hs-source-dirs:      app/automata-safa-one
---   default-language:    Haskell2010
---   ghc-options: -threaded
+executable automata-safa-one
+  main-is:             Main.hs
+  build-depends:
+    base >=4.17.0.0 && <4.18,
+    text ^>=2.0.1,
+    automata-safa,
+    automata-safa:convert,
+    inversion-of-control,
+  hs-source-dirs:      app/automata-safa-one
+  default-language:    Haskell2010
+  ghc-options: -threaded
