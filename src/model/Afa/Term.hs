@@ -18,11 +18,20 @@ module Afa.Term (
   q,
   v,
   r,
-  QVFun,
-  QFun,
-  RTra,
-  VarTra,
-  QVTra,
+  QVFun (..),
+  QFun (..),
+  RTra (..),
+  VTra (..),
+  QVTra (..),
+  Create (create),
+  Creation,
+  OneshotFun,
+  OneshotTra,
+  OneshotNext,
+  Ctx,
+  Ctx0,
+  OneshotFunInput,
+  FunSelector,
 ) where
 
 import Data.Functor.Classes (Eq1, Show1)
@@ -76,8 +85,10 @@ r = paramGetter 'R
 data QVR = Q | V | R
 
 type Ctx = (Maybe (*), Maybe (*), Maybe (*))
+type Ctx0 = '(Nothing, Nothing, Nothing)
 data ConstFn (x :: *) (y :: Ctx -> Ctx -> *) (inctx :: Ctx) (outctx :: Ctx)
 
+-- Apply
 type family OneshotNext (inctx :: Ctx) (ctx :: Ctx) (f :: [QVR]) (x :: Ctx -> Ctx -> *) :: * where
   OneshotNext inctx ctx '[] x = FunSelector (x inctx ctx)
   -- q
@@ -95,24 +106,24 @@ type family FunSelector (x :: *) :: *
 data OneshotFunSelector (inctx :: Ctx) (outctx :: Ctx)
 data OneshotTraSelector (m :: * -> *) (inctx :: Ctx) (outctx :: Ctx)
 
-type family OneshotFunInput (input :: *) :: Ctx -> Ctx -> * where
-  OneshotFunInput (fn :&: c) = ConstFn fn (OneshotFunInput c)
-  OneshotFunInput fn = ConstFn fn OneshotFunSelector
+type family OneshotFunInput (input :: *) (selector :: Ctx -> Ctx -> *) :: Ctx -> Ctx -> * where
+  OneshotFunInput (fn :&: c) sel = ConstFn fn (OneshotFunInput c sel)
+  OneshotFunInput fn sel = ConstFn fn sel
 
-type family OneshotTraInput (input :: *) :: Ctx -> Ctx -> * where
-  OneshotTraInput ((a -> m b) :&: c) = ConstFn (a -> b) (OneshotTraInput c)
-  OneshotTraInput (a -> m b) = ConstFn (a -> b) (OneshotTraSelector m)
+type family OneshotTraInput (input :: *) (selector :: (* -> *) -> Ctx -> Ctx -> *) :: Ctx -> Ctx -> * where
+  OneshotTraInput ((a -> m b) :&: c) sel = ConstFn (a -> b) (OneshotTraInput c sel)
+  OneshotTraInput (a -> m b) sel = ConstFn (a -> b) (sel m)
 
 data OneshotFun (mfun :: [QVR])
 data OneshotTra (mfun :: [QVR])
 
 type instance
-  Creation (OneshotFun (mfun :: [QVR])) input =
-    OneshotNext '(Nothing, Nothing, Nothing) '(Nothing, Nothing, Nothing) mfun (OneshotFunInput input)
+  Creation (OneshotFun mfun) input =
+    OneshotNext Ctx0 Ctx0 mfun (OneshotFunInput input OneshotFunSelector)
 
 type instance
-  Creation (OneshotTra (mfun :: [QVR])) input =
-    OneshotNext '(Nothing, Nothing, Nothing) '(Nothing, Nothing, Nothing) mfun (OneshotTraInput input)
+  Creation (OneshotTra mfun) input =
+    OneshotNext Ctx0 Ctx0 mfun (OneshotTraInput input OneshotTraSelector)
 
 data a :&: b = a :&: b
 infixr 0 :&:
@@ -120,7 +131,7 @@ infixr 0 :&:
 data QVFun q v q' v' = QVFun (q -> q') (v -> v')
 newtype QFun q q' = QFun (q -> q')
 newtype RTra (m :: * -> *) (r :: *) (r' :: *) = RTra (r -> m r')
-newtype VarTra (m :: * -> *) (v :: *) (q :: *) (v' :: *) (r' :: *) = VarTra (v -> m (Term q v' r'))
+newtype VTra (m :: * -> *) (v :: *) (q :: *) (v' :: *) (r' :: *) = VTra (v -> m (Term q v' r'))
 data QVTra (m :: * -> *) (q :: *) (v :: *) (q' :: *) (v' :: *) (r' :: *)
   = QVTra (q -> m (Term q' v' r')) (v -> m (Term q' v' r'))
 

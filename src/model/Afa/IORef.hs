@@ -10,11 +10,13 @@
 {-# LANGUAGE TypeApplications #-}
 {-# LANGUAGE TypeFamilies #-}
 {-# LANGUAGE TypeOperators #-}
+{-# LANGUAGE UndecidableInstances #-}
 {-# OPTIONS_GHC -fno-warn-partial-type-signatures #-}
 {-# OPTIONS_GHC -fplugin InversionOfControl.TcPlugin #-}
 
 module Afa.IORef where
 
+import Afa.Term
 import Control.Monad.IO.Class
 import Control.Monad.Identity
 import Control.Monad.Trans
@@ -23,6 +25,7 @@ import qualified Data.HashMap.Strict as HM
 import Data.IORef
 import InversionOfControl.Lift
 import InversionOfControl.LiftN
+import qualified InversionOfControl.MapRecur as MR
 import InversionOfControl.MonadFn
 import qualified InversionOfControl.Recur as R
 import InversionOfControl.TypeDict
@@ -40,24 +43,37 @@ data Deref
 data IsTree
 data Cata
 data RCata
+data MapRec
+
+isTree :: Ref f -> Bool
+isTree (Ref _) = False
+isTree (Subtree f) = True
+
+deref :: Ref f -> IO (f (Ref f))
+deref (Ref (_, ioref)) = readIORef ioref
+deref (Subtree f) = return f
+
+shareTree :: f (Ref f) -> IO (Ref f)
+shareTree f = do
+  ioref <- newIORef f
+  name <- makeStableName ioref
+  return $ Ref (name, ioref)
+
+share :: Ref f -> IO (Ref f)
+share (Subtree f) = shareTree f
+share r = return r
 
 instance MonadFn0 (Explicit (Ref f) Bool IsTree) IO where
-  monadfn0 (Ref _) = return False
-  monadfn0 (Subtree f) = return True
+  monadfn0 = return . isTree
 
 instance MonadFn0 (Explicit (Ref f) (f (Ref f)) Deref) IO where
-  monadfn0 (Ref (_, ioref)) = readIORef ioref
-  monadfn0 (Subtree f) = return f
+  monadfn0 = deref
 
 instance MonadFn0 (Explicit (f (Ref f)) (Ref f) Build) IO where
-  monadfn0 f = return $ Subtree f
+  monadfn0 = return . Subtree
 
 instance MonadFn0 (Explicit (Ref f) (Ref f) Share) IO where
-  monadfn0 (Subtree f) = do
-    ioref <- newIORef f
-    name <- makeStableName ioref
-    return $ Ref (name, ioref)
-  monadfn0 r = return r
+  monadfn0 = share
 
 type instance R.Et (R.Explicit ('K _ Cata) _ _ _) = IdentityT
 instance
@@ -106,6 +122,48 @@ instance
                   return result
     runIdentityT $ getAction recur
 
+type instance MR.Et (MR.Explicit ('K _ MapRec) _ _ _) = IdentityT
+instance
+  (Monad m, LiftN n IO m) =>
+  MR.Recur (MR.Explicit ('K n MapRec) (Ref (Term q v)) (Ref (Term q' v)) (QFun q q')) m
+  where
+  runRecur (QFun qfun) = do
+    R.runRecur
+      @(R.Explicit ('K n RCata) Zero (Ref (Term q v)) (Ref (Term q v), Term q v (Ref (Term q v))))
+      \rec (r, fr) -> do
+        fr' <- case fr of
+          LTrue -> return LTrue
+          LFalse -> return LFalse
+          State q -> return $ State (qfun q)
+          Var v -> return $ Var v
+          Not r -> Not <$> rec r
+          And r1 r2 -> And <$> rec r1 <*> rec r2
+          Or r1 r2 -> Or <$> rec r1 <*> rec r2
+        if isTree r
+          then return $ Subtree fr'
+          else lift $ liftn @n $ shareTree fr'
+
+data FunR' (r :: *) (mfun :: [QVR])
+type instance
+  Creation (FunR' r mfun) input =
+    OneshotNext Ctx0 Ctx0 mfun (OneshotFunInput input (FunR'Selector r))
+data FunR'Selector (r0 :: *) (inctx :: Ctx) (outctx :: Ctx)
+type instance
+  FunSelector (FunR'Selector r0 '(q, v, r) '(q', v', r')) =
+    SelectorQ r0 q v r q' v' r'
+type family SelectorQ r0 q v r q' v' r' where
+  SelectorQ (Ref (Term q v0)) (Just q) v r (Just q') v' r' =
+    SelectorV (Ref (Term q' v0)) v r v' r'
+  SelectorQ r0 Nothing v r Nothing v' r' = SelectorV r0 v r v' r'
+type family SelectorV r0 v r v' r' where
+  SelectorV (Ref (Term q v)) (Just v) r (Just v') r' =
+    SelectorR (Ref (Term q v')) r r'
+  SelectorV r0 Nothing r Nothing r' = SelectorR r0 r r'
+type family SelectorR r0 r r' where
+  SelectorR (Ref (Term q v)) (Just (Ref (Term q v))) (Just (Ref (Term q' v'))) =
+    Ref (Term q' v')
+  SelectorR r Nothing Nothing = r
+
 data IORefO (cont :: *) (n :: Pean)
 type instance
   Definition (IORefO cont n) =
@@ -115,4 +173,7 @@ type instance
       :+: Name "isTree" ('K n IsTree)
       :+: Name "cata" ('K n Cata)
       :+: Name "rcata" ('K n RCata)
+      :+: Name "mapRec" ('K n MapRec)
+      :+: Name "mapRecFun" OneshotFun
+      :+: Name "mapRecFunR'" FunR'
       :+: Follow cont

@@ -1,5 +1,9 @@
+{-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE QuasiQuotes #-}
+
 module Afa.Convert.Identifier where
 
+import qualified Afa.Lib as Lib
 import Data.String.Interpolate.IsString (i)
 import qualified Data.Text as T
 import Data.Word
@@ -15,3 +19,7 @@ instance Identify Word32 where
 
 instance Identify Word8 where
   identify = T.pack . show
+
+instance Identify q => Identify (Lib.AddInitQ q) where
+  identify Lib.AddInitInit = "I"
+  identify (Lib.AddInitOther q) = [i|O#{identify q}|]

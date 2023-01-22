@@ -52,6 +52,7 @@ import InversionOfControl.Lift
 import InversionOfControl.MonadFn
 import qualified InversionOfControl.Recur as R
 import InversionOfControl.TypeDict
+import Afa.States
 
 parseWhole :: Parser a -> T.Text -> a
 parseWhole parser str = case Parsec.parse parser str of
@@ -93,7 +94,7 @@ parse ::
   forall d r d1.
   (ToConstraint (Follow (ParseI d d1 r))) =>
   [AfaDefinition] ->
-  IO (r, r, (Int, Int -> T.Text, Int -> r, T.Text -> Int))
+  IO (r, r, StateHashMap T.Text r)
 parse (orize -> (init, final, formulae, states)) = do
   sharedsRef  <- newIORef HM.empty
 
@@ -117,13 +118,7 @@ parse (orize -> (init, final, formulae, states)) = do
   finalR <- convert final
   stateRs <- mapM convert states
 
-  let stateList = HM.toList stateRs
-      arr = listArray (0, HM.size stateRs - 1) stateList
-      stateNames = map fst stateList
-      state2ix = HM.fromList $ zip stateNames [0 ..]
-      states = (rangeSize $ bounds arr, fst . (arr !), snd . (arr !), (state2ix HM.!))
-
-  return (initR, finalR, states)
+  return (initR, finalR, StateHashMap stateRs)
 
 type TxtTerm = Free (Term T.Text T.Text) T.Text
 
@@ -292,12 +287,13 @@ formatFormula = do
   return (R.runRecur @[g1|rec|] algebra, readIORef stack)
 
 format ::
-  forall d q v r d1.
+  forall d q v r d1 qs.
   ( Term q v r ~ [g|term|]
   , ToConstraint (FormatFormulaD d)
+  , States qs q r
   ) =>
-  (r, r, (Int, Int -> q, Int -> r, q -> Int)) -> IO ()
-format (init, final, (qCount, i2q, i2r, q2i)) = do
+  (r, r, qs) -> IO ()
+format (init, final, qs) = do
   (runConvert, getShared) <- formatFormula @d
 
   runConvert \convert -> do
@@ -305,11 +301,11 @@ format (init, final, (qCount, i2q, i2r, q2i)) = do
     lift . TIO.putStrLn =<< convert init
     lift $ TIO.putStr "@kFinalFormula: "
     lift . TIO.putStrLn =<< convert final
-    for_ [0 .. qCount - 1] \i -> do
+    for_ (stateList qs) \(q, r) -> do
       lift $ TIO.putStr "@s"
-      lift $ TIO.putStr (identify $ i2q i)
+      lift $ TIO.putStr (identify q)
       lift $ TIO.putStr ": "
-      lift . TIO.putStrLn =<< convert (i2r i)
+      lift . TIO.putStrLn =<< convert r
 
   getShared >>= mapM_ \(i, txt) -> do
     TIO.putStr "@f"
