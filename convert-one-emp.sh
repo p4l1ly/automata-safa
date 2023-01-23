@@ -12,18 +12,18 @@ fi
 rm -rf $DANTONI/regexNfas
 mkdir $DANTONI/regexNfas
 
-WORKDIR="$1"
+WORKDIR=$(realpath "$1")
 GEN_AUT_DIR="$WORKDIR/gen_aut"
 LOGFILE="$WORKDIR/log"
 mkdir "$GEN_AUT_DIR"
 
 while read -r line; do
+  echo "$line"
+  echo "$line" >> $LOGFILE
   if grep '^load_regex' <<< "$line" > /dev/null; then
     name=$(sed -r 's/^load_regex ([^ ]+) .*/\1/' <<< "$line")
     regex=$(sed -r 's/^load_regex [^ ]+ //' <<< "$line")
 
-    echo "load_automaton $name"
-    echo "load_automaton $name" >>$LOGFILE
     echo "load_automaton $name" >> "$WORKDIR/result.emp"
 
     cd $DANTONI
@@ -45,8 +45,6 @@ while read -r line; do
     operands=($(sed -r 's/^[^ ]+ = \([^ ]+ (.*)\)/\1/' <<< "$line"))
     operands2=(${${operands[@]/%/.afa}/#/$GEN_AUT_DIR/})
 
-    echo "$line"
-    echo "$line" >>$LOGFILE
     echo "$line" >> "$WORKDIR/result.emp"
     # echo name "$name"
     # echo operator "$operator"
@@ -62,7 +60,6 @@ while read -r line; do
   elif grep '^is_empty' <<< "$line" > /dev/null; then
     name=$(sed -r 's/^is_empty //' <<< "$line")
 
-    echo "$line"
     echo "$line" >> "$WORKDIR/result.emp"
 
     # echo out
