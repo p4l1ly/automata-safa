@@ -15,7 +15,7 @@
 
 module Afa.Negate where
 
-import Shaper.Helpers (BuildD, BuildInheritShareD, buildInheritShare)
+import Shaper.Helpers (BuildD, BuildInheritShareD, buildInheritShare, buildFree)
 
 import Afa.Finalful.STerm (Term (..), QVR(Q), create, Create, Creation, VarTra (VarTra), QVTra(QVTra))
 import qualified DepDict as D
@@ -37,6 +37,7 @@ import Data.IORef
 import Data.Hashable
 import Data.Functor.Compose
 import GHC.Generics (Generic)
+import Control.Monad.Free
 
 type DeMorganAlgD d m = DeMorganAlgD_ d m (DeMorganAlgA d [g|q|] [g|v|] [g|r|]) [g|q|] [g|v|] [g|r|]
 type DeMorganAlgA d q v r =  -- keyword aliases
@@ -74,7 +75,7 @@ deMorganAlg (Or a b) =
   And <$> [d'|monadfn|rec|] a <*> [d'|monadfn|rec|] b >>= buildInheritShare @[g'|buildD|]
 
 
-data Qombo q = Qombo Int q deriving (Eq, Show, Generic, Hashable)
+data Qombo q = Qombo !Int !q deriving (Eq, Show, Generic, Hashable)
 
 type QomboD d m = QomboD_ d (QomboA d [g|q|] [g|v|] [g|r|] [g|r'|]) [g|q|] [g|v|] [g|r|] [g|r'|]
 type QomboA d q v r r' =  -- keyword aliases
@@ -181,6 +182,48 @@ unInitState afa@(init, final, states@(_, _, i2r, q2i)) = do
   [d'|monadfn|deref|] init >>= \case
     State q -> return (i2r $ q2i q, final, states)
     _ -> return afa
+
+
+data AddInit q = AddInitInit | AddInitOther !q deriving (Eq, Show, Generic, Hashable)
+type AddInitStateA d q v r r' =
+  AddInitStateA1 d
+    ( Name "buildTree" (Mk (MfnK (Term (AddInit q) v r') r') [d|buildTree|])
+        :+: Name "addInitF" ([g|fun|] '[Q] :: *)
+        :+: Name "addInitFn" (q -> AddInit q)
+        :+: End
+    ) r r'
+type AddInitStateA1 d d' r r' =
+  Name "addInit" (Mk (FRecK r r' (Creation [g'|addInitF|] [g'|addInitFn|])) [d|funr|])
+    :+: Name "buildD" (Name "build" [d'|buildTree|] :+: d)
+    :+: d'
+type AddInitStateD_ d m d' q v r r' =
+  D.Name "aliases" (d' ~ AddInitStateA d q v r r', q ~ [g|q|], v ~ [g|v|], r ~ [g|r|], r' ~ [g|r'|])
+    :|: D.Name "buildTree" (MonadFn [d'|buildTree|] m)
+    :|: D.Name "addInit"
+          ( Create [g'|addInitF|] (q -> AddInit q)
+          , FunRecur [d'|addInit|] m
+          )
+    :|: D.End
+addInitState ::
+  forall d m d' q v r r'.
+  D.ToConstraint (AddInitStateD_ d m d' q v r r') =>
+  (r, r, (Int, Int -> q, Int -> r, q -> Int)) ->
+  m (r', r', (Int, Int -> AddInit q, Int -> r', AddInit q -> Int))
+addInitState afa@(init, final, states@(qCount, i2q, i2r, q2i)) = do
+  let mfun = create @[g'|addInitF|] (AddInitOther :: q -> AddInit q)
+  mapAddInit <- [d'|funRecur|addInit|] mfun
+  init' <- mapAddInit init
+  final' <- mapAddInit final
+  i2rList <- for [0..qCount - 1] \i -> mapAddInit (i2r i)
+  let i2rArr :: Array Int r'
+      i2rArr = listArray (0, qCount) (init' : i2rList)
+  let i2q' 0 = AddInitInit
+      i2q' i = AddInitOther $ i2q (i - 1)
+  let q2i' AddInitInit = 0
+      q2i' (AddInitOther q) = q2i q + 1
+  init'' <- [d'|monadfn|buildTree|] (State AddInitInit)
+  final'' <- buildFree @[g'|buildD|] $ Free $ And (Free $ Not (Pure init'')) (Pure final')
+  return (init'', final'', (qCount + 1, i2q', (i2rArr !), q2i'))
 
 
 type EnumA d q v r r' =
