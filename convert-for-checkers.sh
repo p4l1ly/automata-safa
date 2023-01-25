@@ -10,7 +10,7 @@ fi
 if [ -f $1 ]; then
   echo $1
 else
-  find $1 -name 'result.afa'
+  find $1 -name '*.afa'
 fi | while read -r fAfa; do
   f=${fAfa%????}
   echo Processing $f >&2
