@@ -60,8 +60,8 @@ instance
       deref = monadfn0 @(DelitKDeref q v r xDeref)
       build = monadfn0 @(DelitKBuild q v r xBuild)
 
-data IORefDelitO (d :: * -> Pean -> *) (cont :: *) (n :: Pean)
+data IORefDelitO (d :: * -> *) (cont :: *)
 type instance
-  Definition (IORefDelitO d cont n) =
-    Name "build" ('K n (Delit (Unwrap [gcn|build|]) (Unwrap [gcn|deref|])))
-      :+: Follow (d cont n)
+  Definition (IORefDelitO d cont) =
+    Name "build" (Delit [gc|build|] [gc|deref|])
+      :+: Follow (d cont)

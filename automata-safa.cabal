@@ -57,6 +57,9 @@ executable automata-safa-one
   build-depends:
     base >=4.17.0.0 && <4.18,
     text ^>=2.0.1,
+    unordered-containers ^>=0.2.19.1,
+    data-fix ^>=0.3.2,
+    composition-extra ^>=2.0.0,
     automata-safa,
     automata-safa:convert,
     inversion-of-control,

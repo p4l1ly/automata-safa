@@ -76,8 +76,8 @@ type ParseD d = Follow (ParseI d (ParseA d $r) $r) :: TypeDict
 
 data ParseA d r
 type instance Definition (ParseA d r) =
-  Name "share" (Inherit (Explicit r r) [g|share|])
-    :+: Name "build" (Inherit (Explicit [g|term|] r) [g|build|])
+  Name "share" (Inherit (Explicit r r) [k|share|])
+    :+: Name "build" (Inherit (Explicit [g|term|] r) [k|build|])
     :+: End
 
 data ParseI d d1 r
@@ -192,9 +192,9 @@ type FormatFormulaD d =
 
 data FormatFormulaA d r
 type instance Definition (FormatFormulaA d r) =
-  Name "deref" (Inherit (Explicit r [g|term|]) [g|deref|])
-    :+: Name "isTree" (Inherit (Explicit r Bool) [g|isTree|])
-    :+: Name "rec" (R.Explicit [g|rcata|] Zero r (r, [g|term|]))
+  Name "deref" (Inherit (Explicit r [g|term|]) [k|deref|])
+    :+: Name "isTree" (Inherit (Explicit r Bool) [k|isTree|])
+    :+: Name "rec" (R.Explicit [k|rcata|] Zero r (r, [g|term|]))
     :+: End
 
 data FormatFormulaI d d1 q v r

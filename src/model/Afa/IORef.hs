@@ -164,16 +164,16 @@ type family SelectorR r0 r r' where
     Ref (Term q' v')
   SelectorR r Nothing Nothing = r
 
-data IORefO (cont :: *) (n :: Pean)
+data IORefO (cont :: *)
 type instance
-  Definition (IORefO cont n) =
-    Name "build" ('K n Build)
-      :+: Name "share" ('K n Share)
-      :+: Name "deref" ('K n Deref)
-      :+: Name "isTree" ('K n IsTree)
-      :+: Name "cata" ('K n Cata)
-      :+: Name "rcata" ('K n RCata)
-      :+: Name "mapRec" ('K n MapRec)
+  Definition (IORefO cont) =
+    Name "build" Build
+      :+: Name "share" Share
+      :+: Name "deref" Deref
+      :+: Name "isTree" IsTree
+      :+: Name "cata" Cata
+      :+: Name "rcata" RCata
+      :+: Name "mapRec" MapRec
       :+: Name "mapRecFun" OneshotFun
       :+: Name "mapRecFunR'" FunR'
       :+: Follow cont
