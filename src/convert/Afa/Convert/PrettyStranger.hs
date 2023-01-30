@@ -95,7 +95,7 @@ parse ::
   (ToConstraint (Follow (ParseI d d1 r))) =>
   [AfaDefinition] ->
   IO (r, r, StateHashMap T.Text r)
-parse (orize -> (init, final, formulae, states)) = do
+parse (groupDefs -> (init, final, formulae, states)) = do
   sharedsRef  <- newIORef HM.empty
 
   let convert :: TxtTerm -> IO r
@@ -162,18 +162,22 @@ term =
     <|> (Free . Var <$> ("a" *> identifier))
     <?> "expected a term"
 
-orize ::
+groupDefs ::
   [AfaDefinition] ->
   ( TxtTerm
   , TxtTerm
   , HM.HashMap T.Text TxtTerm
   , HM.HashMap T.Text TxtTerm
   )
-orize defs =
-  ( foldr (Free .: Or) (Free LFalse) $ init `appEndo` []
-  , foldr (Free .: Or) (Free LFalse) $ final `appEndo` []
-  , HM.fromListWith (Free .: Or) $ formulae `appEndo` []
-  , HM.fromListWith (Free .: Or) $ states `appEndo` []
+groupDefs defs =
+  ( case appEndo init [] of [x] -> x; _ -> error "expected single kInitialFormula"
+  , case appEndo final [] of [x] -> x; _ -> error "expected single kFinalFormula"
+  , HM.fromListWithKey
+      (\k _ _ -> error $ "multiple definitions of f" ++ T.unpack k)
+      (appEndo formulae [])
+  , HM.fromListWithKey
+      (\k _ _ -> error $ "multiple definitions of s" ++ T.unpack k)
+      (appEndo states [])
   )
   where
     (init, final, states, formulae) = execWriter $
