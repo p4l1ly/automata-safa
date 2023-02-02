@@ -63,6 +63,13 @@ complement = do
   Just afa' <- Lib.complement @TextIORefO afa
   PrettyStranger.format @TextIORefO afa'
 
+unshare :: IO ()
+unshare = do
+  txt <- TIO.getContents
+  afa <- PrettyStranger.parse @TextIORefO (PrettyStranger.parseDefinitions txt)
+  afa' <- Lib.unshare @TextIORefO afa
+  PrettyStranger.format @TextIORefO afa'
+
 main :: IO ()
 main = do
   args <- getArgs
@@ -71,3 +78,4 @@ main = do
     ["removeSingleInit"] -> removeSingleInit
     ["addInit"] -> addInit
     ["complement"] -> complement
+    ["unshare"] -> unshare

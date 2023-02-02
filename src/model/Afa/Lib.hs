@@ -243,13 +243,6 @@ complement (init, final, qs) = do
 
 -- splitFinals -------------------------------------------------------------------------
 
-type SplitFinalsR r q =
-  ( ( Any
-    , Endo [q]  -- negated states under conjunction
-    )
-  , Maybe r
-  )
-
 data SplitFinalsA d
 type instance Definition (SplitFinalsA d) =
   Name "deref" (Inherit (Explicit $r [g|term|]) [k|deref|])
@@ -264,11 +257,12 @@ type instance Definition (SplitFinalsI d d1 d2 m) =
     , d1 ~ SplitFinalsA d
     , Term $q $v $r ~ [g|term|]
     , MonadFn [g1|deref|] m
-    , R.Recur [g1|rec|] (SplitFinalsR $r $q) m
+    , R.Recur [g1|rec|] ((Any, Endo [$q]), Maybe $r) m
     )
     :+: End
 
-type SplitFinalsD d m = ToConstraint (Follow (SplitFinalsI d (SplitFinalsA d) (BuildShareSharedTermO d) m))
+type SplitFinalsD d m =
+  ToConstraint (Follow (SplitFinalsI d (SplitFinalsA d) (BuildShareSharedTermO d) m))
 
 splitFinals ::
   forall d m d1 d2.
@@ -299,3 +293,25 @@ splitFinals final =
       _ -> return self'
       where
         self' = ((Any False, Endo id), Just r0)
+
+-- unshare -----------------------------------------------------------------------------
+
+data UnshareA d
+type instance Definition (UnshareA d) =
+  Name "build" (Inherit (Explicit [g|term|] $r) [k|build|])
+    :+: Name "rec" (R.Explicit [k|cata|] Zero $r [g|term|])
+    :+: End
+
+
+unshare :: forall d d1 m qs.
+  ( d1 ~ UnshareA d
+  , Term $q $v $r ~ [g|term|]
+  , MonadFn [g1|build|] m
+  , R.Recur [g1|rec|] $r m
+  , RTraversable qs $r $r qs
+  ) =>
+  ($r, $r, qs) -> m ($r, $r, qs)
+unshare (init, final, qs) = do
+  R.runRecur @[g1|rec|]
+    (\rec t -> lift . monadfn @[g1|build|] =<< traverse rec t)
+    (\rec -> (,,) <$> rec init <*> rec final <*> traverseR rec qs)
