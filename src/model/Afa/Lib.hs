@@ -35,6 +35,12 @@ import Data.Hashable
 import Data.Monoid
 import qualified Data.HashSet as HS
 import Data.Function.Syntax ((.:))
+import Data.Kind
+import Data.List
+import Data.Functor
+import qualified Data.HashMap.Strict as HM
+import Data.Function.Apply
+import Data.Maybe
 
 -- Build -------------------------------------------------------------------------------
 
@@ -302,7 +308,6 @@ type instance Definition (UnshareA d) =
     :+: Name "rec" (R.Explicit [k|cata|] Zero $r [g|term|])
     :+: End
 
-
 unshare :: forall d d1 m qs.
   ( d1 ~ UnshareA d
   , Term $q $v $r ~ [g|term|]
@@ -315,3 +320,75 @@ unshare (init, final, qs) = do
   R.runRecur @[g1|rec|]
     (\rec t -> lift . monadfn @[g1|build|] =<< traverse rec t)
     (\rec -> (,,) <$> rec init <*> rec final <*> traverseR rec qs)
+
+
+-- toDnf -------------------------------------------------------------------------------
+
+type ToDnfAlgD d (m :: * -> *) = () :: Constraint
+
+toDnfAlg :: forall d q v r m.
+  Applicative m =>
+  ((Bool, r) -> m [[(Either q v, Bool)]]) ->
+  (Bool, Term q v r) ->
+  m [[(Either q v, Bool)]]
+toDnfAlg rec = \case
+  (False, LTrue) -> pure []
+  (True, LTrue) -> pure [[]]
+  (False, LFalse) -> pure [[]]
+  (True, LFalse) -> pure []
+  (b, State q) -> pure [[(Left q, b)]]
+  (b, Var v) -> pure [[(Right v, b)]]
+  (False, Not a) -> rec (True, a)
+  (True, Not a) -> rec (False, a)
+  (False, And a b) ->
+    (++) <$> rec (False, a) <*> rec (False, b)
+  (True, And a b) ->
+    productConcat <$> rec (True, a) <*> rec (True, b)
+  (False, Or a b) -> do
+    productConcat <$> rec (False, a) <*> rec (False, b)
+  (True, Or a b) ->
+    (++) <$> rec (True, a) <*> rec (True, b)
+
+productConcat :: [[a]] -> [[a]] -> [[a]]
+productConcat xs ys = [x ++ y | x <- xs, y <- ys]
+
+singleToDnf :: forall d m rec build qs.
+  ( rec ~ R.Explicit [k|pcata|] Zero (Bool, $r) (Bool, [g|term|])
+  , build ~ Inherit (Explicit [g|term|] $r) [k|build|]
+  , Term $q $v $r ~ [g|term|]
+  , R.Recur rec [[(Either $q $v, Bool)]] m
+  , MonadFn build m
+  , ToDnfAlgD d m
+  , Ord $q
+  , Ord $v
+  ) =>
+  $r -> m $r
+singleToDnf x = do
+  R.runRecur @rec (toDnfAlg @(LiftUp d)) \rec -> do
+    cubes <- rec (True, x)
+    let cubes' = buildDisj $ map buildCube $ mapMaybe sortCube cubes
+    lift $ buildFix @build cubes'
+
+sortCube ::
+  (Ord q, Ord v) =>
+  [(Either q v, Bool)] -> Maybe [(Either q v, Bool)]
+sortCube = removeDuplicates . sort
+  where
+    removeDuplicates [] = Just []
+    removeDuplicates [x] = Just [x]
+    removeDuplicates ((x1, b1) : rest@((x2, b2) : _))
+      | x1 /= x2 = ((x1, b1) :) <$> removeDuplicates rest
+      | b1 == b2 = removeDuplicates rest
+      | otherwise = Nothing
+
+buildCube :: [(Either q v, Bool)] -> Fix (Term q v)
+buildCube cube =
+  foldr (Fix .: And) (Fix LTrue) $
+    cube <&> \(qv, sgn) ->
+      (if sgn then id else Fix . Not)
+        case qv of
+          Left q -> Fix (State q)
+          Right v -> Fix (Var v)
+
+buildDisj :: [Fix (Term q v)] -> Fix (Term q v)
+buildDisj = foldr (Fix .: Or) (Fix LFalse)

@@ -70,6 +70,13 @@ unshare = do
   afa' <- Lib.unshare @TextIORefO afa
   PrettyStranger.format @TextIORefO afa'
 
+initToDnf :: IO ()
+initToDnf = do
+  txt <- TIO.getContents
+  (init, final, qs) <- PrettyStranger.parse @TextIORefO (PrettyStranger.parseDefinitions txt)
+  init' <- Lib.singleToDnf @TextIORefO init
+  PrettyStranger.format @TextIORefO (init', final, qs)
+
 main :: IO ()
 main = do
   args <- getArgs
@@ -79,3 +86,4 @@ main = do
     ["addInit"] -> addInit
     ["complement"] -> complement
     ["unshare"] -> unshare
+    ["initToDnf"] -> initToDnf

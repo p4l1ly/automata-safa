@@ -43,6 +43,7 @@ data Deref
 data IsTree
 data Cata
 data RCata
+data PCata
 data MapRec
 
 isTree :: Ref f -> Bool
@@ -122,6 +123,29 @@ instance
                   return result
     runIdentityT $ getAction recur
 
+type instance R.Et (R.Explicit ('K _ PCata) _ _ _) = IdentityT
+instance
+  (Monad m, LiftN n IO m) =>
+  R.Recur (R.Explicit ('K n PCata) n' (p, Ref f) (p, FR f)) b m
+  where
+  runRecur getAlgebra getAction = do
+    cacheRef <- liftn @n $ newIORef HM.empty
+    let liftIO' :: IO a -> _ a
+        liftIO' = liftn @n' @(IdentityT m) . lift . liftn @n
+    let recur (p, r) = do
+          case r of
+            Subtree f -> getAlgebra recur (p, f)
+            Ref (name, ioref) -> do
+              cache <- liftIO' $ readIORef cacheRef
+              case HM.lookup name cache of
+                Just b -> return b
+                Nothing -> do
+                  f <- liftIO' $ readIORef ioref
+                  result <- getAlgebra recur (p, f)
+                  liftIO' $ modifyIORef' cacheRef (HM.insert name result)
+                  return result
+    runIdentityT $ getAction recur
+
 type instance MR.Et (MR.Explicit ('K _ MapRec) _ _ _) = IdentityT
 instance
   (Monad m, LiftN n IO m) =>
@@ -173,6 +197,7 @@ type instance
       :+: Name "isTree" IsTree
       :+: Name "cata" Cata
       :+: Name "rcata" RCata
+      :+: Name "pcata" PCata
       :+: Name "mapRec" MapRec
       :+: Name "mapRecFun" OneshotFun
       :+: Name "mapRecFunR'" FunR'
