@@ -14,6 +14,8 @@ library
     Afa.IORef
     Afa.Delit
     Afa.Term
+    Afa.Build
+    Afa.Separate
     Afa.Lib
     Afa.States
   build-depends:

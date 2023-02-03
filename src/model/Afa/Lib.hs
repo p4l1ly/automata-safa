@@ -41,59 +41,8 @@ import Data.Functor
 import qualified Data.HashMap.Strict as HM
 import Data.Function.Apply
 import Data.Maybe
-
--- Build -------------------------------------------------------------------------------
-
-type BuildD k f r m =
-  ( MonadFn k m
-  , f r ~ Param (Unwrap k)
-  , r ~ Result (Unwrap k)
-  , Traversable f
-  )
-
-buildFix :: forall k f r m. BuildD k f r m => Fix f -> m r
-buildFix (Fix fa) = traverse (buildFix @k) fa >>= monadfn @k
-
-buildFree :: forall k f r m. BuildD k f r m => Free f r -> m r
-buildFree = iterM (monadfn @k <=< sequence)
-
----- BuildShareShared ------------------------------------------------------------------
-
-data BuildShareSharedTermO d
-type instance Definition (BuildShareSharedTermO d) =
-  Name "fr'" [g|term|]
-    :+: Name "r'" $r
-    :+: Name "r" $r
-    :+: Follow d
-
-data BuildShareSharedA d
-type instance Definition (BuildShareSharedA d) =
-  Name "build" (Inherit (Explicit [g|fr'|] [g|r'|]) [k|build|])
-    :+: Name "share" (Inherit (Explicit [g|r'|] [g|r'|]) [k|share|])
-    :+: Name "isTree" (Inherit (Explicit [g|r|] Bool) [k|isTree|])
-    :+: End
-
-data BuildShareSharedI d d1 (m :: * -> *)
-type instance Definition (BuildShareSharedI d d1 m) =
-  Name "all"
-    ( d1 ~ BuildShareSharedA d
-    , MonadFn [g1|build|] m
-    , MonadFn [g1|share|] m
-    , MonadFn [g1|isTree|] m
-    )
-    :+: End
-
-type BuildShareSharedD d m =
-  ToConstraint (Follow (BuildShareSharedI d (BuildShareSharedA d) m))
-
-buildShareShared :: forall d d1 m.
-  ToConstraint (Follow (BuildShareSharedI d d1 m)) =>
-  [g|r|] -> [g|fr'|] -> m [g|r'|]
-buildShareShared r fr' = do
-  r' <- monadfn @[g1|build|] fr'
-  monadfn @[g1|isTree|] r >>= \case
-    True -> return r'
-    False -> monadfn @[g1|share|] r'
+import Afa.Build
+import Data.Traversable
 
 -- RemoveSingleInit --------------------------------------------------------------------
 
@@ -392,3 +341,54 @@ buildCube cube =
 
 buildDisj :: [Fix (Term q v)] -> Fix (Term q v)
 buildDisj = foldr (Fix .: Or) (Fix LFalse)
+
+-- qdnf --------------------------------------------------------------------------------
+
+type QDnfAlgI d d1 m =
+  ( d1 ~ BuildShareSharedTermO d
+  , BuildShareSharedD d1 m
+  , Term $q $v $r ~ [g|term|]
+  )
+
+type QDnfAlgD d m = QDnfAlgI d (BuildShareSharedTermO d) m
+
+qdnfAlg ::
+  forall d d1 m.
+  QDnfAlgI d d1 m =>
+  ($r -> m [$r]) -> ($r, [g|term|]) -> m [$r]
+qdnfAlg rec (r0, term) = case term of
+  LTrue -> return [r0]
+  LFalse -> return [r0]
+  State _ -> return [r0]
+  Var _ -> return [r0]
+  fr -> traverse rec fr >>= \case
+    (Or disj1 disj2) -> return $ disj1 ++ disj2
+    (And [x1] [x2]) -> return [r0]
+    (And disj1 disj2) -> sequence [buildShareShared @d1 r0 (And x1 x2) | x1 <- disj1, x2 <- disj2]
+    (Not x1) -> error "qdnfAlg: Not unsupported"
+
+data QDnfA d
+type instance Definition (QDnfA d) =
+  Name "rec" (R.Explicit [k|rcata|] Zero $r ($r, [g|term|]))
+    :+: Name "share" (Inherit (Explicit $r $r) [k|share|])
+    :+: End
+type QDnfI d d1 m =
+  ( d1 ~ QDnfA d
+  , R.Recur [g1|rec|] [$r] m
+  , MonadFn [g1|share|] m
+  , QDnfAlgD d m
+  )
+
+qdnf ::
+  forall d m d1 qs.
+  (QDnfI d d1 m, RTraversable qs [($r, $r)] [($r, $r)] qs) =>
+  qs -> m qs
+qdnf qs = do
+  R.runRecur @[g1|rec|] (qdnfAlg @(LiftUp d)) \rec ->
+    flip traverseR qs \aqs ->
+      concat <$> for aqs \(a, q) ->
+        rec q >>= \case
+          [q] -> return [(a, q)]
+          qs -> do
+            a' <- lift $ monadfn @[g1|share|] a
+            return $ map (a',) qs

@@ -26,10 +26,7 @@
 
 module Afa.Convert.PrettyStranger where
 
-import Data.Array
 import Afa.Convert.Identifier
-import Afa.IORef
-import Afa.Lib
 import Afa.Term (Term (..), q, r, v)
 import Control.Applicative
 import Control.Monad.Free
@@ -43,7 +40,6 @@ import Data.Foldable
 import Data.Functor
 import qualified Data.HashMap.Strict as HM
 import Data.IORef
-import Data.Monoid
 import Data.String.Interpolate.IsString (i)
 import qualified Data.Text as T
 import qualified Data.Text.IO as TIO
@@ -53,6 +49,7 @@ import InversionOfControl.MonadFn
 import qualified InversionOfControl.Recur as R
 import InversionOfControl.TypeDict
 import Afa.States
+import Afa.Build
 
 parseWhole :: Parser a -> T.Text -> a
 parseWhole parser str = case Parsec.parse parser str of
