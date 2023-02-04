@@ -62,6 +62,7 @@ executable automata-safa-one
     unordered-containers ^>=0.2.19.1,
     data-fix ^>=0.3.2,
     composition-extra ^>=2.0.0,
+    free ^>=5.1.10,
     automata-safa,
     automata-safa:convert,
     inversion-of-control,

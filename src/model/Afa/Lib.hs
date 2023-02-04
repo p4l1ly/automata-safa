@@ -43,6 +43,7 @@ import Data.Function.Apply
 import Data.Maybe
 import Afa.Build
 import Data.Traversable
+import Data.Array
 
 -- RemoveSingleInit --------------------------------------------------------------------
 
@@ -392,3 +393,64 @@ qdnf qs = do
           qs -> do
             a' <- lift $ monadfn @[g1|share|] a
             return $ map (a',) qs
+
+-- qombo -------------------------------------------------------------------------------
+
+data QomboQ q = QomboQ !Int !q deriving (Eq, Show)
+newtype QomboQs qs = QomboQs (Array Int qs)
+
+instance States qs q r => States (QomboQs qs) (QomboQ q) r where
+  stateList (QomboQs qss) = concat $ assocs qss <&> \(i, qs :: qs) ->
+    stateList qs <&> first (QomboQ i)
+  transition (QomboQs qss) (QomboQ i q) = transition (qss ! i) q
+  stateCount (QomboQs qss) = sum $ stateCount <$> qss
+
+instance RTraversable qs r r' qs' =>
+  RTraversable (QomboQs qs) r r' (QomboQs qs') where
+  traverseR fn (QomboQs qss) = QomboQs <$> traverse (traverseR fn) qss
+
+data QomboO d
+type instance Definition (QomboO d) =
+  Name "term" (Get "term'" (Follow (QomboA d))) :+: Follow d
+
+data QomboA d
+type instance Definition (QomboA d) =  -- keyword aliases
+  Name "r'" (Creation ([g|mapRecFunR'|] $r '[Q]) ($q -> QomboQ $q))
+    :+: Name "term'" (Term (QomboQ $q) $v [gs|r'|])
+    :+: Name "build" (Inherit (Explicit [gs|term'|] [gs|r'|]) [k|build|])
+    :+: Name "mapK" ([g|mapRecFun|] '[Q] :: *)
+    :+: Name "mapF" ($q -> QomboQ $q)
+    :+: Name "map" (MR.Explicit [k|mapRec|] $r [gs|r'|] (Creation [gs|mapK|] [gs|mapF|]))
+    :+: End
+
+type QomboI d d1 m =
+  ( d1 ~ QomboA d
+  , MonadFn [g1|build|] m
+  , Create [g1|mapK|] [g1|mapF|]
+  , MR.Recur [g1|map|] m
+  , Term $q $v $r ~ [g|term|]
+  )
+qombo ::
+  forall d d1 m qs qs' freeTerm'.
+  ( QomboI d d1 m
+  , States qs $q $r
+  , RTraversable qs $r [g1|r'|] qs'
+  , freeTerm' ~ Free (Term (QomboQ $q) $v) [g1|r'|]
+  ) =>
+  ([freeTerm'] -> freeTerm') ->
+  [($r, $r, qs)] ->
+  m ([g1|r'|], [g1|r'|], QomboQs qs')
+qombo fn afas = do
+  let afaCount = length afas
+  afas' <- for (zip [0 ..] afas) \(afai, (init, final, qs)) -> do
+    let mfun = create @[g1|mapK|] (QomboQ @($q) afai)
+    MR.runRecur @[g1|map|] mfun \mapQombo -> do
+      init' <- mapQombo init
+      final' <- mapQombo final
+      qs' <- traverseR mapQombo qs
+      return (init', final', qs')
+  let (inits', finals', qss') = unzip3 afas'
+  let qs' = QomboQs $ listArray (0, afaCount - 1) qss'
+  init' <- buildFree @[g1|build|] (fn $ map Pure inits')
+  final' <- buildFree @[g1|build|] (foldr (Free .: And . Pure) (Free LTrue) finals')
+  return (init', final', qs')

@@ -23,3 +23,6 @@ instance Identify Word8 where
 instance Identify q => Identify (Lib.AddInitQ q) where
   identify Lib.AddInitInit = "I"
   identify (Lib.AddInitOther q) = [i|O#{identify q}|]
+
+instance Identify q => Identify (Lib.QomboQ q) where
+  identify (Lib.QomboQ j q) = [i|#{j}_#{identify q}|]

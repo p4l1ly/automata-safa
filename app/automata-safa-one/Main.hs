@@ -1,7 +1,9 @@
+{-# LANGUAGE BlockArguments #-}
 {-# LANGUAGE DataKinds #-}
 {-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE TemplateHaskell #-}
 {-# LANGUAGE TypeApplications #-}
 {-# LANGUAGE TypeFamilies #-}
 {-# LANGUAGE TypeOperators #-}
@@ -17,13 +19,17 @@ import qualified Afa.Lib as Lib
 import qualified Afa.Separate as Separ
 import Afa.States
 import Afa.Term
+import Control.Monad.Free
 import Data.Fix
+import Data.Function.Syntax ((.:))
 import qualified Data.Text as T
 import qualified Data.Text.IO as TIO
+import Data.Traversable
 import InversionOfControl.Lift
 import InversionOfControl.MonadFn
 import InversionOfControl.TypeDict
 import System.Environment
+import System.IO
 
 data EmptyO
 type instance Definition EmptyO = End
@@ -104,6 +110,20 @@ qdnf = do
   qs3 <- Separ.unseparate @TextIORefO qs2
   PrettyStranger.format @TextIORefO (init, final, qs3)
 
+qombo ::
+  forall d.
+  (d ~ Lib.QomboO TextIORefO) =>
+  [String] ->
+  ([Free (Term $q $v) $r] -> Free (Term $q $v) $r) ->
+  IO ()
+qombo paths fn = do
+  afas <- for paths \path -> do
+    f <- openFile path ReadMode
+    txt <- TIO.hGetContents f
+    PrettyStranger.parse @TextIORefO (PrettyStranger.parseDefinitions txt)
+  afa' <- Lib.qombo @TextIORefO fn afas
+  PrettyStranger.format @(Lib.QomboO TextIORefO) afa'
+
 main :: IO ()
 main = do
   args <- getArgs
@@ -117,3 +137,7 @@ main = do
     ["boomSeparate"] -> boomSeparate
     ["isSeparated"] -> isSeparated
     ["qdnf"] -> qdnf
+    ("and" : paths) -> qombo paths (foldr1 $ Free .: And)
+    ("or" : paths) -> qombo paths (foldr1 $ Free .: Or)
+    ("neq" : paths) -> qombo paths \[a, b, na, nb] ->
+      Free $ Or (Free $ And a nb) (Free $ And na b)

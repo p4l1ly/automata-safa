@@ -11,9 +11,14 @@ import Data.Maybe
 
 class States qs q r | qs -> q r where
   stateList :: qs -> [(q, r)]
+
   transition :: qs -> q -> r
   default transition :: Eq q => qs -> q -> r
   transition qs q = fromJust $ lookup q $ stateList qs
+
+  stateCount :: qs -> Int
+  default stateCount :: qs -> Int
+  stateCount = length . stateList
 
 class RTraversable qs r r' qs' | qs -> r, qs r' -> qs' where
   traverseR :: Applicative m => (r -> m r') -> qs -> m qs'
