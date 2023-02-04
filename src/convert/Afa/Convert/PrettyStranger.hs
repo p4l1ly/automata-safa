@@ -287,14 +287,14 @@ formatFormula = do
 
   return (R.runRecur @[g1|rec|] algebra, readIORef stack)
 
-format ::
+print ::
   forall d q v r d1 qs.
   ( Term q v r ~ [g|term|]
   , ToConstraint (FormatFormulaD d)
   , States qs q r
   ) =>
   (r, r, qs) -> IO ()
-format (init, final, qs) = do
+print (init, final, qs) = do
   (runConvert, getShared) <- formatFormula @d
 
   runConvert \convert -> do

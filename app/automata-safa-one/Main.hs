@@ -48,42 +48,42 @@ prettyToPretty :: IO ()
 prettyToPretty = do
   txt <- TIO.getContents
   afa <- PrettyStranger.parse @TextIORefO (PrettyStranger.parseDefinitions txt)
-  PrettyStranger.format @TextIORefO afa
+  PrettyStranger.print @TextIORefO afa
 
 removeSingleInit :: IO ()
 removeSingleInit = do
   txt <- TIO.getContents
   afa <- PrettyStranger.parse @TextIORefO (PrettyStranger.parseDefinitions txt)
   afa' <- Lib.removeSingleInit @TextIORefO afa
-  PrettyStranger.format @TextIORefO afa'
+  PrettyStranger.print @TextIORefO afa'
 
 addInit :: IO ()
 addInit = do
   txt <- TIO.getContents
   afa <- PrettyStranger.parse @TextIORefO (PrettyStranger.parseDefinitions txt)
   afa' <- Lib.addInit @TextIORefO afa
-  PrettyStranger.format @(Lib.AddInitO TextIORefO) afa'
+  PrettyStranger.print @(Lib.AddInitO TextIORefO) afa'
 
 complement :: IO ()
 complement = do
   txt <- TIO.getContents
   afa <- PrettyStranger.parse @TextIORefO (PrettyStranger.parseDefinitions txt)
   Just afa' <- Lib.complement @TextIORefO afa
-  PrettyStranger.format @TextIORefO afa'
+  PrettyStranger.print @TextIORefO afa'
 
 unshare :: IO ()
 unshare = do
   txt <- TIO.getContents
   afa <- PrettyStranger.parse @TextIORefO (PrettyStranger.parseDefinitions txt)
   afa' <- Lib.unshare @TextIORefO afa
-  PrettyStranger.format @TextIORefO afa'
+  PrettyStranger.print @TextIORefO afa'
 
 initToDnf :: IO ()
 initToDnf = do
   txt <- TIO.getContents
   (init, final, qs) <- PrettyStranger.parse @TextIORefO (PrettyStranger.parseDefinitions txt)
   init' <- Lib.singleToDnf @TextIORefO init
-  PrettyStranger.format @TextIORefO (init', final, qs)
+  PrettyStranger.print @TextIORefO (init', final, qs)
 
 boomSeparate :: IO ()
 boomSeparate = do
@@ -91,7 +91,7 @@ boomSeparate = do
   (init, final, qs) <- PrettyStranger.parse @TextIORefO (PrettyStranger.parseDefinitions txt)
   qs1 <- Separ.boomSeparate @TextIORefO qs
   qs2 <- Separ.unseparate @TextIORefO qs1
-  PrettyStranger.format @TextIORefO (init, final, qs2)
+  PrettyStranger.print @TextIORefO (init, final, qs2)
 
 isSeparated :: IO ()
 isSeparated = do
@@ -108,7 +108,7 @@ qdnf = do
   Just qs1 <- Separ.trySeparate @TextIORefO qs
   qs2 <- Lib.qdnf @TextIORefO qs1
   qs3 <- Separ.unseparate @TextIORefO qs2
-  PrettyStranger.format @TextIORefO (init, final, qs3)
+  PrettyStranger.print @TextIORefO (init, final, qs3)
 
 qombo ::
   forall d.
@@ -122,7 +122,7 @@ qombo paths fn = do
     txt <- TIO.hGetContents f
     PrettyStranger.parse @TextIORefO (PrettyStranger.parseDefinitions txt)
   afa' <- Lib.qombo @TextIORefO fn afas
-  PrettyStranger.format @(Lib.QomboO TextIORefO) afa'
+  PrettyStranger.print @(Lib.QomboO TextIORefO) afa'
 
 main :: IO ()
 main = do
