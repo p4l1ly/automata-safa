@@ -28,7 +28,8 @@ import Afa.Term
 import Data.Fix
 import Control.Monad.Free
 import Control.Monad
-import Afa.States
+import Afa.States hiding (Q)
+import qualified Afa.States as Qs
 import Data.Bifunctor
 import Control.Monad.Trans
 import Data.Hashable
@@ -44,6 +45,7 @@ import Data.Maybe
 import Afa.Build
 import Data.Traversable
 import Data.Array
+import Control.Lens (itraverse)
 
 -- RemoveSingleInit --------------------------------------------------------------------
 
@@ -52,18 +54,18 @@ type instance Definition (RemoveSingleInitA d) =
   Name "deref" (Inherit (Explicit $r [g|term|]) [k|deref|])
     :+: End
 
-data RemoveSingleInitI d d1 (m :: * -> *) q v r
-type instance Definition (RemoveSingleInitI d d1 m q v r) =
-  Name "all" (d1 ~ RemoveSingleInitA d, MonadFn [g1|deref|] m, Term q v r ~ [g|term|])
-    :+: End
+type RemoveSingleInitI d d1 m =
+  ( d1 ~ RemoveSingleInitA d
+  , MonadFn [g1|deref|] m
+  , Term $q $v $r ~ [g|term|]
+  , States $qs $q $r
+  )
 
 removeSingleInit ::
-  forall d m d1 q v r qs.
-  ( ToConstraint (Follow (RemoveSingleInitI d d1 m q v r))
-  , States qs q r
-  ) =>
-  (r, r, qs) ->
-  m (r, r, qs)
+  forall d m d1.
+  RemoveSingleInitI d d1 m =>
+  ($r, $r, $qs) ->
+  m ($r, $r, $qs)
 removeSingleInit afa@(init, final, qs) = do
   monadfn @[g1|deref|] init >>= \case
     (State q :: Term q v r) -> return (transition qs q, final, qs)
@@ -71,54 +73,64 @@ removeSingleInit afa@(init, final, qs) = do
 
 -- AddInitState ------------------------------------------------------------------------
 
-data AddInitQ q = AddInitInit | AddInitOther !q deriving (Eq, Show)
-data AddInitQs qs r = AddInitQs qs r deriving (Eq, Show)
+data AddOneQ q = AddedQ | OriginalQ !q deriving (Eq, Show)
+data AddOneQs qs = AddOneQs qs (R qs)
 
-instance States qs q r => States (AddInitQs qs r) (AddInitQ q) r where
-  stateList (AddInitQs qs r) =
-    (AddInitInit, r) : map (first AddInitOther) (stateList qs)
-  transition (AddInitQs qs r) AddInitInit = r
-  transition (AddInitQs qs r) (AddInitOther q) = transition qs q
+instance States qs q r => States (AddOneQs qs) (AddOneQ q) r where
+  stateList (AddOneQs qs r) =
+    (AddedQ, r) : map (first OriginalQ) (stateList qs)
+  transition (AddOneQs qs r) AddedQ = r
+  transition (AddOneQs qs r) (OriginalQ q) = transition qs q
+  redirect (AddOneQs qs r) redirs =
+    AddOneQs
+      (redirect qs $ map (\(OriginalQ q, r) -> (q, r)) otherRedirs)
+      (case initRedirs of [] -> r; _ -> snd $ last initRedirs)
+    where
+      (initRedirs, otherRedirs) =
+        partition (\case (AddedQ, _) -> True; _ -> False) redirs
 
-instance RTraversable qs r r' qs' =>
-  RTraversable (AddInitQs qs r) r r' (AddInitQs qs' r') where
-  traverseR f (AddInitQs qs r) = AddInitQs <$> traverseR f qs <*> f r
+type instance RTraversed (AddOneQs qs) r' = AddOneQs (RTraversed qs r')
+type instance R (AddOneQs qs) = R qs
+type instance Qs.Q (AddOneQs qs) = AddOneQ (Qs.Q qs)
+instance RTraversable qs q r r' qs' =>
+  RTraversable (AddOneQs qs) (AddOneQ q) r r' (AddOneQs qs') where
+  traverseQR f (AddOneQs qs r) =
+    AddOneQs <$> traverseQR (f . OriginalQ) qs <*> f AddedQ r
 
 data AddInitO d
 type instance Definition (AddInitO d) =
-  Name "term" (Term (AddInitQ $q) $v (Get "r'" (Follow (AddInitA d)))) :+: Follow d
+  Name "term" (Term (AddOneQ $q) $v (GetF "r'" (AddInitA d)))
+    :+: Name "qs" (AddOneQs (RTraversed $qs $rSelf))
+    :+: Follow d
 
 data AddInitA d
 type instance Definition (AddInitA d) =
-  Name "r'" (Creation ([g|mapRecFunR'|] $r '[Q]) ($q -> AddInitQ $q))
-    :+: Name "term'" (Term (AddInitQ $q) $v [gs|r'|])
+  Name "mapF" ($q -> AddOneQ $q)
+    :+: Name "r'" (Creation ([g|mapRecFunR'|] $r '[Q]) [gs|mapF|])
+    :+: Name "term'" (Term (AddOneQ $q) $v [gs|r'|])
     :+: Name "build" (Inherit (Explicit [gs|term'|] [gs|r'|]) [k|build|])
     :+: Name "deref" (Inherit (Explicit [gs|r'|] [gs|term'|]) [k|deref|])
     :+: Name "mapK" ([g|mapRecFun|] '[Q] :: *)
-    :+: Name "mapF" ($q -> AddInitQ $q)
     :+: Name "map" (MR.Explicit [k|mapRec|] $r [gs|r'|] (Creation [gs|mapK|] [gs|mapF|]))
+    :+: Name "qs'" (RTraversed $qs [gs|r'|])
     :+: End
 
-data AddInitI d d1 (m :: * -> *)
-type instance Definition (AddInitI d d1 m) =
-  Name "all"
-    ( d1 ~ AddInitA d
-    , MonadFn [g1|build|] m
-    , MonadFn [g1|deref|] m
-    , Create [g1|mapK|] [g1|mapF|]
-    , MR.Recur [g1|map|] m
-    , Term $q $v $r ~ [g|term|]
-    )
-    :+: End
+type AddInitI d d1 m =
+  ( d1 ~ AddInitA d
+  , MonadFn [g1|build|] m
+  , MonadFn [g1|deref|] m
+  , Create [g1|mapK|] [g1|mapF|]
+  , MR.Recur [g1|map|] m
+  , Term $q $v $r ~ [g|term|]
+  , RTraversable $qs $q $r [g1|r'|] [g1|qs'|]
+  )
 addInit ::
-  forall d m d1 qs qs'.
-  ( ToConstraint (Follow (AddInitI d d1 m))
-  , RTraversable qs $r [g1|r'|] qs'
-  ) =>
-  ($r, $r, qs) ->
-  m ([g1|r'|], [g1|r'|], AddInitQs qs' [g1|r'|])
+  forall d m d1 qs'.
+  AddInitI d d1 m =>
+  ($r, $r, $qs) ->
+  m ([g1|r'|], [g1|r'|], AddOneQs [g1|qs'|])
 addInit afa@(init, final, qs) = do
-  let mfun = create @[g1|mapK|] (AddInitOther @($q))
+  let mfun = create @[g1|mapK|] (OriginalQ @($q))
   MR.runRecur @[g1|map|] mfun \mapAddInit -> do
     init' <- mapAddInit init
     final' <- mapAddInit final
@@ -126,31 +138,27 @@ addInit afa@(init, final, qs) = do
     lift (monadfn @[g1|deref|] init') >>= \case
       State q -> do
         lfalse <- lift $ monadfn @[g1|build|] LFalse
-        return (init', final', AddInitQs qs' lfalse)
+        return (init', final', AddOneQs qs' lfalse)
       _ -> do
-        init'' <- lift $ monadfn @[g1|build|] (State AddInitInit)
+        init'' <- lift $ monadfn @[g1|build|] (State AddedQ)
         final'' <- lift $ buildFree @[g1|build|] $
           Free $ And (Free $ Not (Pure init'')) (Pure final')
-        return (init'', final'', AddInitQs qs' init')
+        return (init'', final'', AddOneQs qs' init')
 
 
 -- DeMorganAlg -------------------------------------------------------------------------
 
-data DeMorganAlgI d d1 (m :: * -> *)
-type instance Definition (DeMorganAlgI d d1 m) =
-  Name "all"
-    ( d1 ~ BuildShareSharedTermO d
-    , BuildShareSharedD d1 m
-    , Term $q $v $r ~ [g|term|]
-    )
-    :+: End
+type DeMorganAlgI d d1 m =
+  ( d1 ~ BuildShareSharedTermO d
+  , BuildShareSharedD d1 m
+  , Term $q $v $r ~ [g|term|]
+  )
 
-type DeMorganAlgD d (m :: * -> *) =
-  ToConstraint (Follow (DeMorganAlgI d (BuildShareSharedTermO d) m))
+type DeMorganAlgD d (m :: * -> *) = DeMorganAlgI d (BuildShareSharedTermO d) m
 
 deMorganAlg ::
   forall d m d1.
-  (ToConstraint (Follow (DeMorganAlgI d d1 m))) =>
+  DeMorganAlgI d d1 m =>
   ($r -> m $r) -> ($r, Term $q $v $r) -> m $r
 deMorganAlg rec (r0, term) = case term of
   LTrue -> buildShareShared @d1 r0 LFalse
@@ -170,20 +178,23 @@ type instance Definition (ComplementA d) =
     :+: Name "build" (Inherit (Explicit [g|term|] $r) [k|build|])
     :+: End
 
-complement ::
-  forall d d1 qs m.
+type ComplementI d d1 m =
   ( d1 ~ ComplementA d
   , DeMorganAlgD d m
   , R.Recur [g1|rec|] $r m
-  , States qs $q $r
-  , RTraversable qs $r $r qs
+  , States $qs $q $r
+  , RTraversable $qs $q $r $r $qs
   , SplitFinalsD d m
   , Hashable $q
   , MonadFn [g1|build|] m
   , Show $q
-  ) =>
-  ($r, $r, qs) ->
-  m (Maybe ($r, $r, qs))
+  )
+
+complement ::
+  forall d d1 m.
+  ComplementI d d1 m =>
+  ($r, $r, $qs) ->
+  m (Maybe ($r, $r, $qs))
 complement (init, final, qs) = do
   (init', qs') <- R.runRecur @[g1|rec|] (deMorganAlg @(LiftUp d)) \deMorgan -> do
       (,) <$> deMorgan init <*> traverseR deMorgan qs
@@ -205,24 +216,21 @@ type instance Definition (SplitFinalsA d) =
     :+: Name "rec" (R.Explicit [k|rcata|] Zero $r ($r, [g|term|]))
     :+: End
 
-data SplitFinalsI d d1 d2 (m :: * -> *)
-type instance Definition (SplitFinalsI d d1 d2 m) =
-  Name "all"
-    ( d2 ~ BuildShareSharedTermO d
-    , BuildShareSharedD d2 m
-    , d1 ~ SplitFinalsA d
-    , Term $q $v $r ~ [g|term|]
-    , MonadFn [g1|deref|] m
-    , R.Recur [g1|rec|] ((Any, Endo [$q]), Maybe $r) m
-    )
-    :+: End
+type SplitFinalsI d d1 d2 m =
+  ( d2 ~ BuildShareSharedTermO d
+  , BuildShareSharedD d2 m
+  , d1 ~ SplitFinalsA d
+  , Term $q $v $r ~ [g|term|]
+  , MonadFn [g1|deref|] m
+  , R.Recur [g1|rec|] ((Any, Endo [$q]), Maybe $r) m
+  )
 
 type SplitFinalsD d m =
-  ToConstraint (Follow (SplitFinalsI d (SplitFinalsA d) (BuildShareSharedTermO d) m))
+  SplitFinalsI d (SplitFinalsA d) (BuildShareSharedTermO d) m
 
 splitFinals ::
   forall d m d1 d2.
-  ToConstraint (Follow (SplitFinalsI d d1 d2 m)) =>
+  SplitFinalsI d d1 d2 m =>
   $r -> m ([$q], Maybe $r)
 splitFinals final =
   R.runRecur @[g1|rec|] alg \rec -> do
@@ -258,14 +266,16 @@ type instance Definition (UnshareA d) =
     :+: Name "rec" (R.Explicit [k|cata|] Zero $r [g|term|])
     :+: End
 
-unshare :: forall d d1 m qs.
+type UnshareI d d1 m =
   ( d1 ~ UnshareA d
   , Term $q $v $r ~ [g|term|]
   , MonadFn [g1|build|] m
   , R.Recur [g1|rec|] $r m
-  , RTraversable qs $r $r qs
-  ) =>
-  ($r, $r, qs) -> m ($r, $r, qs)
+  , RTraversable $qs $q $r $r $qs
+  )
+
+unshare :: forall d d1 m.
+  UnshareI d d1 m => ($r, $r, $qs) -> m ($r, $r, $qs)
 unshare (init, final, qs) = do
   R.runRecur @[g1|rec|]
     (\rec t -> lift . monadfn @[g1|build|] =<< traverse rec t)
@@ -381,9 +391,9 @@ type QDnfI d d1 m =
   )
 
 qdnf ::
-  forall d m d1 qs.
-  (QDnfI d d1 m, RTraversable qs [($r, $r)] [($r, $r)] qs) =>
-  qs -> m qs
+  forall d m d1.
+  (QDnfI d d1 m, RTraversable $qs $q [($r, $r)] [($r, $r)] $qs) =>
+  $qs -> m $qs
 qdnf qs = do
   R.runRecur @[g1|rec|] (qdnfAlg @(LiftUp d)) \rec ->
     flip traverseR qs \aqs ->
@@ -398,20 +408,35 @@ qdnf qs = do
 
 data QomboQ q = QomboQ !Int !q deriving (Eq, Show)
 newtype QomboQs qs = QomboQs (Array Int qs)
+type instance RTraversed (QomboQs qs) r' = QomboQs (RTraversed qs r')
+type instance R (QomboQs qs) = R qs
+type instance Qs.Q (QomboQs qs) = QomboQ (Qs.Q qs)
 
 instance States qs q r => States (QomboQs qs) (QomboQ q) r where
   stateList (QomboQs qss) = concat $ assocs qss <&> \(i, qs :: qs) ->
     stateList qs <&> first (QomboQ i)
   transition (QomboQs qss) (QomboQ i q) = transition (qss ! i) q
   stateCount (QomboQs qss) = sum $ stateCount <$> qss
+  redirect (QomboQs qss) redirs = QomboQs $
+    listArray (bounds qss) $
+      zipWith
+        (\qs redir -> redirect qs (redir []))
+        (elems qss)
+        (elems partitionedRedirs)
+    where
+      partitionedRedirs = accumArray (.) id (bounds qss) $
+        redirs <&> \(QomboQ i q, r) -> (i, ((q, r) :))
 
-instance RTraversable qs r r' qs' =>
-  RTraversable (QomboQs qs) r r' (QomboQs qs') where
-  traverseR fn (QomboQs qss) = QomboQs <$> traverse (traverseR fn) qss
+instance RTraversable qs q r r' qs' =>
+  RTraversable (QomboQs qs) (QomboQ q) r r' (QomboQs qs') where
+  traverseQR fn (QomboQs qss) =
+    QomboQs <$> itraverse (\i -> traverseQR (fn . QomboQ i)) qss
 
 data QomboO d
 type instance Definition (QomboO d) =
-  Name "term" (Get "term'" (Follow (QomboA d))) :+: Follow d
+  Name "term" (GetF "term'" (QomboA d))
+    :+: Name "qs" (QomboQs (RTraversed $qs $rSelf))
+    :+: Follow d
 
 data QomboA d
 type instance Definition (QomboA d) =  -- keyword aliases
@@ -431,14 +456,14 @@ type QomboI d d1 m =
   , Term $q $v $r ~ [g|term|]
   )
 qombo ::
-  forall d d1 m qs qs' freeTerm'.
+  forall d d1 m qs' freeTerm'.
   ( QomboI d d1 m
-  , States qs $q $r
-  , RTraversable qs $r [g1|r'|] qs'
+  , States $qs $q $r
+  , RTraversable $qs $q $r [g1|r'|] qs'
   , freeTerm' ~ Free (Term (QomboQ $q) $v) [g1|r'|]
   ) =>
   ([freeTerm'] -> freeTerm') ->
-  [($r, $r, qs)] ->
+  [($r, $r, $qs)] ->
   m ([g1|r'|], [g1|r'|], QomboQs qs')
 qombo fn afas = do
   let afaCount = length afas

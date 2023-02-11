@@ -147,6 +147,7 @@ instance
     runIdentityT $ getAction recur
 
 type instance MR.Et (MR.Explicit ('K _ MapRec) _ _ _) = IdentityT
+
 instance
   (Monad m, LiftN n IO m) =>
   MR.Recur (MR.Explicit ('K n MapRec) (Ref (Term q v)) (Ref (Term q' v)) (QFun q q')) m
@@ -163,6 +164,53 @@ instance
           Not r -> Not <$> rec r
           And r1 r2 -> And <$> rec r1 <*> rec r2
           Or r1 r2 -> Or <$> rec r1 <*> rec r2
+        if isTree r
+          then return $ Subtree fr'
+          else lift $ liftn @n $ shareTree fr'
+
+instance
+  (Monad m, LiftN n IO m) =>
+  MR.Recur (MR.Explicit ('K n MapRec) (Ref (Term q v)) (Ref (Term q' v')) (QVFun q v q' v')) m
+  where
+  runRecur (QVFun qfun vfun) = do
+    R.runRecur
+      @(R.Explicit ('K n RCata) Zero (Ref (Term q v)) (Ref (Term q v), Term q v (Ref (Term q v))))
+      \rec (r, fr) -> do
+        fr' <- case fr of
+          LTrue -> return LTrue
+          LFalse -> return LFalse
+          State q -> return $ State (qfun q)
+          Var v -> return $ Var (vfun v)
+          Not r -> Not <$> rec r
+          And r1 r2 -> And <$> rec r1 <*> rec r2
+          Or r1 r2 -> Or <$> rec r1 <*> rec r2
+        if isTree r
+          then return $ Subtree fr'
+          else lift $ liftn @n $ shareTree fr'
+
+instance
+  (Monad m, LiftN n IO m) =>
+  MR.Recur
+    ( MR.Explicit
+        ('K n MapRec)
+        (Ref (Term q v))
+        (Ref (Term q v))
+        (RTra m (Ref (Term q v)) (Ref (Term q v)))
+    )
+    m
+  where
+  runRecur (RTra rtra) = do
+    R.runRecur
+      @(R.Explicit ('K n RCata) Zero (Ref (Term q v)) (Ref (Term q v), Term q v (Ref (Term q v))))
+      \rec (r, fr) -> do
+        fr' <- case fr of
+          LTrue -> return LTrue
+          LFalse -> return LFalse
+          State q -> return $ State q
+          Var v -> return $ Var v
+          Not r -> Not <$> (lift . rtra =<< rec r)
+          And r1 r2 -> And <$> (lift . rtra =<< rec r1) <*> (lift . rtra =<< rec r2)
+          Or r1 r2 -> Or <$> (lift . rtra =<< rec r1) <*> (lift . rtra =<< rec r2)
         if isTree r
           then return $ Subtree fr'
           else lift $ liftn @n $ shareTree fr'
@@ -200,5 +248,6 @@ type instance
       :+: Name "pcata" PCata
       :+: Name "mapRec" MapRec
       :+: Name "mapRecFun" OneshotFun
+      :+: Name "mapRecTra" OneshotTra
       :+: Name "mapRecFunR'" FunR'
       :+: Follow cont

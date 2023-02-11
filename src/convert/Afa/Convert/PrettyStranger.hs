@@ -87,6 +87,8 @@ type instance Definition (ParseI d d1 r) =
     )
     :+: End
 
+type Qs r = StateHashMap T.Text r
+
 parse ::
   forall d r d1.
   (ToConstraint (Follow (ParseI d d1 r))) =>

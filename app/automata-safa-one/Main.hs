@@ -1,6 +1,7 @@
 {-# LANGUAGE BlockArguments #-}
 {-# LANGUAGE DataKinds #-}
 {-# LANGUAGE LambdaCase #-}
+{-# LANGUAGE QuasiQuotes #-}
 {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TemplateHaskell #-}
@@ -12,10 +13,12 @@
 
 module Main where
 
+import Afa.Build
 import qualified Afa.Convert.PrettyStranger as PrettyStranger
 import qualified Afa.Delit as Delit
 import qualified Afa.IORef as AIO
 import qualified Afa.Lib as Lib
+import qualified Afa.RemoveFinals as RmF
 import qualified Afa.Separate as Separ
 import Afa.States
 import Afa.Term
@@ -37,12 +40,12 @@ type instance Definition EmptyO = End
 data TextIORefO
 type instance
   Definition TextIORefO =
-    Name "term" TextIORef_Term
+    Name "qs" (PrettyStranger.Qs TextIORef_Ref)
+      :+: Name "term" TextIORef_Term
       :+: Follow (Delit.IORefDelitO AIO.IORefO EmptyO)
 
 type TextIORef_Ref = AIO.Ref (Term T.Text T.Text)
 type TextIORef_Term = Term T.Text T.Text TextIORef_Ref
-type TextIORefO_Build = 'K Zero (Explicit TextIORef_Term TextIORef_Ref (Get "build" (Follow TextIORefO)))
 
 prettyToPretty :: IO ()
 prettyToPretty = do
@@ -106,7 +109,7 @@ qdnf = do
   txt <- TIO.getContents
   (init, final, qs) <- PrettyStranger.parse @TextIORefO (PrettyStranger.parseDefinitions txt)
   Just qs1 <- Separ.trySeparate @TextIORefO qs
-  qs2 <- Lib.qdnf @TextIORefO qs1
+  qs2 <- Lib.qdnf @(Separ.SeparateO TextIORefO) qs1
   qs3 <- Separ.unseparate @TextIORefO qs2
   PrettyStranger.print @TextIORefO (init, final, qs3)
 
@@ -122,7 +125,22 @@ qombo paths fn = do
     txt <- TIO.hGetContents f
     PrettyStranger.parse @TextIORefO (PrettyStranger.parseDefinitions txt)
   afa' <- Lib.qombo @TextIORefO fn afas
-  PrettyStranger.print @(Lib.QomboO TextIORefO) afa'
+  PrettyStranger.print @d afa'
+
+removeFinals ::
+  forall d build.
+  ( d ~ RmF.RemoveFinalsO TextIORefO
+  , build ~ Inherit (Explicit [g|term|] $r) [k|build|]
+  ) =>
+  IO ()
+removeFinals = do
+  txt <- TIO.getContents
+  afa <- PrettyStranger.parse @TextIORefO (PrettyStranger.parseDefinitions txt)
+  (init1, qs1) <- RmF.removeFinals @TextIORefO afa
+  final1 <-
+    buildFix @build $
+      foldr (Fix .: And . Fix . Not . Fix . State . fst) (Fix LTrue) (stateList qs1)
+  PrettyStranger.print @d (init1, final1, qs1)
 
 main :: IO ()
 main = do
@@ -136,8 +154,9 @@ main = do
     ["initToDnf"] -> initToDnf
     ["boomSeparate"] -> boomSeparate
     ["isSeparated"] -> isSeparated
-    ["qdnf"] -> qdnf
+    -- ["qdnf"] -> qdnf
     ("and" : paths) -> qombo paths (foldr1 $ Free .: And)
     ("or" : paths) -> qombo paths (foldr1 $ Free .: Or)
     ("neq" : paths) -> qombo paths \[a, b, na, nb] ->
       Free $ Or (Free $ And a nb) (Free $ And na b)
+    ["removeFinals"] -> removeFinals

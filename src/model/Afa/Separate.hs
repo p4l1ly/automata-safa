@@ -101,6 +101,11 @@ data Fail
 instance Monad m => MonadFn0 (Explicit e a Fail) (ExceptT e m) where
   monadfn0 = throwError
 
+data SeparateO d
+type instance Definition (SeparateO d) =
+  Name "qs" (RTraversed $qs [($r, $r)])
+    :+: Follow d
+
 data TrySeparateA d
 type instance Definition (TrySeparateA d) =
   Name "rec" (R.Explicit (Inc [k|rcata|]) Zero $r ($r, [g|term|]))
@@ -123,7 +128,7 @@ type TrySeparateD d m = TrySeparateI d (TrySeparateA d) m
 trySeparate ::
   forall d d1 m qs qs'.
   ( TrySeparateI d d1 m
-  , RTraversable qs $r [($r, $r)] qs'
+  , RTraversable qs $q $r [($r, $r)] qs'
   ) =>
   qs -> m (Maybe qs')
 trySeparate qs = do
@@ -271,7 +276,7 @@ type BoomSeparateD d m = BoomSeparateI d (BoomSeparateA d) m
 boomSeparate ::
   forall d d1 m qs qs'.
   ( BoomSeparateI d d1 m
-  , RTraversable qs $r [($r, $r)] qs'
+  , RTraversable qs $q $r [($r, $r)] qs'
   ) =>
   qs -> m qs'
 boomSeparate qs = do
@@ -292,7 +297,7 @@ type UnseparateI d d1 m =
 unseparate ::
   forall d d1 m qs qs'.
   ( UnseparateI d d1 m
-  , RTraversable qs [($r, $r)] $r qs'
+  , RTraversable qs $q [($r, $r)] $r qs'
   , Term $q $v $r ~ [g|term|]
   ) =>
   qs -> m qs'

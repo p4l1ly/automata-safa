@@ -18,6 +18,12 @@ module Afa.Term (
   q,
   v,
   r,
+  q1,
+  v1,
+  r1,
+  qSelf,
+  vSelf,
+  rSelf,
   QVFun (..),
   QFun (..),
   RTra (..),
@@ -32,6 +38,8 @@ module Afa.Term (
   Ctx0,
   OneshotFunInput,
   FunSelector,
+  (:&:) ((:&:)),
+  TermParam,
 ) where
 
 import Data.Functor.Classes (Eq1, Show1)
@@ -58,29 +66,51 @@ data Term q v r
   deriving (Functor, Foldable, Traversable, Show, Eq, Generic, Generic1)
   deriving (Eq1, Show1) via (Generically1 (Term q v))
 
-type family Param (sel :: QVR) (t :: *) :: * where
-  Param Q (Term q v r) = q
-  Param V (Term q v r) = v
-  Param R (Term q v r) = r
+type family TermParam (sel :: QVR) (t :: *) :: * where
+  TermParam Q (Term q v r) = q
+  TermParam V (Term q v r) = v
+  TermParam R (Term q v r) = r
 
-paramGetter :: Name -> TypeQ
-paramGetter x = do
-  d <- lookupTypeName "d"
+paramGetter :: String -> Name -> TypeQ
+paramGetter dname x = do
+  d <- lookupTypeName dname
   case d of
     Just d ->
       return $
         let followD = AppT (ConT ''Follow) (VarT d)
             getTerm = AppT (AppT (ConT ''Get) (LitT (StrTyLit "term")))
-            param = AppT (AppT (ConT ''Param) (ConT x))
+            param = AppT (AppT (ConT ''TermParam) (ConT x))
          in param (getTerm followD)
     Nothing -> error "paramGetter: type d not in scope"
 
 q :: TypeQ
 v :: TypeQ
 r :: TypeQ
-q = paramGetter 'Q
-v = paramGetter 'V
-r = paramGetter 'R
+q = paramGetter "d" 'Q
+v = paramGetter "d" 'V
+r = paramGetter "d" 'R
+
+q1 :: TypeQ
+v1 :: TypeQ
+r1 :: TypeQ
+q1 = paramGetter "d1" 'Q
+v1 = paramGetter "d1" 'V
+r1 = paramGetter "d1" 'R
+
+paramGetterSelf :: Name -> TypeQ
+paramGetterSelf x = do
+  return $
+    let followD = AppT (ConT ''Follow) (ConT ''Self)
+        getTerm = AppT (AppT (ConT ''Get) (LitT (StrTyLit "term")))
+        param = AppT (AppT (ConT ''TermParam) (ConT x))
+     in param (getTerm followD)
+
+qSelf :: TypeQ
+vSelf :: TypeQ
+rSelf :: TypeQ
+qSelf = paramGetterSelf 'Q
+vSelf = paramGetterSelf 'V
+rSelf = paramGetterSelf 'R
 
 data QVR = Q | V | R
 
