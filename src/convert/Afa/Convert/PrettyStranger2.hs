@@ -170,9 +170,20 @@ orize defs =
   ( foldr (Free .: Or) (Free LFalse) $ init `appEndo` []
   , foldr (Free .: Or) (Free LFalse) $ final `appEndo` []
   , HM.fromListWith (Free .: Or) $ formulae `appEndo` []
-  , HM.fromListWith (Free .: Or) $ states `appEndo` []
+  , HM.fromListWith (Free .: Or) $ states `appEndo` allStates
   )
   where
+    getStates (Free LTrue) = mempty
+    getStates (Free LFalse) = mempty
+    getStates (Free (Var _)) = mempty
+    getStates (Free (State q)) = Endo ((q, Free LFalse) :)
+    getStates (Free (Not x)) = getStates x
+    getStates (Free (And x y)) = getStates x <> getStates y
+    getStates (Free (Or x y)) = getStates x <> getStates y
+    getStates (Pure _) = mempty
+
+    allStates = foldMap (getStates . dterm) defs `appEndo` []
+
     (init, final, states, formulae) = execWriter $
       for defs $ \case
         DFormula name dterm -> tell (mempty, mempty, mempty, Endo ((name, dterm) :))

@@ -870,10 +870,7 @@ prettyToAfasat :: IO ()
 prettyToAfasat = do
   txt <- TIO.getContents
   let afa = PrettyStranger.parseAfa txt
-  case simplifyAll afa of -- Afasat needs deLit and deUnary.
-    Left solved -> hPutStrLn stderr ("solved " ++ show solved)
-    Right afa' -> do
-      hWriteCnfAfa (tseytin' $ reorderStates' afa') stdout
+  hWriteCnfAfa (tseytin' $ reorderStates' afa) stdout
 
 prettyToDot :: IO ()
 prettyToDot = do
