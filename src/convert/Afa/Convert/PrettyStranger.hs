@@ -172,7 +172,18 @@ enumerate defs =
 
     orFormulaeHM = HM.fromListWith (Fix .: SOr) formulae
     orFormulae = HM.toList orFormulaeHM
-    orStates = HM.toList $ HM.fromListWith (Fix .: SOr) states
+    orStates = HM.toList $ HM.fromListWith (Fix .: SOr) (states ++ allStates)
+
+    getStates (Fix STrue) = mempty
+    getStates (Fix SFalse) = mempty
+    getStates (Fix (SVar _)) = mempty
+    getStates (Fix (SState q)) = Endo ((q, Fix SFalse) :)
+    getStates (Fix (SNot x)) = getStates x
+    getStates (Fix (SAnd x y)) = getStates x <> getStates y
+    getStates (Fix (SOr x y)) = getStates x <> getStates y
+    getStates (Fix (SFormula _)) = mempty
+
+    allStates = foldMap (getStates . dterm) defs `appEndo` []
 
     (fNameToIx, _) = flip execState (HM.empty, 0) $ for orFormulae $ fRec . fst
       where

@@ -73,12 +73,14 @@ btermTseytin stateCount = \case
     newClause $ Lit ix False : NE.toList lits
     newClauses $ map ((: [Lit ix True]) . (\(Lit i b) -> Lit i $ not b)) $ NE.toList lits
     return $ Lit ix True
-  BTerm.LFalse ->
-    error
-      "Tseytin does not support LFalse, please simplify the AFA"
-  BTerm.LTrue ->
-    error
-      "Tseytin does not support LFalse, please simplify the AFA"
+  BTerm.LFalse -> do
+    ix <- newSignal
+    newClause $ [Lit ix False]
+    return $ Lit ix True
+  BTerm.LTrue -> do
+    ix <- newSignal
+    newClause $ [Lit ix True]
+    return $ Lit ix True
 
 mtermTseytin :: Monad m => Array Int Lit -> MTerm.Term Int Int Lit -> CountLog [Lit] m Lit
 mtermTseytin bIxMap = \case
@@ -94,9 +96,10 @@ mtermTseytin bIxMap = \case
     newClause $ Lit ix False : NE.toList lits
     newClauses $ map ((: [Lit ix True]) . (\(Lit i b) -> Lit i $ not b)) $ NE.toList lits
     return $ Lit ix True
-  MTerm.LTrue ->
-    error
-      "Tseytin does not support LFalse, please simplify the AFA"
+  MTerm.LTrue -> do
+    ix <- newSignal
+    newClause $ [Lit ix True]
+    return $ Lit ix True
 
 newtype CountLog x m a = CountLog (StateT Int (WriterT (Endo [x]) m) a)
   deriving (Functor, Applicative, Monad)
