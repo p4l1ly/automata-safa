@@ -45,6 +45,7 @@ RUN \
   download p4l1ly JAltImpact db157709c2c85142b95b95862c8145262c100109 && \
   download jurajsic symbolicautomata 0150d2f8adf509ff48fe8f47fcd19f135582df17 && \
   download jurajsic afaminisat 41288a30262223dbb0a50035e8c51da0ef6b7786 && \
+  download jurajsic emptiness-brics 94cdb95f8ee95b0b524c6b6041d693e0b77e6ce5 && \
   rm /tmp/download.zip && \
   mkdir automata-safa
 
@@ -67,6 +68,10 @@ RUN \
   svn export -r95 https://github.com/lorisdanto/automatark/trunk/Parsers && \
   svn export -r95 https://github.com/lorisdanto/automatark/trunk/pom.xml && \
   cd .. && mvn package
+
+RUN \
+  cd emptiness-brics && \
+  svn package
 
 ADD automata-safa.cabal Cargo.lock Cargo.toml CHANGELOG.md LICENSE Setup.hs automata-safa/
 ADD app/ automata-safa/app/
