@@ -9,7 +9,7 @@ fi
 
 INPUT_DIR_ABS_PATH=$(echo "$(cd "$(dirname "$1")" && pwd)/$(basename "$1")")
 
-INPUTS=$(find "$INPUT_DIR_ABS_PATH" -type f -name "*.emp")
+INPUTS=$(find "$INPUT_DIR_ABS_PATH" -type f -name "result_orig.emp")
 
 # mkdir createdemps
 # cd createdemps
@@ -19,12 +19,13 @@ let NUM_OF_INPUTS=TMP
 let j=1
 echo $INPUTS | while read -r i; do
 	echo "Processing $j/$NUM_OF_INPUTS: ${i}"
-	RELATIVE_PATH=${i#"$INPUT_DIR_ABS_PATH"/}
-  RELATIVE_PATH=${RELATIVE_PATH%????}
-  # echo $RELATIVE_PATH
-	mkdir -p "$RELATIVE_PATH"
+	# RELATIVE_PATH=${i#"$INPUT_DIR_ABS_PATH"/}
+  # RELATIVE_PATH=${RELATIVE_PATH%????}
+  # # echo $RELATIVE_PATH
+	# mkdir -p "$RELATIVE_PATH"
+  DIR_I=$(dirname "$i")
   CUR_DIR="$(pwd)"
-  zsh $CONVERT_ONE_EMP "$RELATIVE_PATH" <$i
+  zsh $CONVERT_ONE_EMP "$DIR_I" <$i
   cd $CUR_DIR
 	let j++
 done
