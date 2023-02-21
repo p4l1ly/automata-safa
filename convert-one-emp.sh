@@ -31,21 +31,9 @@ while IFS= read -r line; do
 
     echo "load_automaton $name" >> "$WORKDIR/result.emp"
 
-    if [ -z "$regex" ]; then
-      echo "@kInitialFormula: s0
-@kFinalFormula: !s0
-@s0: kFalse" > $GEN_AUT_DIR/$name.afa
-    else 
-      # cd $DANTONI
-      # zsh runtutor <<< "$regex" >>$LOGFILE 2>&1
-      # cd -
-      # cp $DANTONI/regexNfas/0 $GEN_AUT_DIR/$name.range16nfa 2>>$LOGFILE
-      java -jar $BRICSREG $GEN_AUT_DIR/$name.range16nfa <<< "$regex" >>$LOGFILE 2>&1
-      $LTLE_TO_AFA range16ToPretty < $GEN_AUT_DIR/$name.range16nfa > $GEN_AUT_DIR/$name.afa 2>>$LOGFILE
-      # echo "@NFA-intervals" > $GEN_AUT_DIR/$name-ranges.mata
-      # echo "%Alphabet chars" >> $GEN_AUT_DIR/$name-ranges.mata
-      # $LTLE_TO_AFA range16ToMacheteNfa < $GEN_AUT_DIR/$name.range16nfa >> $GEN_AUT_DIR/$name-ranges.mata 2>/dev/null
-    fi
+    java -jar $BRICSREG $GEN_AUT_DIR/$name.range16nfa <<< "$regex" >>$LOGFILE 2>&1
+    $LTLE_TO_AFA range16ToPretty < $GEN_AUT_DIR/$name.range16nfa > $GEN_AUT_DIR/$name.afa 2>>$LOGFILE
+    
     echo "@NFA-bits" > $GEN_AUT_DIR/$name.mata
     $LTLE_TO_AFA prettyToSeparatedMata < $GEN_AUT_DIR/$name.afa >> $GEN_AUT_DIR/$name.mata 2>>$LOGFILE
     echo "@NFA-bits" > $GEN_AUT_DIR/"$name"_mona.mata
