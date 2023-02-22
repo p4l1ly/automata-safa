@@ -32,7 +32,7 @@ fi | while read -r fAfa; do
   }
   ${Aiger:-false} && {
     echo "Transforming to .aig"
-    $LTLE_TO_AFA prettyToSmv < $f.afa | $SMVTOAIG > $f.aig
+    $LTLE_TO_AFA removeFinalsNonsep < $f.afa | $LTLE_TO_AFA prettyToSmv | $SMVTOAIG > $f.aig
   }
   ${Mona:-false} && {
     echo "Transforming to .mona"
