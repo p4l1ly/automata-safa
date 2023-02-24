@@ -1,13 +1,18 @@
 import os
 import subprocess
 import random
-from contextlib import suppress
 import sys
+import shutil
+
+if len(sys.argv) != 3:
+    print("fuck")
+    exit()
 
 visited = set()
 
-subprocess.run(["rm", "-rf", "/tmp/abcd-equals-abcde/"])
-os.mkdir("/tmp/abcd-equals-abcde")
+REGEX_AUT_DIR = "../../regexNfas/"
+
+dir_to_create_in = sys.argv[2]
 
 wanted_count = sys.argv[1]
 if wanted_count == '-':
@@ -35,15 +40,22 @@ else:
             yield [str(ix) for ix in ixs]
             count += 1
 
-
 for i, ixs in enumerate(ixs_gen()):
-    f = f"{i}-{'-'.join(ixs)}"
-    print("AFA", i, ixs, f, file=sys.stderr, flush=True)
-    subprocess.run(f"zsh abcd-equals-abcde.sh {' '.join(ixs)} > /tmp/abcd-equals-abcde/{f}.mata", shell=True)
-    subprocess.run(f"mv /tmp/abcd-equals-abcde/abcd-abcde-neq.afa /tmp/abcd-equals-abcde/{f}.afa", shell=True)
-    subprocess.run(f"mv /tmp/abcd-equals-abcde/abcd-equals-abcde.bisim /tmp/abcd-equals-abcde/{f}.bisim", shell=True)
-    subprocess.run(f"mv /tmp/abcd-equals-abcde/abcd-equals-abcde.ada /tmp/abcd-equals-abcde/{f}.ada", shell=True)
-
-subprocess.run("rm /tmp/abcd-equals-abcde/abcd.afa", shell=True)
-subprocess.run("rm /tmp/abcd-equals-abcde/abcde.afa", shell=True)
-subprocess.run("rm /tmp/abcd-equals-abcde/abcde-neg.afa", shell=True)
+    name_of_bench = '-'.join(ixs)
+    print(f"{i}: {name_of_bench}")
+    os.mkdir(name_of_bench)
+    dir_of_bench = dir_to_create_in + "/" + name_of_bench
+    emp_file_name = dir_of_bench + "/result_orig.emp"
+    gen_aut_dir = dir_of_bench + "/gen_aut/"
+    os.mkdir(gen_aut_dir)
+    ixs = [f"aut{ix}" for ix in ixs]
+    for ix in ixs:
+        for ext in [".range16nfa", ".mata", "_mona.mata", ".afa"]:
+            shutil.copyfile(REGEX_AUT_DIR + ix + ext, gen_aut_dir + ix + ext)
+    with open(emp_file_name, 'w') as emp_file:
+        for ix in ixs:
+            print(f"load_automaton {ix}", file = emp_file)
+        
+        print(f"aut75 = (inter {' '.join(ixs[:-1])})", file = emp_file)
+        print(f"aut76 = (inter {ixs[-1]} aut75)", file = emp_file)
+        print(f"incl aut76 aut75", file = emp_file)
