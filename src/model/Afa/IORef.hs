@@ -4,6 +4,7 @@
 {-# LANGUAGE DerivingVia #-}
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE FlexibleInstances #-}
+{-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE PartialTypeSignatures #-}
 {-# LANGUAGE ScopedTypeVariables #-}
@@ -17,10 +18,13 @@
 module Afa.IORef where
 
 import Afa.Term
+import Control.Arrow
 import Control.Monad.IO.Class
 import Control.Monad.Identity
 import Control.Monad.Trans
 import Data.Function.Apply
+import Data.Functor
+import Data.Functor.Compose
 import qualified Data.HashMap.Strict as HM
 import Data.Hashable
 import Data.IORef
@@ -64,6 +68,24 @@ shareTree f = do
 share :: Ref f -> IO (Ref f)
 share (Subtree f) = shareTree f
 share r = return r
+
+getSharingDetector :: (Traversable f, Hashable (f (SN f))) => IO (Ref f -> IO (Ref f))
+getSharingDetector = do
+  dbVar <- newIORef HM.empty
+  let rec r = do
+        fr <- deref r
+        fr1 <- traverse rec fr
+        let fr2 = fr1 <&> \(Ref (name, _)) -> name
+        db <- readIORef dbVar
+        (r', db') <-
+          getCompose $
+            HM.alterF -$ fr2 -$ db $
+              Compose . \case
+                Nothing -> shareTree fr1 <&> (id &&& Just)
+                Just r' -> return (r', Just r')
+        writeIORef dbVar db'
+        return r'
+  return rec
 
 instance MonadFn0 (Explicit (Ref f) Bool IsTree) IO where
   monadfn0 = return . isTree

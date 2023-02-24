@@ -181,6 +181,14 @@ delaySymbolsLowest = do
       _ -> False
   PrettyStranger.print @(Lib.DelayO TextIORefO) afa'
 
+share :: IO ()
+share = do
+  txt <- TIO.getContents
+  (init, final, qs) <- PrettyStranger.parse @TextIORefO (PrettyStranger.parseDefinitions txt)
+  shareR <- AIO.getSharingDetector
+  afa' <- (,,) <$> shareR init <*> shareR final <*> traverseR shareR qs
+  PrettyStranger.print @TextIORefO afa'
+
 main :: IO ()
 main = do
   args <- getArgs
@@ -202,3 +210,4 @@ main = do
     ["removeFinalsHind"] -> removeFinalsHind
     ["hasComplexFinals"] -> hasComplexFinals
     ["delaySymbolsLowest"] -> delaySymbolsLowest
+    ["share"] -> share

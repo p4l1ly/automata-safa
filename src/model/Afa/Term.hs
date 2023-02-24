@@ -1,5 +1,6 @@
 {-# LANGUAGE AllowAmbiguousTypes #-}
 {-# LANGUAGE DataKinds #-}
+{-# LANGUAGE DeriveAnyClass #-}
 {-# LANGUAGE DeriveGeneric #-}
 {-# LANGUAGE DeriveTraversable #-}
 {-# LANGUAGE DerivingVia #-}
@@ -43,6 +44,8 @@ module Afa.Term (
 ) where
 
 import Data.Functor.Classes (Eq1, Show1)
+import Data.Hashable
+import Data.Hashable.Lifted
 import GHC.Generics (Generic, Generic1)
 import Generic.Data (Generically1 (..))
 import Generic.Data.Orphans ()
@@ -63,7 +66,7 @@ data Term q v r
   | Not !r
   | And !r !r
   | Or !r !r
-  deriving (Functor, Foldable, Traversable, Show, Eq, Generic, Generic1)
+  deriving (Functor, Foldable, Traversable, Show, Eq, Generic, Generic1, Hashable, Hashable1)
   deriving (Eq1, Show1) via (Generically1 (Term q v))
 
 type family TermParam (sel :: QVR) (t :: *) :: * where
