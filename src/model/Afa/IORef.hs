@@ -208,12 +208,14 @@ instance
           LFalse -> return LFalse
           State q -> return $ State q
           Var v -> return $ Var v
-          Not r -> Not <$> (lift . rtra =<< rec r)
-          And r1 r2 -> And <$> (lift . rtra =<< rec r1) <*> (lift . rtra =<< rec r2)
-          Or r1 r2 -> Or <$> (lift . rtra =<< rec r1) <*> (lift . rtra =<< rec r2)
-        if isTree r
-          then return $ Subtree fr'
-          else lift $ liftn @n $ shareTree fr'
+          Not r -> Not <$> rec r
+          And r1 r2 -> And <$> rec r1 <*> rec r2
+          Or r1 r2 -> Or <$> rec r1 <*> rec r2
+        r' <-
+          if isTree r
+            then return $ Subtree fr'
+            else lift $ liftn @n $ shareTree fr'
+        lift $ rtra r'
 
 data FunR' (r :: *) (mfun :: [QVR])
 type instance

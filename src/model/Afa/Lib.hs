@@ -250,7 +250,7 @@ splitFinals final =
           (Nothing, Just complex2) -> return $ Just complex2
           (Just complex1, Nothing) -> return $ Just complex1
           (Just complex1, Just complex2)
-            | getAny (fst qs1) && getAny (fst qs2) ->
+            | getAny (fst qs1) || getAny (fst qs2) ->
                 Just <$> lift (buildShareShared @d2 r0 $ And complex1 complex2)
             | otherwise -> return $ Just r0
       LTrue -> return ((Any True, Endo id), Nothing)

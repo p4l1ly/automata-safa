@@ -142,6 +142,23 @@ removeFinals = do
       foldr (Fix .: And . Fix . Not . Fix . State . fst) (Fix LTrue) (stateList qs1)
   PrettyStranger.print @d (init1, final1, qs1)
 
+removeFinalsHind ::
+  forall d build.
+  ( d ~ RmF.RemoveFinalsHindO TextIORefO
+  , build ~ Inherit (Explicit [g|term|] $r) [k|build|]
+  ) =>
+  IO ()
+removeFinalsHind = do
+  txt <- TIO.getContents
+  (init, final, qs) <- PrettyStranger.parse @TextIORefO (PrettyStranger.parseDefinitions txt)
+  Just qs1 <- Separ.trySeparate @TextIORefO qs
+  (init2, qs2) <- RmF.removeFinalsHind @(Separ.SeparateO TextIORefO) (init, final, qs1)
+  final2 <-
+    buildFix @build $
+      foldr (Fix .: And . Fix . Not . Fix . State . fst) (Fix LTrue) (stateList qs2)
+  qs3 <- Separ.unseparate @d qs2
+  PrettyStranger.print @d (init2, final2, qs3)
+
 main :: IO ()
 main = do
   args <- getArgs
@@ -154,9 +171,10 @@ main = do
     ["initToDnf"] -> initToDnf
     ["boomSeparate"] -> boomSeparate
     ["isSeparated"] -> isSeparated
-    -- ["qdnf"] -> qdnf
+    ["qdnf"] -> qdnf
     ("and" : paths) -> qombo paths (foldr1 $ Free .: And)
     ("or" : paths) -> qombo paths (foldr1 $ Free .: Or)
     ("neq" : paths) -> qombo paths \[a, b, na, nb] ->
       Free $ Or (Free $ And a nb) (Free $ And na b)
     ["removeFinals"] -> removeFinals
+    ["removeFinalsHind"] -> removeFinalsHind
