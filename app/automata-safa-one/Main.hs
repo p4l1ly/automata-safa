@@ -32,6 +32,7 @@ import InversionOfControl.Lift
 import InversionOfControl.MonadFn
 import InversionOfControl.TypeDict
 import System.Environment
+import System.Exit
 import System.IO
 
 data EmptyO
@@ -159,6 +160,14 @@ removeFinalsHind = do
   qs3 <- Separ.unseparate @d qs2
   PrettyStranger.print @d (init2, final2, qs3)
 
+hasComplexFinals :: IO ()
+hasComplexFinals = do
+  txt <- TIO.getContents
+  (_, final, _) <- PrettyStranger.parse @TextIORefO (PrettyStranger.parseDefinitions txt)
+  Lib.splitFinals @TextIORefO final >>= \case
+    (_, Just _) -> exitSuccess
+    _ -> exitFailure
+
 main :: IO ()
 main = do
   args <- getArgs
@@ -178,3 +187,4 @@ main = do
       Free $ Or (Free $ And a nb) (Free $ And na b)
     ["removeFinals"] -> removeFinals
     ["removeFinalsHind"] -> removeFinalsHind
+    ["hasComplexFinals"] -> hasComplexFinals
