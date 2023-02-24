@@ -46,6 +46,10 @@ import Afa.Build
 import Data.Traversable
 import Data.Array
 import Control.Lens (itraverse)
+import Data.Either
+import Control.Monad.Identity
+import InversionOfControl.LiftN
+import Data.IORef
 
 -- RemoveSingleInit --------------------------------------------------------------------
 
@@ -479,3 +483,93 @@ qombo fn afas = do
   init' <- buildFree @[g1|build|] (fn $ map Pure inits')
   final' <- buildFree @[g1|build|] (foldr (Free .: And . Pure) (Free LTrue) finals')
   return (init', final', qs')
+
+
+-- delay -------------------------------------------------------------------------------
+
+data UnionQs qs1 qs2 = UnionQs qs1 qs2
+type instance RTraversed (UnionQs qs1 qs2) r' = UnionQs (RTraversed qs1 r') (RTraversed qs2 r')
+type instance R (UnionQs qs1 qs2) = R qs1
+type instance Qs.Q (UnionQs qs1 qs2) = Either (Qs.Q qs1) (Qs.Q qs2)
+
+instance (States qs1 q1 r, States qs2 q2 r) => States (UnionQs qs1 qs2) (Either q1 q2) r where
+  stateList (UnionQs qs1 qs2) = map (first Left) (stateList qs1) ++ map (first Right) (stateList qs2)
+  transition (UnionQs qs1 qs2) (Left q) = transition qs1 q
+  transition (UnionQs qs1 qs2) (Right q) = transition qs2 q
+  stateCount (UnionQs qs1 qs2) = stateCount qs1 + stateCount qs2
+  redirect (UnionQs qs1 qs2) redirs = UnionQs (redirect qs1 redirs1) (redirect qs2 redirs2)
+    where
+      (redirs1, redirs2) = partitionEithers (map (\(eq, r) -> bimap (,r) (,r) eq) redirs)
+
+instance (RTraversable qs1 q1 r r' qs1', RTraversable qs2 q2 r r' qs2') =>
+  RTraversable (UnionQs qs1 qs2) (Either q1 q2) r r' (UnionQs qs1' qs2') where
+  traverseQR fn (UnionQs qs1 qs2) =
+    UnionQs
+      <$> traverseQR (fn . Left) qs1
+      <*> traverseQR (fn . Right) qs2
+
+data DelayO d
+type instance Definition (DelayO d) =
+  Name "term" (GetF "term'" (DelayA d))
+    :+: Name "qs" (GetF "qs'" (DelayA d))
+    :+: Follow d
+
+data DelayA d
+type instance Definition (DelayA d) =  -- keyword aliases
+  Name "r'" (Creation ([g|mapRecFunR'|] $r '[Q]) ($q -> Either Int $q))
+    :+: Name "term'" (Term (Either Int $q) $v [gs|r'|])
+    :+: Name "qs'" (UnionQs (StateArray [gs|r'|]) (RTraversed $qs [gs|r'|]))
+    :+: Name "mapK" ([g|mapRecFunCopy|] '[Q] :: *)
+    :+: Name "mapF" ($q -> Either Int $q)
+    :+: Name "map" (MR.Explicit [k|mapRecCopy|] $r [gs|r'|] (Creation [gs|mapK|] [gs|mapF|]))
+    :+: Name "rec" (R.Explicit (Inc [k|rcata|]) Zero $r ($r, [g|term|]))
+    :+: Name "build" (Inherit (Explicit [gs|term'|] [gs|r'|]) [k|build|])
+    :+: End
+
+type DelayI d nIO d1 m =
+  ( d1 ~ DelayA d
+  , Create [g1|mapK|] [g1|mapF|]
+  , MR.Recur [g1|map|] m
+  , RTraversable $qs $q $r [g1|r'|] (RTraversed $qs [g1|r'|])
+  , R.Recur [g1|rec|] [g1|r'|] (MR.Et [g1|map|] m)
+  , MonadFn [g1|build|] m
+  , LiftN nIO IO m
+  , Term $q $v $r ~ [g|term|]
+  )
+delay ::
+  forall d nIO d1 m.
+  DelayI d nIO d1 m =>
+  ($r, $r, $qs) ->
+  ($r -> m Bool) ->
+  m ([g1|r'|], [g1|r'|], [g1|qs'|])
+delay (init, final, qs) isDelayed = do
+  state <- liftn @nIO $ newIORef ([], 1)
+  let mfun = create @[g1|mapK|] (Right :: [g1|mapF|])
+  (init1, final1, qs1) <- MR.runRecur @[g1|map|] mfun \passR ->
+    R.runRecur @[g1|rec|]
+      ( \delayR (r0, fr) -> do
+          lift (lift $ isDelayed r0) >>= \case
+            True -> do
+              r0' <- lift $ passR r0
+              lift $ lift do
+                monadfn @[g1|build|] =<< liftn @nIO do
+                  (qrs2, q2Next) <- readIORef state
+                  writeIORef state (r0' : qrs2, q2Next + 1)
+                  return $ State (Left q2Next)
+            False ->
+              -- QR Functor
+              lift . lift . monadfn @[g1|build|] =<< case fr of
+                LTrue -> return LTrue
+                LFalse -> return LFalse
+                Var v -> return (Var v)
+                State q -> return (State (Right q))
+                Not x -> Not <$> delayR x
+                And x y -> And <$> delayR x <*> delayR y
+                Or x y -> Or <$> delayR x <*> delayR y
+      )
+      (\delayR -> (,,) <$> delayR init <*> lift (passR final) <*> traverseR delayR qs)
+  (qrs2, q2Next) <- liftn @nIO $ readIORef state
+  let qs2 = StateArray $ listArray (1, q2Next - 1) (reverse qrs2)
+  final2 <- buildFree @[g1|build|] $
+    foldr (Free .: And . Free . Not . Free . State . Left) (Pure final1) [1..q2Next - 1]
+  return (init1, final2, UnionQs qs2 qs1)

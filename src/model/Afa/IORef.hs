@@ -250,7 +250,9 @@ type instance
       :+: Name "rcata" RCata
       :+: Name "pcata" PCata
       :+: Name "mapRec" MapRec
+      :+: Name "mapRecCopy" MapRec
       :+: Name "mapRecFun" OneshotFun
+      :+: Name "mapRecFunCopy" OneshotFun
       :+: Name "mapRecTra" OneshotTra
       :+: Name "mapRecFunR'" FunR'
       :+: Follow cont

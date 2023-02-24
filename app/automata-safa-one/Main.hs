@@ -25,6 +25,7 @@ import Afa.Term
 import Control.Monad.Free
 import Data.Fix
 import Data.Function.Syntax ((.:))
+import Data.Functor
 import qualified Data.Text as T
 import qualified Data.Text.IO as TIO
 import Data.Traversable
@@ -102,8 +103,8 @@ isSeparated = do
   txt <- TIO.getContents
   (init, final, qs) <- PrettyStranger.parse @TextIORefO (PrettyStranger.parseDefinitions txt)
   Separ.trySeparate @TextIORefO qs >>= \case
-    Just _ -> return ()
-    Nothing -> error "not separated"
+    Just _ -> exitSuccess
+    Nothing -> exitFailure
 
 qdnf :: IO ()
 qdnf = do
@@ -168,6 +169,18 @@ hasComplexFinals = do
     (_, Just _) -> exitSuccess
     _ -> exitFailure
 
+delaySymbolsLowest :: IO ()
+delaySymbolsLowest = do
+  txt <- TIO.getContents
+  afa <- PrettyStranger.parse @TextIORefO (PrettyStranger.parseDefinitions txt)
+  afa' <- Lib.delay @TextIORefO @Zero afa \r ->
+    AIO.deref r <&> \case
+      Var _ -> True
+      Not _ -> True
+      LFalse -> True
+      _ -> False
+  PrettyStranger.print @(Lib.DelayO TextIORefO) afa'
+
 main :: IO ()
 main = do
   args <- getArgs
@@ -188,3 +201,4 @@ main = do
     ["removeFinals"] -> removeFinals
     ["removeFinalsHind"] -> removeFinalsHind
     ["hasComplexFinals"] -> hasComplexFinals
+    ["delaySymbolsLowest"] -> delaySymbolsLowest
