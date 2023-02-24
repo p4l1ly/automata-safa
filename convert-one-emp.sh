@@ -71,7 +71,7 @@ while IFS= read -r line; do
     # export Mata=true
     # zsh "$CONVERT_FOR_CHECKERS" $WORKDIR/result.afa >>$LOGFILE 2>&1
   elif grep '^incl' <<< "$line" > /dev/null; then
-    echo "$line" > "$WORKDIR/result.emp"
+    echo "$line" >> "$WORKDIR/result.emp"
 
     operands=($(sed -r 's/^incl //' <<< "$line"))
     operands2=(${${operands[@]/%/.afa}/#/$GEN_AUT_DIR/})
