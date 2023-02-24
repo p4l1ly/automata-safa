@@ -22,6 +22,7 @@ import Control.Monad.Identity
 import Control.Monad.Trans
 import Data.Function.Apply
 import qualified Data.HashMap.Strict as HM
+import Data.Hashable
 import Data.IORef
 import InversionOfControl.Lift
 import InversionOfControl.LiftN
@@ -125,7 +126,7 @@ instance
 
 type instance R.Et (R.Explicit ('K _ PCata) _ _ _) = IdentityT
 instance
-  (Monad m, LiftN n IO m) =>
+  (Monad m, LiftN n IO m, Hashable p) =>
   R.Recur (R.Explicit ('K n PCata) n' (p, Ref f) (p, FR f)) b m
   where
   runRecur getAlgebra getAction = do
@@ -137,12 +138,12 @@ instance
             Subtree f -> getAlgebra recur (p, f)
             Ref (name, ioref) -> do
               cache <- liftIO' $ readIORef cacheRef
-              case HM.lookup name cache of
+              case HM.lookup (p, name) cache of
                 Just b -> return b
                 Nothing -> do
                   f <- liftIO' $ readIORef ioref
                   result <- getAlgebra recur (p, f)
-                  liftIO' $ modifyIORef' cacheRef (HM.insert name result)
+                  liftIO' $ modifyIORef' cacheRef (HM.insert (p, name) result)
                   return result
     runIdentityT $ getAction recur
 
