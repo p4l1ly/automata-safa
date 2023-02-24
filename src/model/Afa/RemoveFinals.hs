@@ -147,12 +147,12 @@ removeFinals (init, final, qs) = do
               ltrue <- monadfn @[g1|build|] LTrue
               return (init', Lib.AddOneQs qs' ltrue)
             Just finalConstraint -> do
-              syncQRef <- monadfn @[g1|build|] (State Lib.AddedQ)
-              syncQTrans <- buildFree @[g1|build|] $
-                (Free .: Or)
-                  (Free $ And (Free $ Not (Free $ Var FVar)) (Pure syncQRef))
-                  (Free $ And (Free $ Var FVar) (Pure finalConstraint))
-              init'' <- monadfn @[g1|build|] (And syncQRef init')
+              syncQTrans <- monadfn @[g1|share|] =<< buildFree @[g1|build|]
+                ( (Free .: Or)
+                    (Free $ And (Free $ Not (Free $ Var FVar)) (Free (State Lib.AddedQ)))
+                    (Free $ And (Free $ Var FVar) (Pure finalConstraint))
+                )
+              init'' <- monadfn @[g1|build|] (And syncQTrans init')
               return (init'', Lib.AddOneQs qs' syncQTrans)
 
 
