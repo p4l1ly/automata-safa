@@ -41,6 +41,30 @@ fi | while read -r fAfa; do
     cd -
   }
 
+  ${Nuxmv:-false} && {
+    tic=$(date +"%s.%N")
+    timeout $TIMEOUT /usr/bin/time -f "%e" ../nuXmv-2.0.0-Linux/bin/nuXmv -pre "cpp m4" -dcx -source <(echo "read_model -i $f.smv; go; convert_property_to_invar; build_boolean_model; check_invar_ic3; quit") > /tmp/nuxmv.result.$UUID 2> /tmp/nuxmv.err.$UUID
+    result=$?
+    {
+      echo -n -e "nuxmv\t$f\t"
+      if [ $result = 124 ]; then
+        echo -e "$TIMEOUT_MS\t-2"
+      elif [ $result = 134 ]; then
+        echo -e "$(python3 -c 'import sys; print(float(sys.argv[1]) * 1000)' $(($(date +'%s.%N')-$tic)))\t-3"
+      else
+        echo -n -e "$(python3 -c 'import sys; print(float(sys.argv[1]) * 1000)' $(($(date +'%s.%N')-$tic)))\t"
+        if cat /tmp/nuxmv.result.$UUID | grep '^-- invariant.*is false' > /dev/null; then
+          echo 1
+        elif cat /tmp/nuxmv.result.$UUID | grep '^-- invariant.*is true' > /dev/null; then
+          echo 0
+        else
+          echo -4
+        fi
+      fi
+    }
+    cd -
+  }
+
   ${Impact:-false} && {
     cd ../JAltImpact
     tic=$(date +"%s.%N")

@@ -39,6 +39,9 @@ RUN \
       return 0; \
     } || return 1; \
   }; \
+  wget https://es-static.fbk.eu/tools/nuxmv/downloads/nuXmv-2.0.0-linux64.tar.gz && \
+  tar xzf nuXmv-2.0.0-linux64.tar.gz && \
+  rm nuXmv-2.0.0-linux64.tar.gz && \
   download p4l1ly lens-recursion-schemes 2dfdf5ec637f8139e3d4cd4b1f0c9803e0477543 && \
   download p4l1ly automata-safa-capnp 38437d30a98ab5b77d0122cc2c82da5cac7cfc07 && \
   download p4l1ly ltl-translators cda4316523d836bd7139a0363d80768fbc3d556b && \
