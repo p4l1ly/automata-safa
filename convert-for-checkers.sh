@@ -7,11 +7,16 @@ if [ -z $1 ]; then
   exit 1
 fi
 
+afa_names="*"
+if [[ ! -z $2 ]]; then
+  afa_names="$2"
+fi
+
 if [ -f $1 ]; then
   echo $1
   let NUM_OF_INPUTS=1
 else
-  TMP=$(find $1 -name '*.afa' | wc -l)
+  TMP=$(find $1 -name "$afa_names.afa" | wc -l)
   let NUM_OF_INPUTS=TMP
 fi 
 
@@ -19,7 +24,7 @@ let j=1
 if [ -f $1 ]; then
   echo $1
 else
-  find $1 -name '*.afa'
+  find $1 -name "$afa_names.afa"
 fi | while read -r fAfa; do
   f=${fAfa%????}
   echo "Processing $j/$NUM_OF_INPUTS: $f" >&2
