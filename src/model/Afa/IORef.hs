@@ -8,6 +8,7 @@
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE PartialTypeSignatures #-}
 {-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE TupleSections #-}
 {-# LANGUAGE TypeApplications #-}
 {-# LANGUAGE TypeFamilies #-}
 {-# LANGUAGE TypeOperators #-}
@@ -71,9 +72,9 @@ share r = return r
 
 getSharingDetector :: (Traversable f, Hashable (f (SN f))) => IO (Ref f -> IO (Ref f))
 getSharingDetector = do
+  visitedVar <- newIORef HM.empty
   dbVar <- newIORef HM.empty
-  let rec r = do
-        fr <- deref r
+  let go fr = do
         fr1 <- traverse rec fr
         let fr2 = fr1 <&> \(Ref (name, _)) -> name
         db <- readIORef dbVar
@@ -85,7 +86,64 @@ getSharingDetector = do
                 Just r' -> return (r', Just r')
         writeIORef dbVar db'
         return r'
+      rec (Subtree fr) = go fr
+      rec (Ref (name, ioref)) = do
+        visited <- readIORef visitedVar
+        (r', visited') <-
+          getCompose $
+            HM.alterF -$ name -$ visited $
+              Compose . \case
+                Nothing -> readIORef ioref >>= fmap (id &&& Just) . go
+                Just r' -> return (r', Just r')
+        writeIORef visitedVar visited'
+        return r'
   return rec
+
+-- The API calls for an applicative functor but the effort is not worth it yet.
+getUnsharingDetector ::
+  (Traversable f, Hashable (f (SN f))) =>
+  (FR f -> Bool) ->
+  IO (Ref f -> IO (), IO (Ref f -> IO (Ref f)))
+getUnsharingDetector isShareable = do
+  visitedVar <- newIORef HM.empty
+  countsVar <- newIORef HM.empty
+  let rec (Ref (name, ioref)) = do
+        fr1 <- readIORef ioref
+        visited <- readIORef visitedVar
+        visited' <-
+          HM.alterF -$ name -$ visited $ \case
+            Nothing -> do
+              counts <- readIORef countsVar
+              let counts' = foldr (\(Ref (k, _)) -> HM.insertWith (+) k 1) counts fr1
+              writeIORef countsVar counts'
+              fr1 <- traverse rec fr1
+              return $ Just ()
+            Just () -> return (Just ())
+        writeIORef visitedVar visited'
+
+      countUp r@(Ref (name, _)) = do
+        modifyIORef countsVar (HM.insertWith (+) name 1)
+        rec r
+
+  let finalize = do
+        counts <- readIORef countsVar
+        visitedVar <- newIORef HM.empty
+        let go name fr = do
+              fr1 <- traverse rec fr
+              if isShareable fr1 && counts HM.! name > 1
+                then shareTree fr1
+                else return (Subtree fr1)
+            rec (Ref (name, ioref)) = do
+              visited <- readIORef visitedVar
+              case HM.lookup name visited of
+                Nothing -> do
+                  fr <- readIORef ioref
+                  r' <- go name fr
+                  modifyIORef visitedVar (HM.insert name r')
+                  return r'
+                Just r' -> return r'
+        return rec
+  return (countUp, finalize)
 
 instance MonadFn0 (Explicit (Ref f) Bool IsTree) IO where
   monadfn0 = return . isTree

@@ -189,6 +189,20 @@ share = do
   afa' <- (,,) <$> shareR init <*> shareR final <*> traverseR shareR qs
   PrettyStranger.print @TextIORefO afa'
 
+removeUselessShares :: IO ()
+removeUselessShares = do
+  txt <- TIO.getContents
+  (init, final, qs) <- PrettyStranger.parse @TextIORefO (PrettyStranger.parseDefinitions txt)
+  (countUpR, finalize) <- AIO.getUnsharingDetector \case
+    Not _ -> True
+    And _ _ -> True
+    Or _ _ -> True
+    _ -> False
+  countUpR init <> countUpR final <> void (traverseR countUpR qs)
+  finalizeR <- finalize
+  afa' <- (,,) <$> finalizeR init <*> finalizeR final <*> traverseR finalizeR qs
+  PrettyStranger.print @TextIORefO afa'
+
 main :: IO ()
 main = do
   args <- getArgs
@@ -211,3 +225,4 @@ main = do
     ["hasComplexFinals"] -> hasComplexFinals
     ["delaySymbolsLowest"] -> delaySymbolsLowest
     ["share"] -> share
+    ["removeUselessShares"] -> removeUselessShares
