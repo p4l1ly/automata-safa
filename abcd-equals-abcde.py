@@ -10,7 +10,7 @@ if len(sys.argv) != 3:
 
 visited = set()
 
-REGEX_AUT_DIR = "../../regexNfas/"
+REGEX_AUT_DIR = "regexNfas/"
 
 dir_to_create_in = sys.argv[2]
 
@@ -57,5 +57,6 @@ for i, ixs in enumerate(ixs_gen()):
             print(f"load_automaton {ix}", file = emp_file)
         
         print(f"aut75 = (inter {' '.join(ixs[:-1])})", file = emp_file)
-        print(f"aut76 = (inter {ixs[-1]} aut75)", file = emp_file)
-        print(f"incl aut76 aut75", file = emp_file)
+        # print(f"aut76 = (inter {ixs[-1]} aut75)", file = emp_file)
+        # print(f"incl aut76 aut75", file = emp_file)
+        print(f"incl aut75 {ixs[-1]}", file = emp_file)
