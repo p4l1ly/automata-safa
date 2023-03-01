@@ -1,6 +1,7 @@
 {-# LANGUAGE BlockArguments #-}
 {-# LANGUAGE DataKinds #-}
 {-# LANGUAGE LambdaCase #-}
+{-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE QuasiQuotes #-}
 {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE ScopedTypeVariables #-}
@@ -8,6 +9,7 @@
 {-# LANGUAGE TypeApplications #-}
 {-# LANGUAGE TypeFamilies #-}
 {-# LANGUAGE TypeOperators #-}
+{-# LANGUAGE ViewPatterns #-}
 {-# OPTIONS_GHC -fconstraint-solver-iterations=5 #-}
 {-# OPTIONS_GHC -fplugin InversionOfControl.TcPlugin #-}
 
@@ -24,8 +26,12 @@ import Afa.States
 import Afa.Term
 import Control.Monad.Free
 import Data.Fix
+import Data.Foldable
 import Data.Function.Syntax ((.:))
 import Data.Functor
+import qualified Data.HashMap.Strict as HM
+import qualified Data.HashSet as HS
+import Data.Monoid
 import qualified Data.Text as T
 import qualified Data.Text.IO as TIO
 import Data.Traversable
@@ -35,6 +41,8 @@ import InversionOfControl.TypeDict
 import System.Environment
 import System.Exit
 import System.IO
+import Data.IORef
+import Data.String.Interpolate.IsString (i)
 
 data EmptyO
 type instance Definition EmptyO = End
@@ -203,6 +211,76 @@ removeUselessShares = do
   afa' <- (,,) <$> finalizeR init <*> finalizeR final <*> traverseR finalizeR qs
   PrettyStranger.print @TextIORefO afa'
 
+checkerV1RemoveFinalsNonsep :: IO ()
+checkerV1RemoveFinalsNonsep = do
+  txt <- TIO.getContents
+  (init, final, StateHashMap qs) <- PrettyStranger.parse @TextIORefO (PrettyStranger.parseDefinitions txt)
+  case HM.lookup "Sync" qs of
+    Nothing -> exitSuccess
+    Just qITrans -> do
+      let replaceI :: AIO.Ref (Term T.Text T.Text) -> IO (AIO.Ref (Term T.Text T.Text))
+          replaceI r = do
+            AIO.deref r >>= \case
+              And a b -> do
+                a' <- AIO.deref a
+                b' <- AIO.deref b
+                let build = if AIO.isTree r then return . AIO.Subtree else AIO.shareTree
+                case (a', b') of
+                  (State "Sync", _) -> build (And qITrans b)
+                  (_, State "Sync") -> build (And a qITrans)
+                  _ -> build =<< And <$> replaceI a <*> replaceI b
+              _ -> return r
+
+      init1 <- AIO.share init
+      init2 <- AIO.share =<< replaceI init
+
+      let findAsQs ::
+            AIO.Ref (Term T.Text T.Text) ->
+            IO (Endo [T.Text], Endo [T.Text])
+          findAsQs r = do
+            AIO.deref r >>= \case
+              State q -> return (mempty, Endo (q :))
+              Var v -> return (Endo (v :), mempty)
+              fr -> fold <$> mapM findAsQs fr
+      ((`appEndo` []) -> as, (`appEndo` []) -> qs) <- findAsQs init2
+
+      let toText :: AIO.Ref (Term T.Text T.Text) -> IO T.Text
+          toText r = do
+            AIO.deref r >>= \case
+              LTrue -> return "TRUE"
+              LFalse -> return "FALSE"
+              State q -> return [i|q#{q}|]
+              Var v -> return [i|a#{v}|]
+              And a b -> do
+                a' <- toText a
+                b' <- toText b
+                return [i|(#{a'} & #{b'})|]
+              Or a b -> do
+                a' <- toText a
+                b' <- toText b
+                return [i|(#{a'} | #{b'})|]
+              Not a -> do
+                a' <- toText a
+                return [i|!#{a'}|]
+
+      init1T <- toText init1
+      init2T <- toText init2
+      let cond :: T.Text
+          cond = [i|SPEC AG(#{init1T} = #{init2T})|]
+
+      TIO.putStrLn "MODULE main"
+      TIO.putStrLn "VAR"
+      for_ (HS.fromList as) \a ->
+        TIO.putStrLn [i|  a#{a}: boolean;|]
+      for_ (HS.fromList qs) \q ->
+        TIO.putStrLn [i|  q#{q}: boolean;|]
+      TIO.putStrLn "  dummy: boolean;"
+      TIO.putStrLn "ASSIGN"
+      TIO.putStrLn "  init(dummy) := TRUE;"
+      TIO.putStrLn "  next(dummy) := TRUE;"
+      TIO.putStrLn cond
+      exitFailure
+
 main :: IO ()
 main = do
   args <- getArgs
@@ -226,3 +304,4 @@ main = do
     ["delaySymbolsLowest"] -> delaySymbolsLowest
     ["share"] -> share
     ["removeUselessShares"] -> removeUselessShares
+    ["checkerV1RemoveFinalsNonsep"] -> checkerV1RemoveFinalsNonsep
