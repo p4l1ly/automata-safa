@@ -70,7 +70,7 @@ fi | while read -r fAfa; do
   ${Ada:-false} && {
     echo "Transforming to .ada"
     $LTLE_TO_AFA prettyToAda < $f.afa > $f.ada 2> /dev/null || \
-    $AUTOMATA_SAFA_ONE removeFinalsHind < $f.afa | $LTLE_TO_AFA prettyToAda > $f.ada
+    $AUTOMATA_SAFA_ONE removeFinals < $f.afa | $LTLE_TO_AFA prettyToAda > $f.ada
   }
   ${Bisim:-false} && {
     echo "Transforming to .bisim"

@@ -87,7 +87,7 @@ RUN \
   download p4l1ly JAltImpact db157709c2c85142b95b95862c8145262c100109 && \
   mkdir v2 && \
   cd v2 && \
-  download p4l1ly automata-safa 348afb9f3817ef1ba0196cc2cd19d7533df48d78 && \
+  download p4l1ly automata-safa 9e1cabe77dae3865b2e89808f5c5272bc00651e5 && \
   download p4l1ly inversion-of-control 2301866ad6b8616885b0ba1c0f5a4ea20f6902cf && \
   cd .. && \
   download jurajsic symbolicautomata 0150d2f8adf509ff48fe8f47fcd19f135582df17 && \
