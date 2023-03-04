@@ -1,4 +1,5 @@
 LTLE_TO_AFA=ltle-to-afa
+AUTOMATA_SAFA_ONE=automata-safa-one
 SMVTOAIG=~/aiger/smvtoaig
 SEPARATED=~/automata-safa-capnp/schema/Afa/Model/Separated.capnp
 
@@ -37,7 +38,14 @@ fi | while read -r fAfa; do
   }
   ${Aiger:-false} && {
     echo "Transforming to .aig"
-    $LTLE_TO_AFA removeFinalsNonsep < $f.afa | $LTLE_TO_AFA prettyToSmv | $SMVTOAIG > $f.aig
+    TMP_DIR=$(mktemp -d)
+    $AUTOMATA_SAFA_ONE share < $f.afa | $AUTOMATA_SAFA_ONE removeUselessShares > "$TMP_DIR/afa.afa"
+    if $AUTOMATA_SAFA_ONE hasComplexFinals < "$TMP_DIR/afa.afa"; then
+      $AUTOMATA_SAFA_ONE removeFinals < "$TMP_DIR/afa.afa" | $LTLE_TO_AFA prettyToSmv | $SMVTOAIG > $f.aig
+    else
+      $LTLE_TO_AFA prettyToSmv < "$TMP_DIR/afa.afa" | $SMVTOAIG > $f.aig
+    fi
+    rm -rf $TMP_DIR
   }
   ${Mona:-false} && {
     echo "Transforming to .mona"
