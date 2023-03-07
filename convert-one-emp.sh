@@ -1,6 +1,5 @@
 #! /bin/zsh
 
-DANTONI=~/symbolicautomata/benchmarks
 LTLE_TO_AFA=ltle-to-afa
 CONVERT_FOR_CHECKERS="/scripts/convert-for-checkers.sh"
 BRICSREG=~/emptiness-brics/target/regex-parser.jar
@@ -9,9 +8,6 @@ if [ -z $1 ]; then
   echo "path argument (where created automata are saved) expected" >&2
   exit 1
 fi
-
-rm -rf $DANTONI/regexNfas
-mkdir $DANTONI/regexNfas
 
 WORKDIR=$(realpath "$1")
 GEN_AUT_DIR="$WORKDIR/gen_aut"
