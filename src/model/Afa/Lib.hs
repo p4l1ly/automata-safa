@@ -19,6 +19,8 @@
 
 module Afa.Lib where
 
+import Data.Bits (testBit)
+import Data.Foldable
 import InversionOfControl.TypeDict
 import InversionOfControl.MonadFn
 import InversionOfControl.Lift
@@ -573,3 +575,91 @@ delay (init, final, qs) isDelayed = do
   final2 <- buildFree @[g1|build|] $
     foldr (Free .: And . Free . Not . Free . State . Left) (Pure final1) [1..q2Next - 1]
   return (init1, final2, UnionQs qs2 qs1)
+
+
+data ExplicitToBitvectorO d
+type instance Definition (ExplicitToBitvectorO d) =
+  Name "term" (GetF "term'" (ExplicitToBitvectorA d))
+    :+: Name "qs" (GetF "qs'" (ExplicitToBitvectorA d))
+    :+: Follow d
+
+data ExplicitToBitvectorA d
+type instance Definition (ExplicitToBitvectorA d) =
+  Name "r" $r
+    :+: Name "r'" (Creation ([g|mapRecFunR'|] $r '[V]) ($v -> Int))
+    :+: Name "term'" (Term $q Int [gs|r'|])
+    :+: Name "fr'" [gs|term'|]
+    :+: Name "qs'" (RTraversed $qs [gs|r'|])
+    :+: Name "build1" (Inherit (Explicit [gs|term'|] [gs|r'|]) [k|build|])
+    :+: Name "share1" (Inherit (Explicit [gs|r'|] [gs|r'|]) [k|share|])
+    :+: Name "rec" (R.Explicit [k|cata|] Zero $r [g|term|])
+    :+: Name "rec2" (R.Explicit [k|rcata|] Zero $r ($r, [g|term|]))
+    :+: Follow d
+
+type ExplicitToBitvectorI d d1 =
+  ( d1 ~ ExplicitToBitvectorA d
+  , BuildShareSharedD d1 IO
+  , RTraversable $qs $q $r () (RTraversed $qs ())
+  , RTraversable $qs $q $r [g1|r'|] [g1|qs'|]
+  , R.Recur [g1|rec|] () IO
+  , R.Recur [g1|rec2|] [g1|r'|] IO
+  , Term $q $v $r ~ [g|term|]
+  , Hashable $v
+  , MonadFn [g1|build1|] IO
+  , MonadFn [g1|share1|] IO
+  ) :: Constraint
+
+explicitToBitvector :: forall d d1.
+  (ExplicitToBitvectorI d d1) =>
+  [($r, $r, $qs)] ->
+  IO [([g1|r'|], [g1|r'|], [g1|qs'|])]
+explicitToBitvector afas = do
+  -- get set of all variables
+  varsV <- newIORef HS.empty
+  R.runRecur @[g1|rec|]
+    ( \rec -> \case
+        Var v -> lift $ modifyIORef' varsV (HS.insert v)
+        fr -> traverse_ rec fr
+    )
+    ( \getVars ->
+        for_ afas \(init, final, qs) ->
+          (,,) <$> getVars init <*> getVars final <*> traverseR getVars qs
+    )
+  vars <- readIORef varsV
+  
+  -- create bitvector formulae
+  let count = HS.size vars
+      (_, (bitCount, _):_) =
+        break (\(_, twoExp) -> twoExp > count) $
+          zip [0..] (iterate (*2) 1)
+
+  bitvecFormulae <-
+    for [0..count - 1] \varIx -> do
+      r <- buildFix @[g1|build1|] $
+        foldr (Fix .: And) (Fix LTrue) $
+          [0..bitCount - 1] <&> \bitIx ->
+            if testBit varIx bitIx
+              then Fix $ Not $ Fix $ Var bitIx
+              else Fix $ Var bitIx
+      monadfn @[g1|share1|] r
+
+  let bitvecFormulae' = HM.fromList $ zip (HS.toList vars) bitvecFormulae
+
+  -- redirect the variables to the formulae
+  R.runRecur @[g1|rec2|]
+    ( \rec (r0, fr) -> case fr of
+        Var v -> return $ bitvecFormulae' HM.! v
+        _ -> do
+          fr' <- case fr of
+            LTrue -> return LTrue
+            LFalse -> return LFalse
+            State q -> return (State q)
+            And a b -> And <$> rec a <*> rec b
+            Or a b -> Or <$> rec a <*> rec b
+            Not a -> Not <$> rec a
+          lift $ buildShareShared @d1 r0 fr'
+    )
+    ( \toBitvec ->
+        for afas \(init, final, qs) ->
+          (,,) <$> toBitvec init <*> toBitvec final <*> traverseR toBitvec qs
+    )

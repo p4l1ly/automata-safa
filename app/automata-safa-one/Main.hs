@@ -17,6 +17,7 @@ module Main where
 
 import Afa.Build
 import qualified Afa.Convert.PrettyStranger as PrettyStranger
+import qualified Afa.Convert.Vtf as Vtf
 import qualified Afa.Delit as Delit
 import qualified Afa.IORef as AIO
 import qualified Afa.Lib as Lib
@@ -31,7 +32,9 @@ import Data.Function.Syntax ((.:))
 import Data.Functor
 import qualified Data.HashMap.Strict as HM
 import qualified Data.HashSet as HS
+import Data.Maybe
 import Data.Monoid
+import Data.String.Interpolate.IsString (i)
 import qualified Data.Text as T
 import qualified Data.Text.IO as TIO
 import Data.Traversable
@@ -41,8 +44,6 @@ import InversionOfControl.TypeDict
 import System.Environment
 import System.Exit
 import System.IO
-import Data.IORef
-import Data.String.Interpolate.IsString (i)
 
 data EmptyO
 type instance Definition EmptyO = End
@@ -131,9 +132,9 @@ qombo ::
   IO ()
 qombo paths fn = do
   afas <- for paths \path -> do
-    f <- openFile path ReadMode
-    txt <- TIO.hGetContents f
-    PrettyStranger.parse @TextIORefO (PrettyStranger.parseDefinitions txt)
+    withFile path ReadMode \f -> do
+      txt <- TIO.hGetContents f
+      PrettyStranger.parse @TextIORefO (PrettyStranger.parseDefinitions txt)
   afa' <- Lib.qombo @TextIORefO fn afas
   PrettyStranger.print @d afa'
 
@@ -281,6 +282,30 @@ checkerV1RemoveFinalsNonsep = do
       TIO.putStrLn cond
       exitFailure
 
+vtfToPretty :: IO ()
+vtfToPretty = do
+  txt <- TIO.getContents
+  (init, final, qs) <- Vtf.parse @TextIORefO $ Vtf.parseStatements txt
+  qs' <- Separ.unseparate @TextIORefO qs
+  PrettyStranger.print @TextIORefO (init, final, qs')
+
+explicitToBitvector ::
+  [String] ->
+  IO ()
+explicitToBitvector paths = do
+  afas <- for paths \path -> do
+    withFile path ReadMode \f -> do
+      txt <- TIO.hGetContents f
+      PrettyStranger.parse @TextIORefO (PrettyStranger.parseDefinitions txt)
+
+  afas' <- Lib.explicitToBitvector @TextIORefO afas
+
+  for_ (zip afas' paths) \(afa, path) -> do
+    let barePath = fromJust $ T.stripSuffix ".afa" $ T.pack path
+    let path' = T.unpack (T.append barePath ".bitvector.afa")
+    withFile path' WriteMode \f ->
+      PrettyStranger.hPrint @(Lib.ExplicitToBitvectorO TextIORefO) f afa
+
 main :: IO ()
 main = do
   args <- getArgs
@@ -305,3 +330,8 @@ main = do
     ["share"] -> share
     ["removeUselessShares"] -> removeUselessShares
     ["checkerV1RemoveFinalsNonsep"] -> checkerV1RemoveFinalsNonsep
+    ["vtfToPretty"] -> vtfToPretty
+    ("explicitToBitvector" : paths) -> explicitToBitvector paths
+    _ -> do
+      hPutStrLn stderr $ "Unsupported arguments " ++ show args
+      exitFailure

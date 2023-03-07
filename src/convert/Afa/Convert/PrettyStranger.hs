@@ -50,6 +50,8 @@ import qualified InversionOfControl.Recur as R
 import InversionOfControl.TypeDict
 import Afa.States
 import Afa.Build
+import System.IO (Handle, stdout)
+import qualified System.IO
 
 parseWhole :: Parser a -> T.Text -> a
 parseWhole parser str = case Parsec.parse parser str of
@@ -289,6 +291,33 @@ formatFormula = do
 
   return (R.runRecur @[g1|rec|] algebra, readIORef stack)
 
+hPrint ::
+  forall d q v r d1 qs.
+  ( Term q v r ~ [g|term|]
+  , ToConstraint (FormatFormulaD d)
+  , States qs q r
+  ) =>
+  Handle -> (r, r, qs) -> IO ()
+hPrint h (init, final, qs) = do
+  (runConvert, getShared) <- formatFormula @d
+
+  runConvert \convert -> do
+    lift $ TIO.hPutStr h "@kInitialFormula: "
+    lift . TIO.hPutStrLn h =<< convert init
+    lift $ TIO.hPutStr h "@kFinalFormula: "
+    lift . TIO.hPutStrLn h =<< convert final
+    for_ (stateList qs) \(q, r) -> do
+      lift $ TIO.hPutStr h "@s"
+      lift $ TIO.hPutStr h (identify q)
+      lift $ TIO.hPutStr h ": "
+      lift . TIO.hPutStrLn h =<< convert r
+
+  getShared >>= mapM_ \(i, txt) -> do
+    TIO.hPutStr h "@f"
+    System.IO.hPutStr h (show i)
+    TIO.hPutStr h ": "
+    TIO.hPutStrLn h txt
+
 print ::
   forall d q v r d1 qs.
   ( Term q v r ~ [g|term|]
@@ -296,22 +325,4 @@ print ::
   , States qs q r
   ) =>
   (r, r, qs) -> IO ()
-print (init, final, qs) = do
-  (runConvert, getShared) <- formatFormula @d
-
-  runConvert \convert -> do
-    lift $ TIO.putStr "@kInitialFormula: "
-    lift . TIO.putStrLn =<< convert init
-    lift $ TIO.putStr "@kFinalFormula: "
-    lift . TIO.putStrLn =<< convert final
-    for_ (stateList qs) \(q, r) -> do
-      lift $ TIO.putStr "@s"
-      lift $ TIO.putStr (identify q)
-      lift $ TIO.putStr ": "
-      lift . TIO.putStrLn =<< convert r
-
-  getShared >>= mapM_ \(i, txt) -> do
-    TIO.putStr "@f"
-    putStr (show i)
-    TIO.putStr ": "
-    TIO.putStrLn txt
+print = hPrint @d stdout
