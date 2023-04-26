@@ -870,7 +870,17 @@ prettyToAfasat :: IO ()
 prettyToAfasat = do
   txt <- TIO.getContents
   let afa = PrettyStranger.parseAfa txt
-  hWriteCnfAfa (tseytin' $ reorderStates' afa) stdout
+  let afa1 = reorderStates' afa
+  let afa2 = tseytin' $ afa1
+  hWriteCnfAfa afa2 stdout
+
+prettyToAfasat2 :: IO ()
+prettyToAfasat2 = do
+  txt <- TIO.getContents
+  let afa = PrettyStranger.parseAfa txt
+  case simplifyAll afa of
+    Left solved -> hPutStrLn stderr ("solved " ++ show solved)
+    Right afa' -> hWriteCnfAfa (tseytin' $ reorderStates' afa') stdout
 
 prettyToDot :: IO ()
 prettyToDot = do
@@ -904,7 +914,7 @@ prettyToSmvReverse1 = do
 prettyToPretty1 :: IO ()
 prettyToPretty1 = do
   txt <- TIO.getContents
-  TIO.putStrLn $ PrettyStranger.formatAfa $ PrettyStranger.parseAfa txt
+  TIO.putStrLn $ PrettyStranger.formatAfa $ reorderStates' $ PrettyStranger.parseAfa txt
 
 treeReprUninit ::
   forall t d.
@@ -1050,6 +1060,7 @@ main = do
     ["prettyToSmvReverseAsgn1"] -> prettyToSmvReverseAsgn1
     ["prettyToMona"] -> prettyToMona
     ["prettyToAfasat"] -> prettyToAfasat
+    ["prettyToAfasat2"] -> prettyToAfasat2
     ["prettyToDot"] -> prettyToDot
     ["prettySimplify1"] -> prettySimplify1
     ["prettyToPretty1"] -> prettyToPretty1

@@ -380,7 +380,7 @@ toAfa qcount fcount acount init final states formulae
 
     (fIxMap, fbterms, fmterms) = convertFormulae formulae
 
-    convertTransition = (asRight .) . cataRecursive $ \case
+    convertTransition0 = (asRight .) . cataRecursive $ \case
       STrue -> Left $ Pure 0
       SFalse -> Left $ Pure 1
       SState q -> Right $ Pure q
@@ -395,7 +395,27 @@ toAfa qcount fcount acount init final states formulae
       SOr x y -> Right $ Free $ MTerm.Or $ NE.map asRight $ x :| [y]
       x -> error $ "non-exhaustive patterns " ++ show x
 
-    init' = convertTransition init
+    convertTransition = convertTransition0 . delitFree
+
+    delitFree = cataRecursive $ \case
+      STrue -> Fix STrue
+      SFalse -> Fix SFalse
+      SState q -> Fix (SState q)
+      SFormula f -> delitFree (formulae !! f)
+      SVar v -> Fix (SVar v)
+      SNot (Fix STrue) -> Fix SFalse
+      SNot (Fix SFalse) -> Fix STrue
+      SNot (Fix (SNot x)) -> x
+      SAnd (Fix SFalse) x -> Fix SFalse
+      SAnd x (Fix SFalse) -> Fix SFalse
+      SAnd (Fix STrue) x -> x
+      SAnd x (Fix STrue) -> x
+      SOr (Fix STrue) x -> Fix STrue
+      SOr x (Fix STrue) -> Fix STrue
+      SOr (Fix SFalse) x -> x
+      SOr x (Fix SFalse) -> x
+
+    init' = delitFree init
 
     -- (init'', states'') = case nonsimpleFinal'' of
     --   Just finalTrans ->
@@ -406,8 +426,8 @@ toAfa qcount fcount acount init final states formulae
     --     )
     (init'', states'') =
       case init' of
-        Free (MTerm.State q) -> (q, listArray (0, qcount - 1) states')
-        _ -> (qcount, listArray (0, qcount) $ states' ++ [init'])
+        Fix (SState q) -> (q, listArray (0, qcount - 1) states')
+        _ -> (qcount, listArray (0, qcount) $ states' ++ [convertTransition0 init'])
 
     convertFormulae ::
       [Fix STerm'] ->
