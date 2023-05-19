@@ -75,7 +75,7 @@ parseAfa str = toAfa (length states) (length formulae) acount init final states 
     ((init, final, states, formulae), acount) = enumerate $ parseDefinitions str
 
 parseDefinitions :: T.Text -> [Definition]
-parseDefinitions str = definitions
+parseDefinitions str = parseWhole parser str'
   where
     str' = T.filter (not . isSpace) str
     parser =
@@ -83,22 +83,6 @@ parseDefinitions str = definitions
         parseOne
           <$> (char '@' *> Parsec.takeWhile (/= ':') <* char ':')
           <*> Parsec.takeWhile (/= '@')
-    definitions = parseWhole parser str'
-
-    u = (`appEndo` [])
-    (u -> init, u -> final, u -> states, u -> formulae) = execWriter $
-      for definitions $ \case
-        DFormula name dterm -> tell (mempty, mempty, mempty, Endo ((name, dterm) :))
-        DState name dterm -> tell (mempty, mempty, Endo ((name, dterm) :), mempty)
-        DInitialStates dterm -> tell (Endo (dterm :), mempty, mempty, mempty)
-        DFinalStates dterm -> tell (mempty, Endo (dterm :), mempty, mempty)
-
-    orize [] = Fix SFalse
-    orize xs = foldr1 (Fix .: SOr) xs
-
-    orFormulaeHM = HM.fromListWith (Fix .: SOr) formulae
-    orFormulae = HM.toList orFormulaeHM
-    orStates = HM.toList $ HM.fromListWith (Fix .: SOr) states
 
 data Definition
   = DInitialStates {dterm :: Fix STermStr}
@@ -414,6 +398,9 @@ toAfa qcount fcount acount init final states formulae
       SOr x (Fix STrue) -> Fix STrue
       SOr (Fix SFalse) x -> x
       SOr x (Fix SFalse) -> x
+      SOr x y -> Fix $ SOr x y
+      SAnd x y -> Fix $ SAnd x y
+      SNot x -> Fix $ SNot x
 
     init' = delitFree init
 
