@@ -42,22 +42,4 @@ fi | while read -r fAfa; do
       $AUTOMATA_SAFA_ONE share < $f.afa | $AUTOMATA_SAFA_ONE delaySymbolsLowest | $AUTOMATA_SAFA_ONE removeFinalsHind | $AUTOMATA_SAFA_ONE unshare | $AUTOMATA_SAFA_ONE initToDnf | $LTLE_TO_AFA prettyToMachete >> $f.mata 
     fi
   }
-  ${Bisim:-false} && {
-    echo "Transforming to .bisim"
-    TMP_DIR=$(mktemp -d)
-
-    $AUTOMATA_SAFA_ONE isSeparated < $f.afa
-    if [ $? -eq 0 ]; then
-      $AUTOMATA_SAFA_ONE share < $f.afa | $AUTOMATA_SAFA_ONE removeFinalsHind > "$TMP_DIR/0"
-    else
-      $AUTOMATA_SAFA_ONE share < $f.afa | $AUTOMATA_SAFA_ONE delaySymbolsLowest | $AUTOMATA_SAFA_ONE removeFinalsHind > "$TMP_DIR/0"
-    fi
-
-    echo "@kInitialFormula: s0
-@kFinalFormula: !s0
-@s0: kFalse" > "$TMP_DIR/1"
-
-    $LTLE_TO_AFA eqBisim "$TMP_DIR/0" "$TMP_DIR/1" | capnp convert binary:text $SEPARATED TwoBoolAfas | capnp convert text:binary $SEPARATED TwoBoolAfas > $f.bisim
-    rm -rf $TMP_DIR
-  }
 done
