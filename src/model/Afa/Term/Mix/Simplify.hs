@@ -210,10 +210,9 @@ blift = Builder . const
 {-# INLINEABLE delitDag #-}
 delitDag ::
   forall p q.
-  Array Int Any ->
-  (Array Int (Either Bool Int), Array Int (Term p q Int)) ->
+  Array Int (Term p q Int) ->
   (Array Int (Either Bool Int), Array Int (Term p q Int))
-delitDag gs (ixMap, arr) = runST action
+delitDag arr = runST action
   where
     bnds@(ibeg, iend) = bounds arr
 

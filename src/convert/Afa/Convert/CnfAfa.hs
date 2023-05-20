@@ -32,7 +32,7 @@ data CnfAfa = CnfAfa
   { states :: Array Int Lit
   , varCount :: Int
   , clauses :: [[Lit]]
-  }
+  } deriving (Show)
 
 tseytin' bafa = tseytin varCnt bafa{boolTerms = aterms'}
   where

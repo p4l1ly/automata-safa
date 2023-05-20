@@ -75,7 +75,7 @@ parseAfa str = toAfa (length states) (length formulae) acount init final states 
     ((init, final, states, formulae), acount) = enumerate $ parseDefinitions str
 
 parseDefinitions :: T.Text -> [Definition]
-parseDefinitions str = definitions
+parseDefinitions str = parseWhole parser str'
   where
     str' = T.filter (not . isSpace) str
     parser =
@@ -83,22 +83,6 @@ parseDefinitions str = definitions
         parseOne
           <$> (char '@' *> Parsec.takeWhile (/= ':') <* char ':')
           <*> Parsec.takeWhile (/= '@')
-    definitions = parseWhole parser str'
-
-    u = (`appEndo` [])
-    (u -> init, u -> final, u -> states, u -> formulae) = execWriter $
-      for definitions $ \case
-        DFormula name dterm -> tell (mempty, mempty, mempty, Endo ((name, dterm) :))
-        DState name dterm -> tell (mempty, mempty, Endo ((name, dterm) :), mempty)
-        DInitialStates dterm -> tell (Endo (dterm :), mempty, mempty, mempty)
-        DFinalStates dterm -> tell (mempty, Endo (dterm :), mempty, mempty)
-
-    orize [] = Fix SFalse
-    orize xs = foldr1 (Fix .: SOr) xs
-
-    orFormulaeHM = HM.fromListWith (Fix .: SOr) formulae
-    orFormulae = HM.toList orFormulaeHM
-    orStates = HM.toList $ HM.fromListWith (Fix .: SOr) states
 
 data Definition
   = DInitialStates {dterm :: Fix STermStr}
@@ -380,7 +364,7 @@ toAfa qcount fcount acount init final states formulae
 
     (fIxMap, fbterms, fmterms) = convertFormulae formulae
 
-    convertTransition = (asRight .) . cataRecursive $ \case
+    convertTransition0 = (asRight .) . cataRecursive $ \case
       STrue -> Left $ Pure 0
       SFalse -> Left $ Pure 1
       SState q -> Right $ Pure q
@@ -395,7 +379,30 @@ toAfa qcount fcount acount init final states formulae
       SOr x y -> Right $ Free $ MTerm.Or $ NE.map asRight $ x :| [y]
       x -> error $ "non-exhaustive patterns " ++ show x
 
-    init' = convertTransition init
+    convertTransition = convertTransition0 . delitFree
+
+    delitFree = cataRecursive $ \case
+      STrue -> Fix STrue
+      SFalse -> Fix SFalse
+      SState q -> Fix (SState q)
+      SFormula f -> delitFree (formulae !! f)
+      SVar v -> Fix (SVar v)
+      SNot (Fix STrue) -> Fix SFalse
+      SNot (Fix SFalse) -> Fix STrue
+      SNot (Fix (SNot x)) -> x
+      SAnd (Fix SFalse) x -> Fix SFalse
+      SAnd x (Fix SFalse) -> Fix SFalse
+      SAnd (Fix STrue) x -> x
+      SAnd x (Fix STrue) -> x
+      SOr (Fix STrue) x -> Fix STrue
+      SOr x (Fix STrue) -> Fix STrue
+      SOr (Fix SFalse) x -> x
+      SOr x (Fix SFalse) -> x
+      SOr x y -> Fix $ SOr x y
+      SAnd x y -> Fix $ SAnd x y
+      SNot x -> Fix $ SNot x
+
+    init' = delitFree init
 
     -- (init'', states'') = case nonsimpleFinal'' of
     --   Just finalTrans ->
@@ -406,8 +413,8 @@ toAfa qcount fcount acount init final states formulae
     --     )
     (init'', states'') =
       case init' of
-        Free (MTerm.State q) -> (q, listArray (0, qcount - 1) states')
-        _ -> (qcount, listArray (0, qcount) $ states' ++ [init'])
+        Fix (SState q) -> (q, listArray (0, qcount - 1) states')
+        _ -> (qcount, listArray (0, qcount) $ states' ++ [convertTransition0 init'])
 
     convertFormulae ::
       [Fix STerm'] ->

@@ -77,7 +77,25 @@ fi | while read -r fAfa; do
   ${Bisim:-false} && {
     echo "Transforming to .bisim"
     TMP_DIR=$(mktemp -d)
-    $AUTOMATA_SAFA_ONE share < $f.afa | $AUTOMATA_SAFA_ONE removeUselessShares | $LTLE_TO_AFA boomSeparate | $AUTOMATA_SAFA_ONE removeFinalsHind > "$TMP_DIR/0"
+
+    $AUTOMATA_SAFA_ONE share < $f.afa | $AUTOMATA_SAFA_ONE removeUselessShares > "$TMP_DIR/2"
+
+    if $AUTOMATA_SAFA_ONE isSeparated < "$TMP_DIR/2"; then
+      cp "$TMP_DIR/2" "$TMP_DIR/3"
+    else
+      if ${BoomSeparate:-false}; then
+        $AUTOMATA_SAFA_ONE boomSeparate < "$TMP_DIR/2" > "$TMP_DIR/3"
+      else
+        $AUTOMATA_SAFA_ONE delaySymbolsLowest < "$TMP_DIR/2" > "$TMP_DIR/3"
+      fi
+    fi
+
+    if $AUTOMATA_SAFA_ONE hasComplexFinals < "$TMP_DIR/3"; then
+      $AUTOMATA_SAFA_ONE removeFinalsHind < "$TMP_DIR/3" > "$TMP_DIR/0"
+    else
+      cp "$TMP_DIR/3" "$TMP_DIR/0"
+    fi
+
     echo "@kInitialFormula: s0 @kFinalFormula: !s0 @s0: kFalse" > "$TMP_DIR/1"
     $LTLE_TO_AFA eqBisim "$TMP_DIR/0" "$TMP_DIR/1" | capnp convert binary:text $SEPARATED TwoBoolAfas | capnp convert text:binary $SEPARATED TwoBoolAfas > $f.bisim
     rm -rf $TMP_DIR
