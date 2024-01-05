@@ -326,6 +326,13 @@ removeUnisignVariables = do
   afa' <- Lib.removeUnisignVariables @TextIORefO afa
   PrettyStranger.print @TextIORefO afa'
 
+removeLitStates :: IO ()
+removeLitStates = do
+  txt <- TIO.getContents
+  afa <- PrettyStranger.parse @TextIORefO (PrettyStranger.parseDefinitions txt)
+  afa' <- Lib.removeLitStates @TextIORefO afa
+  PrettyStranger.print @TextIORefO afa'
+
 main :: IO ()
 main = do
   args <- getArgs
@@ -355,6 +362,7 @@ main = do
     ("explicitToBitvector" : paths) -> explicitToBitvector paths
     ["removeUnreachable"] -> removeUnreachable
     ["removeUnisignVariables"] -> removeUnisignVariables
+    ["removeLitStates"] -> removeLitStates
     _ -> do
       hPutStrLn stderr $ "Unsupported arguments " ++ show args
       exitFailure

@@ -789,9 +789,41 @@ removeUnisignVariables (init, final, qs) = do
             BiSignum -> lift $ buildShareShared @d2 r0 (Var v)
         _otherTerm -> traverse rec fr >>= lift . buildShareShared @d2 r0
     )
-    ( \recur ->
-        (,,)
-          <$> recur init
-          <*> recur final
-          <*> traverseR recur qs
+    (\recur -> (,,) <$> recur init <*> recur final <*> traverseR recur qs)
+
+
+-- removeLitStates -----------------------------------------------------------------
+
+data RemoveLitStatesA d
+type instance Definition (RemoveLitStatesA d) =
+  Name "deref" (Inherit (Explicit $r [g|term|]) [k|deref|])
+    :+: Name "rec" (R.Explicit [k|rcata|] Zero $r ($r, [g|term|]))
+    :+: Follow d
+
+type RemoveLitStatesI d d1 d2 =
+  ( d2 ~ BuildShareSharedTermO d
+  , BuildShareSharedD d2 IO
+  , d1 ~ RemoveLitStatesA d
+  , MonadFn [g1|deref|] IO
+  , States $qs $q $r
+  , RTraversable $qs $q $r $r $qs
+  , R.Recur [g1|rec|] $r IO
+  , Term $q $v $r ~ [g|term|]
+  ) :: Constraint
+
+removeLitStates :: forall d d1 d2.
+  (RemoveLitStatesI d d1 d2) =>
+  ($r, $r, $qs) ->
+  IO ($r, $r, $qs)
+removeLitStates (init, final, qs) = do
+  R.runRecur @[g1|rec|]
+    ( \rec (r0, fr) -> case fr of
+        State q -> do
+          lift $ monadfn @[g1|deref|] (transition qs q) >>= \case
+            LTrue -> buildShareShared @d2 r0 LTrue
+            LFalse -> buildShareShared @d2 r0 LFalse
+            _otherQTerm -> do
+              buildShareShared @d2 r0 (State q)
+        fr -> traverse rec fr >>= lift . buildShareShared @d2 r0
     )
+    (\recur -> (,,) <$> recur init <*> recur final <*> traverseR recur qs)
