@@ -48,6 +48,7 @@ data Build
 data Share
 data Deref
 data IsTree
+data Replace
 data Cata
 data RCata
 data PCata
@@ -71,6 +72,12 @@ shareTree f = do
 share :: Ref f -> IO (Ref f)
 share (Subtree f) = shareTree f
 share r = return r
+
+replace :: Ref f -> FR f -> IO (Ref f)
+replace (Subtree f) val = return $ Subtree val
+replace ref@(Ref (_, ioref)) val = do
+  writeIORef ioref val
+  return ref
 
 getSharingDetector :: (Traversable f, Hashable (f (SN f))) => IO (Ref f -> IO (Ref f))
 getSharingDetector = do
@@ -150,14 +157,18 @@ getUnsharingDetector isShareable = do
 instance MonadFn0 (Explicit (Ref f) Bool IsTree) IO where
   monadfn0 = return . isTree
 
-instance MonadFn0 (Explicit (Ref f) (f (Ref f)) Deref) IO where
+instance MonadFn0 (Explicit (Ref f) (FR f) Deref) IO where
   monadfn0 = deref
 
-instance MonadFn0 (Explicit (f (Ref f)) (Ref f) Build) IO where
+instance MonadFn0 (Explicit (FR f) (Ref f) Build) IO where
   monadfn0 = return . Subtree
 
 instance MonadFn0 (Explicit (Ref f) (Ref f) Share) IO where
   monadfn0 = share
+
+instance MonadFn0 (Explicit (Ref f, FR f) (Ref f) Replace) IO where
+  monadfn0 = uncurry replace
+
 
 type instance R.Et (R.Explicit ('K _ Cata) _ _ _) = IdentityT
 instance
@@ -408,6 +419,7 @@ type instance
       :+: Name "share" Share
       :+: Name "deref" Deref
       :+: Name "isTree" IsTree
+      :+: Name "replace" Replace
       :+: Name "cata" Cata
       :+: Name "rcata" RCata
       :+: Name "pcata" PCata

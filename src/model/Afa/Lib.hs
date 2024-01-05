@@ -678,18 +678,22 @@ data RemoveUnreachableA d
 type instance Definition (RemoveUnreachableA d) =
   Name "qs'" (StateHashMap $q $r)
     :+: Name "rec" (R.Explicit [k|cata|] Zero $r [g|term|])
+    :+: Name "rec2" (R.Explicit [k|rcata|] Zero $r ($r, [g|term|]))
     :+: Follow d
 
-type RemoveUnreachableI d d1 =
-  ( d1 ~ RemoveUnreachableA d
+type RemoveUnreachableI d d1 d2 =
+  ( d2 ~ BuildShareSharedTermO d
+  , BuildShareSharedD d2 IO
+  , d1 ~ RemoveUnreachableA d
   , States $qs $q $r
   , R.Recur [g1|rec|] () IO
+  , R.Recur [g1|rec2|] $r IO
   , Term $q $v $r ~ [g|term|]
   , Hashable $q
   ) :: Constraint
 
-removeUnreachable :: forall d d1.
-  (RemoveUnreachableI d d1) =>
+removeUnreachable :: forall d d1 d2.
+  (RemoveUnreachableI d d1 d2) =>
   ($r, $r, $qs) ->
   IO ($r, $r, [g1|qs'|])
 removeUnreachable (init, final, qs) = do
@@ -704,14 +708,23 @@ removeUnreachable (init, final, qs) = do
             rec (transition qs q)
         fr -> traverse_ rec fr
     )
-    ( \getVars -> getVars init )
+    ( \recur -> recur init )
 
   reachable <- readIORef reachableV
 
   let qs' = StateHashMap $ HM.fromList $
        filter ((`HS.member` reachable) . fst) $ stateList qs
 
-  return (init, final, qs')
+  final' <- R.runRecur @[g1|rec2|]
+    ( \rec (r0, fr) -> case fr of
+        State q
+          | q `HS.member` reachable -> lift $ buildShareShared @d2 r0 fr
+          | otherwise -> lift $ buildShareShared @d2 r0 LFalse
+        fr -> traverse rec fr >>= lift . buildShareShared @d2 r0
+    )
+    ( \recur -> recur final )
+
+  return (init, final', qs')
 
 
 -- removeUnisignVariables -----------------------------------------------------------------
@@ -733,8 +746,7 @@ instance Monoid Signum where
 
 data RemoveUnisignVariablesA d
 type instance Definition (RemoveUnisignVariablesA d) =
-  Name "qs'" (StateHashMap $q $r)
-    :+: Name "rec" (R.Explicit [k|hylo|] Zero $r [g|term|])
+  Name "rec" (R.Explicit [k|hylo|] Zero $r [g|term|])
     :+: Name "rec2" (R.Explicit [k|rcata|] Zero $r ($r, [g|term|]))
     :+: Follow d
 
@@ -744,7 +756,6 @@ type RemoveUnisignVariablesI d d1 d2 =
   , BuildShareSharedD d2 IO
   , RTraversable $qs $q $r () (RTraversed $qs ())
   , RTraversable $qs $q $r $r $qs
-  , States $qs $q $r
   , R.HyloRecur [g1|rec|] () Signum IO
   , R.Recur [g1|rec2|] $r IO
   , Term $q $v $r ~ [g|term|]
@@ -826,4 +837,108 @@ removeLitStates (init, final, qs) = do
               buildShareShared @d2 r0 (State q)
         fr -> traverse rec fr >>= lift . buildShareShared @d2 r0
     )
-    (\recur -> (,,) <$> recur init <*> recur final <*> traverseR recur qs)
+    (\recur -> (,,) <$> recur init <*> pure final <*> traverseR recur qs)
+
+
+-- pushPosNot -----------------------------------------------------------------
+
+data PushPosNotA d
+type instance Definition (PushPosNotA d) =
+  Name "build" (Inherit (Explicit [g|term|] $r) [k|build|])
+    :+: Name "share" (Inherit (Explicit $r $r) [k|share|])
+    :+: Name "isTree" (Inherit (Explicit $r Bool) [k|isTree|])
+    :+: Name "rec" (R.Explicit [k|hylo|] Zero $r [g|term|])
+    :+: Follow d
+
+type PushPosNotI d d1 d2 =
+  ( d2 ~ BuildShareSharedTermO d
+  , BuildShareSharedD d2 IO
+  , d1 ~ PushPosNotA d
+  , RTraversable $qs $q $r () (RTraversed $qs ())
+  , RTraversable $qs $q $r $r $qs
+  , States $qs $q $r
+  , R.HyloRecur [g1|rec|] (Bool, $r) (First $r, Any, Signum) IO
+  , Term $q $v $r ~ [g|term|]
+  , MonadFn [g1|build|] IO
+  , MonadFn [g1|share|] IO
+  , MonadFn [g1|isTree|] IO
+  ) :: Constraint
+
+pushPosNot :: forall d d1 d2.
+  (PushPosNotI d d1 d2) =>
+  ($r, $r, $qs) ->
+  IO ($r, $r, $qs)
+pushPosNot (init, final, qs) = do
+  R.runHyloRecur @[g1|rec|]
+    mapM_
+    ( \rec fr (First (Just r0), Any mustStay, sig) ->
+        R.BeforeAfter case (fr, sig, mustStay) of
+
+          (Not x, _alwaysNegative, False) -> do
+            let R.BeforeAfter bef = rec x (First $ Just x, Any True, PositiveSignum)
+            aft <- bef
+            return do
+              (_, x') <- aft
+              return (True, x')
+
+          (Not x, PositiveSignum, _) -> do
+            let R.BeforeAfter bef = rec x (First $ Just x, Any False, NegativeSignum)
+            aft <- bef
+            return do
+              (appliedNeg, x') <- aft
+              if appliedNeg
+                then do
+                  monadfn @[g1|isTree|] r0 >>= \case
+                    True -> return (False, x')
+                    False -> monadfn @[g1|share|] x' <&> (False,)
+                else do
+                  buildShareShared @d2 r0 (Not x') <&> (False,)
+
+          (Not x, NegativeSignum, _) -> do
+            let R.BeforeAfter bef = rec x (First $ Just x, Any True, PositiveSignum)
+            aft <- bef
+            return do
+              (_, fr') <- aft
+              (False,) <$> buildShareShared @d2 r0 (Not fr')
+
+          (And _ _, _alwaysNegative, False) -> do
+            let R.BeforeAfter bef = for fr \x -> rec x (First $ Just x, Any False, NegativeSignum)
+            aft <- bef
+            return do
+              fr' <- aft
+              And a' b' <- for fr' \(appliedNeg, x') ->
+                if appliedNeg
+                  then return x'
+                  else monadfn @[g1|build|] (Not x')
+              (True,) <$> buildShareShared @d2 r0 (Or a' b')
+
+          (Or _ _, _alwaysNegative, False) -> do
+            let R.BeforeAfter bef = for fr \x -> rec x (First $ Just x, Any False, NegativeSignum)
+            aft <- bef
+            return do
+              fr' <- aft
+              Or a' b' <- for fr' \(appliedNeg, x') ->
+                if appliedNeg
+                  then return x'
+                  else monadfn @[g1|build|] (Not x')
+              (True,) <$> buildShareShared @d2 r0 (And a' b')
+
+          _anyOtherTermOrSig -> do
+            let R.BeforeAfter bef = for fr \x -> rec x (First $ Just x, Any True, sig) <&> snd
+            aft <- bef
+            return do
+              fr' <- aft
+              (False,) <$> buildShareShared @d2 r0 fr'
+
+    )
+    ( \mark -> do
+        traverseR mark qs
+        mark init
+        mark final
+    )
+    ( \recur ->
+        (,,)
+          <$> (snd <$> recur init (First $ Just init, Any True, PositiveSignum))
+          <*> (snd <$> recur final (First $ Just final, Any True, PositiveSignum))
+          <*> traverseR (\x -> snd <$> recur x (First $ Just x, Any True, PositiveSignum)) qs
+    )

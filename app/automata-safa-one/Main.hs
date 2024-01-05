@@ -333,6 +333,13 @@ removeLitStates = do
   afa' <- Lib.removeLitStates @TextIORefO afa
   PrettyStranger.print @TextIORefO afa'
 
+pushPosNot :: IO ()
+pushPosNot = do
+  txt <- TIO.getContents
+  afa <- PrettyStranger.parse @TextIORefO (PrettyStranger.parseDefinitions txt)
+  afa' <- Lib.pushPosNot @TextIORefO afa
+  PrettyStranger.print @TextIORefO afa'
+
 main :: IO ()
 main = do
   args <- getArgs
@@ -363,6 +370,7 @@ main = do
     ["removeUnreachable"] -> removeUnreachable
     ["removeUnisignVariables"] -> removeUnisignVariables
     ["removeLitStates"] -> removeLitStates
+    ["pushPosNot"] -> pushPosNot
     _ -> do
       hPutStrLn stderr $ "Unsupported arguments " ++ show args
       exitFailure
