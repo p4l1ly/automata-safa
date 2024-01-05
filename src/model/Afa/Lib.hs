@@ -577,6 +577,8 @@ delay (init, final, qs) isDelayed = do
   return (init1, final2, UnionQs qs2 qs1)
 
 
+-- explicitToBitvector -----------------------------------------------------------------
+
 data ExplicitToBitvectorO d
 type instance Definition (ExplicitToBitvectorO d) =
   Name "term" (GetF "term'" (ExplicitToBitvectorA d))
@@ -662,4 +664,134 @@ explicitToBitvector afas = do
     ( \toBitvec ->
         for afas \(init, final, qs) ->
           (,,) <$> toBitvec init <*> toBitvec final <*> traverseR toBitvec qs
+    )
+
+
+-- removeUnreachable -----------------------------------------------------------------
+
+data RemoveUnreachableO d
+type instance Definition (RemoveUnreachableO d) =
+  Name "qs" (GetF "qs'" (RemoveUnreachableA d))
+    :+: Follow d
+
+data RemoveUnreachableA d
+type instance Definition (RemoveUnreachableA d) =
+  Name "qs'" (StateHashMap $q $r)
+    :+: Name "rec" (R.Explicit [k|cata|] Zero $r [g|term|])
+    :+: Follow d
+
+type RemoveUnreachableI d d1 =
+  ( d1 ~ RemoveUnreachableA d
+  , States $qs $q $r
+  , R.Recur [g1|rec|] () IO
+  , Term $q $v $r ~ [g|term|]
+  , Hashable $q
+  ) :: Constraint
+
+removeUnreachable :: forall d d1.
+  (RemoveUnreachableI d d1) =>
+  ($r, $r, $qs) ->
+  IO ($r, $r, [g1|qs'|])
+removeUnreachable (init, final, qs) = do
+  -- get set of all reachable states
+  reachableV <- newIORef HS.empty
+  R.runRecur @[g1|rec|]
+    ( \rec -> \case
+        State q -> do
+          reachable <- lift $ readIORef reachableV
+          unless (q `HS.member` reachable) do
+            lift $ modifyIORef' reachableV (HS.insert q)
+            rec (transition qs q)
+        fr -> traverse_ rec fr
+    )
+    ( \getVars -> getVars init )
+
+  reachable <- readIORef reachableV
+
+  let qs' = StateHashMap $ HM.fromList $
+       filter ((`HS.member` reachable) . fst) $ stateList qs
+
+  return (init, final, qs')
+
+
+-- removeUnisignVariables -----------------------------------------------------------------
+
+data Signum = NoSignum | PositiveSignum | NegativeSignum | BiSignum deriving (Eq, Show)
+
+instance Semigroup Signum where
+  NoSignum <> x = x
+  PositiveSignum <> NoSignum = PositiveSignum
+  PositiveSignum <> PositiveSignum = PositiveSignum
+  PositiveSignum <> x = BiSignum
+  NegativeSignum <> NoSignum = NegativeSignum
+  NegativeSignum <> NegativeSignum = NegativeSignum
+  NegativeSignum <> x = BiSignum
+  BiSignum <> x = BiSignum
+
+instance Monoid Signum where
+  mempty = NoSignum
+
+data RemoveUnisignVariablesA d
+type instance Definition (RemoveUnisignVariablesA d) =
+  Name "qs'" (StateHashMap $q $r)
+    :+: Name "rec" (R.Explicit [k|hylo|] Zero $r [g|term|])
+    :+: Name "rec2" (R.Explicit [k|rcata|] Zero $r ($r, [g|term|]))
+    :+: Follow d
+
+type RemoveUnisignVariablesI d d1 d2 =
+  ( d2 ~ BuildShareSharedTermO d
+  , d1 ~ RemoveUnisignVariablesA d
+  , BuildShareSharedD d2 IO
+  , RTraversable $qs $q $r () (RTraversed $qs ())
+  , RTraversable $qs $q $r $r $qs
+  , States $qs $q $r
+  , R.HyloRecur [g1|rec|] () Signum IO
+  , R.Recur [g1|rec2|] $r IO
+  , Term $q $v $r ~ [g|term|]
+  , Hashable $v
+  ) :: Constraint
+
+removeUnisignVariables :: forall d d1 d2.
+  (RemoveUnisignVariablesI d d1 d2) =>
+  ($r, $r, $qs) ->
+  IO ($r, $r, $qs)
+removeUnisignVariables (init, final, qs) = do
+  varSignsRef <- newIORef HM.empty
+
+  R.runHyloRecur @[g1|rec|]
+    mapM_
+    ( \rec fr sig -> case (fr, sig) of
+        (Var v, p) -> R.BeforeAfter do
+          modifyIORef' varSignsRef (HM.insertWith (<>) v p)
+          return $ return ()
+        (Not x, PositiveSignum) -> rec x NegativeSignum
+        (Not x, NegativeSignum) -> rec x PositiveSignum
+        _anyOtherTermOrSig -> for_ fr (`rec` sig)
+    )
+    ( \mark -> do
+        traverseR mark qs
+        mark init
+        mark final
+    )
+    ( \recur ->
+        traverseR (`recur` PositiveSignum) qs
+          *> recur init PositiveSignum
+          *> recur final PositiveSignum
+    )
+
+  R.runRecur @[g1|rec2|]
+    ( \rec (r0, fr) -> case fr of
+        Var v -> do
+          varSigns <- lift $ readIORef varSignsRef
+          case varSigns HM.! v of
+            PositiveSignum -> lift $ buildShareShared @d2 r0 LTrue
+            NegativeSignum -> lift $ buildShareShared @d2 r0 LFalse
+            BiSignum -> lift $ buildShareShared @d2 r0 (Var v)
+        _otherTerm -> traverse rec fr >>= lift . buildShareShared @d2 r0
+    )
+    ( \recur ->
+        (,,)
+          <$> recur init
+          <*> recur final
+          <*> traverseR recur qs
     )

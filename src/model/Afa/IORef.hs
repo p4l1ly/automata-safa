@@ -13,8 +13,9 @@
 {-# LANGUAGE TypeFamilies #-}
 {-# LANGUAGE TypeOperators #-}
 {-# LANGUAGE UndecidableInstances #-}
+{-# LANGUAGE InstanceSigs #-}
 {-# OPTIONS_GHC -fno-warn-partial-type-signatures #-}
-{-# OPTIONS_GHC -fplugin InversionOfControl.TcPlugin #-}
+-- {-# OPTIONS_GHC -fplugin InversionOfControl.TcPlugin #-}
 
 module Afa.IORef where
 
@@ -41,7 +42,7 @@ type FR f = f (Ref f)
 type R f = IORef (FR f)
 type SN f = StableName (R f)
 type S f = (SN f, R f)
-data Ref f = Ref (S f) | Subtree (FR f)
+data Ref f = Ref !(S f) | Subtree !(FR f)
 
 data Build
 data Share
@@ -50,6 +51,7 @@ data IsTree
 data Cata
 data RCata
 data PCata
+data Hylo
 data MapRec
 
 isTree :: Ref f -> Bool
@@ -227,6 +229,86 @@ instance
                   return result
     runIdentityT $ getAction recur
 
+type instance R.Et (R.Explicit ('K _ Hylo) _ _ _) = R.BeforeAfter
+instance
+  (Monad m, LiftN n IO m, Monoid p) =>
+  R.HyloRecur (R.Explicit ('K n Hylo) n' (Ref f) (FR f)) b p m
+  where
+  runHyloRecur = runHyloRecur1 @n
+
+runHyloRecur1 ::
+  forall (n :: Pean) a f m p b.
+  (Monad m, LiftN n IO m, Monoid p) =>
+  ((Ref f -> m ()) -> FR f -> m ()) ->
+  ((Ref f -> p -> R.BeforeAfter m b) -> FR f -> p -> R.BeforeAfter m b) ->
+  ((Ref f -> m ()) -> m ()) ->
+  ((Ref f -> p -> R.BeforeAfter m b) -> R.BeforeAfter m a) ->
+  m a
+runHyloRecur1 getMarker getAlgebra getMarkingAction getAction = do
+  countsRef <- liftn @n $ newIORef HM.empty
+
+  let recurCount :: Ref f -> m ()
+      recurCount r = do
+        case r of
+          Subtree f -> getMarker recurCount f
+          Ref (name, ioref) -> do
+            counts <- liftn @n $ readIORef countsRef
+            case HM.lookup name counts of
+              Just (count :: Int) ->
+                liftn @n $ writeIORef countsRef $ HM.insert name (count + 1) counts
+              Nothing -> do
+                f <- liftn @n $ readIORef ioref
+                liftn @n $ writeIORef countsRef $ HM.insert name 1 counts
+                getMarker recurCount f
+
+  topdownsRef <- liftn @n $ newIORef HM.empty
+  algebrasRef <- liftn @n $ newIORef HM.empty
+  resultsRef <- liftn @n $ newIORef HM.empty
+
+  let recur :: Ref f -> p -> R.BeforeAfter m b
+      recur (Subtree f) p = getAlgebra recur f p
+      recur (Ref (name, ioref)) p = R.BeforeAfter do
+        counts <- liftn @n (readIORef countsRef)
+
+        case HM.lookup name counts of
+          Nothing -> error "not marked"
+          Just 0 -> error "too few marks"
+          Just count -> do
+            let count' = count - 1
+            liftn @n $ writeIORef countsRef $ HM.insert name count' counts
+
+            topdowns <- liftn @n $ readIORef topdownsRef
+            p' <- case HM.lookup name topdowns of
+              Nothing -> do
+                liftn @n $ writeIORef topdownsRef $ HM.insert name p topdowns
+                return p
+              Just p0 -> do
+                let p' = p0 <> p
+                liftn @n $ writeIORef topdownsRef $ HM.insert name p' topdowns
+                return p'
+
+            when (count' == 0) do
+              f <- liftn @n $ readIORef ioref
+              let R.BeforeAfter runCoalgebra = getAlgebra recur f p'
+              result <- runCoalgebra
+              liftn @n $ modifyIORef algebrasRef $ HM.insert name result
+
+            return do
+              results <- liftn @n $ readIORef resultsRef
+              case HM.lookup name results of
+                Just b -> return b
+                Nothing -> do
+                  algebras <- liftn @n $ readIORef algebrasRef
+                  case HM.lookup name algebras of
+                    Nothing -> error "too many marks"
+                    Just algebra -> do
+                      result <- algebra
+                      liftn @n $ modifyIORef' resultsRef $ HM.insert name result
+                      return result
+
+  getMarkingAction recurCount
+  R.runBeforeAfter $ getAction recur
+
 type instance MR.Et (MR.Explicit ('K _ MapRec) _ _ _) = IdentityT
 
 instance
@@ -329,6 +411,7 @@ type instance
       :+: Name "cata" Cata
       :+: Name "rcata" RCata
       :+: Name "pcata" PCata
+      :+: Name "hylo" Hylo
       :+: Name "mapRec" MapRec
       :+: Name "mapRecCopy" MapRec
       :+: Name "mapRecFun" OneshotFun

@@ -178,6 +178,14 @@ hasComplexFinals = do
     (_, Just _) -> exitSuccess
     _ -> exitFailure
 
+hasFinals :: IO ()
+hasFinals = do
+  txt <- TIO.getContents
+  (_, final, _) <- PrettyStranger.parse @TextIORefO (PrettyStranger.parseDefinitions txt)
+  Lib.splitFinals @TextIORefO final >>= \case
+    ([], Nothing) -> exitFailure
+    _ -> exitSuccess
+
 delaySymbolsLowest :: IO ()
 delaySymbolsLowest = do
   txt <- TIO.getContents
@@ -289,9 +297,7 @@ vtfToPretty = do
   qs' <- Separ.unseparate @TextIORefO qs
   PrettyStranger.print @TextIORefO (init, final, qs')
 
-explicitToBitvector ::
-  [String] ->
-  IO ()
+explicitToBitvector :: [String] -> IO ()
 explicitToBitvector paths = do
   afas <- for paths \path -> do
     withFile path ReadMode \f -> do
@@ -305,6 +311,20 @@ explicitToBitvector paths = do
     let path' = T.unpack (T.append barePath ".bitvector.afa")
     withFile path' WriteMode \f ->
       PrettyStranger.hPrint @(Lib.ExplicitToBitvectorO TextIORefO) f afa
+
+removeUnreachable :: IO ()
+removeUnreachable = do
+  txt <- TIO.getContents
+  afa <- PrettyStranger.parse @TextIORefO (PrettyStranger.parseDefinitions txt)
+  afa' <- Lib.removeUnreachable @TextIORefO afa
+  PrettyStranger.print @(Lib.RemoveUnreachableO TextIORefO) afa'
+
+removeUnisignVariables :: IO ()
+removeUnisignVariables = do
+  txt <- TIO.getContents
+  afa <- PrettyStranger.parse @TextIORefO (PrettyStranger.parseDefinitions txt)
+  afa' <- Lib.removeUnisignVariables @TextIORefO afa
+  PrettyStranger.print @TextIORefO afa'
 
 main :: IO ()
 main = do
@@ -325,6 +345,7 @@ main = do
       Free $ Or (Free $ And a nb) (Free $ And na b)
     ["removeFinals"] -> removeFinals
     ["removeFinalsHind"] -> removeFinalsHind
+    ["hasFinals"] -> hasFinals
     ["hasComplexFinals"] -> hasComplexFinals
     ["delaySymbolsLowest"] -> delaySymbolsLowest
     ["share"] -> share
@@ -332,6 +353,8 @@ main = do
     ["checkerV1RemoveFinalsNonsep"] -> checkerV1RemoveFinalsNonsep
     ["vtfToPretty"] -> vtfToPretty
     ("explicitToBitvector" : paths) -> explicitToBitvector paths
+    ["removeUnreachable"] -> removeUnreachable
+    ["removeUnisignVariables"] -> removeUnisignVariables
     _ -> do
       hPutStrLn stderr $ "Unsupported arguments " ++ show args
       exitFailure
