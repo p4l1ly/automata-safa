@@ -41,6 +41,7 @@ module Afa.Term (
   FunSelector,
   (:&:) ((:&:)),
   TermParam,
+  MultiwayTerm(..),
 ) where
 
 import Data.Functor.Classes (Eq1, Show1)
@@ -69,10 +70,24 @@ data Term q v r
   deriving (Functor, Foldable, Traversable, Show, Eq, Generic, Generic1, Hashable, Hashable1)
   deriving (Eq1, Show1) via (Generically1 (Term q v))
 
+data MultiwayTerm q v r
+  = LTrueMulti
+  | LFalseMulti
+  | StateMulti !q
+  | VarMulti !v
+  | NotMulti !r
+  | AndMulti ![r]
+  | OrMulti ![r]
+  deriving (Functor, Foldable, Traversable, Show, Eq, Generic, Generic1, Hashable, Hashable1)
+  deriving (Eq1, Show1) via (Generically1 (MultiwayTerm q v))
+
 type family TermParam (sel :: QVR) (t :: *) :: * where
   TermParam Q (Term q v r) = q
   TermParam V (Term q v r) = v
   TermParam R (Term q v r) = r
+  TermParam Q (MultiwayTerm q v r) = q
+  TermParam V (MultiwayTerm q v r) = v
+  TermParam R (MultiwayTerm q v r) = r
 
 paramGetter :: String -> Name -> TypeQ
 paramGetter dname x = do

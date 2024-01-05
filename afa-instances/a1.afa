@@ -1,0 +1,5 @@
+@kInitialFormula: sInit
+@kFinalFormula: !sInit
+@sInit: a1 & aF & sLit
+@sUnreach: !a2 | !aF
+@sLit: !a2

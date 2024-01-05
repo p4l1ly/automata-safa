@@ -75,6 +75,13 @@ instance
       share = monadfn0 @(DelitKShare r xShare)
       replace = monadfn0 @(DelitKReplace q v r xReplace)
 
+instance
+  ( MonadFn0 (Explicit (MultiwayTerm q v r) r xBuild) m
+  ) =>
+  MonadFn0 (Explicit (MultiwayTerm q v r) r (Delit xBuild xDeref xIsTree xShare xReplace)) m
+  where
+  monadfn0 = monadfn0 @(Explicit (MultiwayTerm q v r) r xBuild)
+
 data IORefDelitO (d :: * -> *) (cont :: *)
 type instance
   Definition (IORefDelitO d cont) =

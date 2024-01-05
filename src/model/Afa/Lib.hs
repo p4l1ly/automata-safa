@@ -16,6 +16,8 @@
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE InstanceSigs #-}
 {-# LANGUAGE TupleSections #-}
+{-# LANGUAGE ViewPatterns #-}
+{-# LANGUAGE RecordWildCards #-}
 
 module Afa.Lib where
 
@@ -52,6 +54,7 @@ import Data.Either
 import Control.Monad.Identity
 import InversionOfControl.LiftN
 import Data.IORef
+import qualified Afa.IORef as AIO
 
 -- RemoveSingleInit --------------------------------------------------------------------
 
@@ -263,6 +266,47 @@ splitFinals final =
       _ -> return self'
       where
         self' = ((Any False, Endo id), Just r0)
+
+-- splitFinals2
+
+data Finalness = Final | Complex | Nonfinal deriving (Eq, Show, Ord)
+
+data SplitFinals2A d
+type instance Definition (SplitFinals2A d) =
+  Name "rec" (R.Explicit [k|cata|] Zero $r [g|term|])
+    :+: Name "qs'" (RTraversed $qs Finalness)
+    :+: End
+
+type SplitFinals2I d d1 m =
+  ( d1 ~ SplitFinals2A d
+  , R.Recur [g1|rec|] (Endo [$q]) m
+  , SplitFinalsD d m
+  , RTraversable $qs $q (Qs.R $qs) Finalness [g1|qs'|]
+  , States [g1|qs'|] $q Finalness
+  )
+
+type SplitFinals2D d m = SplitFinals2I d (SplitFinals2A d) m
+
+splitFinals2 ::
+  forall d d1 m.
+  SplitFinals2I d d1 m =>
+  $r -> $qs -> m ([g1|qs'|], Maybe $r)
+splitFinals2 final qs = do
+  (nonfinals, complex) <- splitFinals @d final
+  ((`appEndo` []) -> complexFinals) <- case complex of
+    Nothing -> return mempty
+    Just complex -> R.runRecur @[g1|rec|] findQsAlg ($ final)
+
+  let qs1 = runIdentity $ traverseR (const $ Identity Final) qs
+  let qs2 = redirect qs1 $
+        map (, Complex) complexFinals
+        ++ map (, Nonfinal) nonfinals
+
+  return (qs2, complex)
+  where
+    findQsAlg rec = \case
+      State q -> return $ Endo (q:)
+      term -> fold <$> mapM rec term
 
 -- unshare -----------------------------------------------------------------------------
 
@@ -809,6 +853,7 @@ data RemoveLitStatesA d
 type instance Definition (RemoveLitStatesA d) =
   Name "deref" (Inherit (Explicit $r [g|term|]) [k|deref|])
     :+: Name "rec" (R.Explicit [k|rcata|] Zero $r ($r, [g|term|]))
+    :+: Name "fqs" (GetF "qs'" (SplitFinals2A d))
     :+: Follow d
 
 type RemoveLitStatesI d d1 d2 =
@@ -818,8 +863,10 @@ type RemoveLitStatesI d d1 d2 =
   , MonadFn [g1|deref|] IO
   , States $qs $q $r
   , RTraversable $qs $q $r $r $qs
+  , States [g1|fqs|] $q Finalness
   , R.Recur [g1|rec|] $r IO
   , Term $q $v $r ~ [g|term|]
+  , SplitFinals2D d IO
   ) :: Constraint
 
 removeLitStates :: forall d d1 d2.
@@ -827,14 +874,14 @@ removeLitStates :: forall d d1 d2.
   ($r, $r, $qs) ->
   IO ($r, $r, $qs)
 removeLitStates (init, final, qs) = do
+  (finalnesses, _) <- splitFinals2 @d final qs
   R.runRecur @[g1|rec|]
     ( \rec (r0, fr) -> case fr of
         State q -> do
           lift $ monadfn @[g1|deref|] (transition qs q) >>= \case
-            LTrue -> buildShareShared @d2 r0 LTrue
-            LFalse -> buildShareShared @d2 r0 LFalse
-            _otherQTerm -> do
-              buildShareShared @d2 r0 (State q)
+            LTrue | transition finalnesses q == Final -> buildShareShared @d2 r0 LTrue
+            LFalse | transition finalnesses q == Nonfinal -> buildShareShared @d2 r0 LFalse
+            _otherQTerm -> buildShareShared @d2 r0 (State q)
         fr -> traverse rec fr >>= lift . buildShareShared @d2 r0
     )
     (\recur -> (,,) <$> recur init <*> pure final <*> traverseR recur qs)
@@ -942,3 +989,302 @@ pushPosNot (init, final, qs) = do
           <*> (snd <$> recur final (First $ Just final, Any True, PositiveSignum))
           <*> traverseR (\x -> snd <$> recur x (First $ Just x, Any True, PositiveSignum)) qs
     )
+
+
+-- flatten --------------------------------------------------------------------------------------
+
+type FlattenD d = FlattenI d (FlattenA d) (FlattenA2 d)
+
+data FlattenA d
+type instance Definition (FlattenA d) =
+  Name "isTree" (Inherit (Explicit $r Bool) [k|isTree|])
+    :+: Name "r'" (AIO.Ref (MultiwayTerm $q $v))
+    :+: Name "fr'" (MultiwayTerm $q $v [gs|r'|])
+    :+: Name "r" $r
+    :+: Name "deref" (Inherit (Explicit [gs|r'|] [gs|fr'|]) [k|deref|])
+    :+: Name "qs'" (RTraversed $qs [gs|r'|])
+    :+: Name "rec" (R.Explicit [k|rcata|] Zero $r ($r, [g|term|]))
+    :+: Follow d
+
+data FlattenA2 d
+type instance Definition (FlattenA2 d) =
+  Name "r'" (AIO.Ref (MultiwayTerm $q $v))
+    :+: Name "fr'" (MultiwayTerm $q $v [gs|r'|])
+    :+: Name "r" $r
+    :+: Follow d
+
+type FlattenI d d1 d2 =
+  ( d1 ~ FlattenA d
+  , d2 ~ FlattenA2 d
+  , BuildShareSharedD d2 IO
+  , MonadFn [g1|deref|] IO
+  , MonadFn [g1|isTree|] IO
+  , RTraversable $qs $q $r [g1|r'|] [g1|qs'|]
+  , R.Recur [g1|rec|] [g1|r'|] IO
+  , Term $q $v $r ~ [g|term|]
+  ) :: Constraint
+
+flatten :: forall d d1 d2.
+  (FlattenI d d1 d2) =>
+  $qs ->  -- we support only qs for convenience in tseytin
+  IO [g1|qs'|]
+flatten qs = do
+  R.runRecur @[g1|rec|]
+    ( \rec (r0, fr) -> case fr of
+        LTrue -> lift $ buildShareShared @d2 r0 LTrueMulti
+        LFalse -> lift $ buildShareShared @d2 r0 LFalseMulti
+        State q -> lift $ buildShareShared @d2 r0 (StateMulti q)
+        Var v -> lift $ buildShareShared @d2 r0 (VarMulti v)
+        Not x -> rec x >>= lift . buildShareShared @d2 r0 . NotMulti
+        And x1 x2 -> do
+          x1' <- rec x1
+          x2' <- rec x2
+          x1s <- lift (monadfn @[g1|isTree|] x1) >>= \case
+            True -> do
+              lift (monadfn @[g1|deref|] x1') <&> \case
+                AndMulti xs -> xs
+                _nonassoc -> [x1']
+            False -> return [x1']
+          x2s <- lift (monadfn @[g1|isTree|] x2) >>= \case
+            True -> do
+              lift (monadfn @[g1|deref|] x2') <&> \case
+                AndMulti xs -> xs
+                _nonassoc -> [x2']
+            False -> return [x2']
+          lift $ buildShareShared @d2 r0 (AndMulti $ x1s ++ x2s)
+        Or x1 x2 -> do
+          x1' <- rec x1
+          x2' <- rec x2
+          x1s <- lift (monadfn @[g1|isTree|] x1) >>= \case
+            True -> do
+              lift (monadfn @[g1|deref|] x1') <&> \case
+                OrMulti xs -> xs
+                _nonassoc -> [x1']
+            False -> return [x1']
+          x2s <- lift (monadfn @[g1|isTree|] x2) >>= \case
+            True -> do
+              lift (monadfn @[g1|deref|] x2') <&> \case
+                OrMulti xs -> xs
+                _nonassoc -> [x2']
+            False -> return [x2']
+          lift $ buildShareShared @d2 r0 (OrMulti $ x1s ++ x2s)
+    )
+    (`traverseR` qs)
+
+
+-- tseytin --------------------------------------------------------------------------------------
+
+data TseytinA d d2
+type instance Definition (TseytinA d d2) =
+  Name "deref" (Inherit (Explicit $r [g|term|]) [k|deref|])
+    :+: Name "deref" (Inherit (Explicit $r [g|term|]) [k|deref|])
+    :+: Name "rec" (R.Explicit [k|cata|] Zero $r [g|term|])
+    :+: Name "rec2" (R.Explicit [k|hylo|] Zero [g2|r'|] [g2|fr'|])
+    :+: Follow d
+
+type TseytinI d d1 d2 =
+  ( d1 ~ TseytinA d d2
+  , d2 ~ FlattenA d
+  , MonadFn [g1|deref|] IO
+  , States $qs $q $r
+  , RTraversable $qs $q $r () (RTraversed $qs ())
+  , Term $q $v $r ~ [g|term|]
+  , Hashable $q
+  , Hashable $v
+  , Eq $q
+  , R.Recur [g1|rec|] () IO
+  , R.HyloRecur [g1|rec2|] (Bool, (Bool, Int)) (First [g2|r'|], Signum) IO
+  , RTraversable [g2|qs'|] $q [g2|r'|] () (RTraversed [g2|qs'|] ())
+  , RTraversable [g2|qs'|] $q [g2|r'|] (Bool, Int) (RTraversed [g2|qs'|] (Bool, Int))
+  , States (RTraversed [g2|qs'|] (Bool, Int)) $q (Bool, Int)
+  , FlattenD d
+  , SplitFinalsD d IO
+  ) :: Constraint
+
+data CnfAfa = CnfAfa
+  { variableCount :: !Int
+  , outputs :: ![(Bool, Int)]
+  , clauses :: ![[(Bool, Int)]]
+  , finals :: ![Int]
+  , pureVars :: ![Int]
+  , upwardClauses :: ![Int]
+  } deriving Show
+
+tseytin :: forall d d1 d2.
+  (TseytinI d d1 d2) =>
+  ($r, $r, $qs) ->
+  IO CnfAfa
+tseytin (init, final, qs) = do
+  -- Enumerate states, init is zero
+  initQ <- monadfn @[g1|deref|] init <&> \case
+    State q -> q
+    _unsupported -> error "singleton init expected"
+
+  stateToIxRef <- newIORef $ HM.singleton initQ 0
+  counter <- newIORef 1
+  for_ (stateList qs) \(q, _) -> do
+    when (q /= initQ) do
+      stateIx <- readIORef counter
+      writeIORef counter (stateIx + 1)
+      modifyIORef' stateToIxRef $ HM.insert q stateIx
+  stateToIx <- readIORef stateToIxRef
+  stateCount <- readIORef counter
+
+  -- Find finals
+  (nonfinals, complex) <- splitFinals @d final
+  when (isJust complex) do error "complex finals"
+
+  let nonfinalsHS = HS.fromList nonfinals
+  finalsRef <- newIORef []
+  for_ (stateList qs) \(q, _) -> do
+    unless (HS.member q nonfinalsHS) do modifyIORef' finalsRef (stateToIx HM.! q:)
+  finals <- readIORef finalsRef
+
+  -- Enumerate variables
+  varToIxRef <- newIORef HM.empty
+  R.runRecur @[g1|rec|]
+    ( \recur -> \case
+        Var v -> lift do
+          varToIx <- readIORef varToIxRef
+          case varToIx HM.!? v of
+            Nothing -> do
+              varIx <- readIORef counter
+              writeIORef counter (varIx + 1)
+              writeIORef varToIxRef $ HM.insert v varIx varToIx
+            _just -> return ()
+        fr -> mapM_ recur fr
+    )
+    (`traverseR` qs)
+  varToIx <- readIORef varToIxRef
+  qsvarCount <- readIORef counter
+  let variableCount = qsvarCount - stateCount
+
+  -- Flatten
+  qsFlat <- flatten @d qs
+
+  -- Generate clauses
+
+  trueRef <- newIORef Nothing
+  clausesRef <- newIORef []
+  clauseCountRef <- newIORef 0
+  upwardClausesRef <- newIORef []
+  pureVarsRef <- newIORef [0..stateCount - 1]
+
+  let trueSignal = do
+        readIORef trueRef >>= \case
+          Just ix -> return ix
+          Nothing -> do
+            count <- readIORef counter
+            writeIORef counter (count + 1)
+            modifyIORef' clausesRef ([(True, count)] :)
+            writeIORef trueRef (Just count)
+            return count
+
+  let hylogebra ::
+        ([g2|r'|] -> (First [g2|r'|], Signum) -> R.BeforeAfter IO (Bool, (Bool, Int))) ->
+        [g2|fr'|] ->
+        (First [g2|r'|], Signum) ->
+        R.BeforeAfter IO (Bool, (Bool, Int))
+      hylogebra recur fr (First (Just r0), sig) = case fr of
+        LTrueMulti -> R.BeforeAfter do return do (True,) . (True,) <$> trueSignal
+        LFalseMulti -> R.BeforeAfter do return do (False,) . (False,) <$> trueSignal
+        StateMulti q -> R.BeforeAfter do return do return (True, (True, stateToIx HM.! q))
+        VarMulti v -> R.BeforeAfter do return do return (False, (True, varToIx HM.! v))
+        NotMulti x -> R.BeforeAfter do
+          let sig' = case sig of
+                PositiveSignum -> NegativeSignum
+                NegativeSignum -> PositiveSignum
+                BiSignum -> BiSignum
+          let R.BeforeAfter bef = recur x (First $ Just x, sig')
+          aft <- bef
+          return $ do
+            (_, (litsig, litvar)) <- aft
+            return (False, (not litsig, litvar))
+
+        AndMulti xs -> R.BeforeAfter do
+          let R.BeforeAfter bef = for xs \x -> recur x (First $ Just x, sig)
+          aft <- bef
+          return $ do
+            plits <- aft
+            let isPureQ = all fst plits
+
+            count <- readIORef counter
+            writeIORef counter (count + 1)
+
+            let lits = map snd plits
+            let len = length plits
+            clauseCount <- readIORef clauseCountRef
+
+            let zeroUpClauses = [[(False, count), lit] | lit <- lits]
+            let zeroDownClause = (True, count) : map (first not) lits
+            let allClauses = zeroDownClause : zeroUpClauses
+
+            case sig of
+              _ | isPureQ -> do
+                writeIORef clauseCountRef (clauseCount + len)
+                modifyIORef' pureVarsRef (count :)
+                modifyIORef' upwardClausesRef ([clauseCount .. clauseCount + len - 1] ++)
+                modifyIORef' clausesRef (zeroUpClauses ++)
+                return (True, (True, count))
+              PositiveSignum -> do
+                writeIORef clauseCountRef (clauseCount + len + 1)
+                modifyIORef' pureVarsRef (count :)
+                modifyIORef' upwardClausesRef (clauseCount + len :)
+                modifyIORef' clausesRef (allClauses ++)
+                return (False, (True, count))
+              _negOrBi -> do
+                writeIORef clauseCountRef (clauseCount + len + 1)
+                modifyIORef' clausesRef (allClauses ++)
+                return (False, (True, count))
+
+        OrMulti xs -> R.BeforeAfter do
+          let R.BeforeAfter bef = for xs \x -> recur x (First $ Just x, sig)
+          aft <- bef
+          return $ do
+            plits <- aft
+            let isPureQ = all fst plits
+
+            count <- readIORef counter
+            writeIORef counter (count + 1)
+
+            let lits = map snd plits
+            let len = length plits
+            clauseCount <- readIORef clauseCountRef
+
+            let zeroDownClauses =
+                  [[(True, count), (not litsig, litvar)] | (litsig, litvar) <- lits]
+            let zeroUpClause = (False, count) : lits
+            let allClauses = zeroUpClause : zeroDownClauses
+
+            case sig of
+              _ | isPureQ -> do
+                writeIORef clauseCountRef (clauseCount + 1)
+                modifyIORef' pureVarsRef (count :)
+                modifyIORef' upwardClausesRef (clauseCount :)
+                modifyIORef' clausesRef (zeroUpClause :)
+                return (True, (True, count))
+              PositiveSignum -> do
+                writeIORef clauseCountRef (clauseCount + len + 1)
+                modifyIORef' pureVarsRef (count :)
+                modifyIORef' upwardClausesRef ([clauseCount .. clauseCount + len - 1] ++)
+                modifyIORef' clausesRef (allClauses ++)
+                return (False, (True, count))
+              _negOrBi -> do
+                writeIORef clauseCountRef (clauseCount + len + 1)
+                modifyIORef' clausesRef (allClauses ++)
+                return (False, (True, count))
+
+  qsOutputs <- R.runHyloRecur @[g1|rec2|]
+    mapM_
+    hylogebra
+    (\mark -> void $ traverseR mark qsFlat)
+    (\recur -> traverseR (\x -> snd <$> recur x (First $ Just x, PositiveSignum)) qsFlat)
+
+  let qsAssocs = stateList qsOutputs <&> first (stateToIx HM.!)
+  let outputs = elems $ array (0, stateCount - 1) qsAssocs
+
+  clauses <- reverse <$> readIORef clausesRef
+  upwardClauses <- readIORef upwardClausesRef
+  pureVars <- readIORef pureVarsRef
+
+  return CnfAfa{..}

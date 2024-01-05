@@ -53,7 +53,6 @@ import Control.Monad.Identity
 import Control.Lens ((&), traversed, traverseOf, _1)
 
 data SyncVar q v = VVar v | FVar | QVar q deriving (Eq, Show)
-data Finalness = Final | Complex | Nonfinal deriving (Eq, Show, Ord)
 
 data RemoveFinalsO d
 type instance Definition (RemoveFinalsO d) =
@@ -83,8 +82,8 @@ type RemoveFinalsI d d1 m =
   , Create [g1|mapK|] [g1|mapF|]
   , MR.Recur [g1|map|] m
   , RTraversable $qs $q $r [g1|r'|] [g1|qs'|]
-  , RTraversable (GetF "qs'" (SplitFinalsA d)) $q Finalness [g1|r'|] [g1|qs'|]
-  , SplitFinalsD d m
+  , RTraversable (GetF "qs'" (Lib.SplitFinals2A d)) $q Lib.Finalness [g1|r'|] [g1|qs'|]
+  , Lib.SplitFinals2D d m
   , R.Recur [g1|recBuildFF|] [g1|r'|] m
   , BuildFinalConstraintD d m
   , Create [g1|mapK2|] [g1|mapF2|]
@@ -99,11 +98,11 @@ removeFinals ::
   RemoveFinalsI d d1 m =>
   ($r, $r, $qs) -> m ([g1|r'|], Lib.AddOneQs [g1|qs'|])
 removeFinals (init, final, qs) = do
-  (finalnesses, maybeComplex) <- splitFinals @d final qs
+  (finalnesses, maybeComplex) <- Lib.splitFinals2 @d final qs
 
   let mfun = create @[g1|mapK|] (Lib.OriginalQ :&: VVar :: [g1|mapF|])
   MR.runRecur @[g1|map|] mfun \changeAlphabet ->
-    if all (\(_, fin) -> fin == Nonfinal) $ stateList finalnesses
+    if all (\(_, fin) -> fin == Lib.Nonfinal) $ stateList finalnesses
       then do
         init' <- changeAlphabet init
         qs' <- traverseR changeAlphabet qs
@@ -121,16 +120,16 @@ removeFinals (init, final, qs) = do
         qsubs <-
           lift $ finalnesses & traverseQR \q ->
             \case
-              Final ->
+              Lib.Final ->
                 monadfn @[g1|share|] =<< buildFix @[g1|build|]
                   (Fix $ Or (Fix $ State $ Lib.OriginalQ q) (Fix $ Var FVar))
-              Complex -> do
+              Lib.Complex -> do
                 monadfn @[g1|share|] =<< buildFix @[g1|build|]
                   ( (Fix .: Or)
                       (Fix $ And (Fix $ Not (Fix $ Var FVar)) (Fix $ State $ Lib.OriginalQ q))
                       (Fix $ And (Fix $ Var FVar) (Fix $ Var $ QVar q))
                   )
-              Nonfinal ->
+              Lib.Nonfinal ->
                 monadfn @[g1|share|] =<< buildFix @[g1|build|]
                   (Fix $ And (Fix $ State $ Lib.OriginalQ q) (Fix $ Not $ Fix $ Var FVar))
 
@@ -181,8 +180,8 @@ type RemoveFinalsHindI d d1 m =
   , Create [g1|mapK|] [g1|mapF|]
   , MR.Recur [g1|map|] m
   , RTraversable $qs $q [($r, $r)] [([g1|r'|], [g1|r'|])] [g1|qs'|]
-  , RTraversable (GetF "qs'" (SplitFinalsA d)) $q Finalness [([g1|r'|], [g1|r'|])] [g1|qs'|]
-  , SplitFinalsD d m
+  , RTraversable (GetF "qs'" (Lib.SplitFinals2A d)) $q Lib.Finalness [([g1|r'|], [g1|r'|])] [g1|qs'|]
+  , Lib.SplitFinals2D d m
   , R.Recur [g1|recBuildFF|] [g1|r'|] m
   , BuildFinalConstraintD d m
   , MonadFn [g1|deref|] m
@@ -195,7 +194,7 @@ removeFinalsHind ::
   RemoveFinalsHindI d d1 m =>
   ($r, $r, $qs) -> m ([g1|r'|], Lib.AddOneQs [g1|qs'|])
 removeFinalsHind (init, final, qs) = do
-  (finalnesses, maybeComplex) <- splitFinals @d final qs
+  (finalnesses, maybeComplex) <- Lib.splitFinals2 @d final qs
 
   let mfun = create @[g1|mapK|] (Lib.OriginalQ :&: VVar :: [g1|mapF|])
   MR.runRecur @[g1|map|] mfun \changeAlphabet -> do
@@ -204,7 +203,7 @@ removeFinalsHind (init, final, qs) = do
     qs1 <- flip traverseR qs $
       mapM (\(a, q) -> (,) <$> changeAlphabet a <*> changeAlphabet q)
 
-    if all (\(_, fin) -> fin == Nonfinal) $ stateList finalnesses
+    if all (\(_, fin) -> fin == Lib.Nonfinal) $ stateList finalnesses
       then do
         return (init', Lib.AddOneQs qs1 [(ltrue, ltrue)])
       else do
@@ -222,10 +221,10 @@ removeFinalsHind (init, final, qs) = do
           qs2 <- finalnesses & traverseQR \q f ->
             let ts = transition qs1 q
             in case f of
-              Final -> return $ (fvar, ltrue) : transition qs1 q
-              Nonfinal -> ts & traverseOf (traversed . _1)
+              Lib.Final -> return $ (fvar, ltrue) : transition qs1 q
+              Lib.Nonfinal -> ts & traverseOf (traversed . _1)
                 (monadfn @[g1|build|] . And nfvar)
-              Complex -> do
+              Lib.Complex -> do
                 finish <- buildFree @[g1|build|]
                   (Free $ And (Pure fvar) (Free $ Var $ QVar q))
                 ts' <- ts & traverseOf (traversed . _1)
@@ -262,41 +261,3 @@ buildFinalConstraint rec (r0, term) = case term of
   (Or a b) -> buildShareShared @d2 r0 =<< Or <$> rec a <*> rec b
   (Not a) -> buildShareShared @d2 r0 . Not =<< rec a
   _ -> return r0
-
-
-data SplitFinalsA d
-type instance Definition (SplitFinalsA d) =
-  Name "rec" (R.Explicit [k|cata|] Zero $r [g|term|])
-    :+: Name "qs'" (RTraversed $qs Finalness)
-    :+: End
-
-type SplitFinalsI d d1 m =
-  ( d1 ~ SplitFinalsA d
-  , R.Recur [g1|rec|] (Endo [$q]) m
-  , Lib.SplitFinalsD d m
-  , RTraversable $qs $q (Qs.R $qs) Finalness [g1|qs'|]
-  , States [g1|qs'|] $q Finalness
-  )
-
-type SplitFinalsD d m = SplitFinalsI d (SplitFinalsA d) m
-
-splitFinals ::
-  forall d d1 m.
-  SplitFinalsI d d1 m =>
-  $r -> $qs -> m ([g1|qs'|], Maybe $r)
-splitFinals final qs = do
-  (nonfinals, complex) <- Lib.splitFinals @d final
-  ((`appEndo` []) -> complexFinals) <- case complex of
-    Nothing -> return mempty
-    Just complex -> R.runRecur @[g1|rec|] findQsAlg ($ final)
-
-  let qs1 = runIdentity $ traverseR (const $ Identity Final) qs
-  let qs2 = redirect qs1 $
-        map (, Complex) complexFinals
-        ++ map (, Nonfinal) nonfinals
-
-  return (qs2, complex)
-  where
-    findQsAlg rec = \case
-      State q -> return $ Endo (q:)
-      term -> fold <$> mapM rec term

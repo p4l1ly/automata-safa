@@ -10,6 +10,7 @@
 {-# LANGUAGE TypeFamilies #-}
 {-# LANGUAGE TypeOperators #-}
 {-# LANGUAGE ViewPatterns #-}
+{-# LANGUAGE RecordWildCards #-}
 {-# OPTIONS_GHC -fconstraint-solver-iterations=5 #-}
 {-# OPTIONS_GHC -fplugin InversionOfControl.TcPlugin #-}
 
@@ -44,6 +45,7 @@ import InversionOfControl.TypeDict
 import System.Environment
 import System.Exit
 import System.IO
+import Data.List
 
 data EmptyO
 type instance Definition EmptyO = End
@@ -340,6 +342,19 @@ pushPosNot = do
   afa' <- Lib.pushPosNot @TextIORefO afa
   PrettyStranger.print @TextIORefO afa'
 
+tseytin :: IO ()
+tseytin = do
+  txt <- TIO.getContents
+  afa <- PrettyStranger.parse @TextIORefO (PrettyStranger.parseDefinitions txt)
+  cnfAfa@Lib.CnfAfa{..} <- Lib.tseytin @TextIORefO afa
+  print variableCount
+  putStrLn $ intercalate " " [show if pos then x else -x | (pos, x) <- outputs]
+  putStrLn $ intercalate " " $ map show finals
+  putStrLn $ intercalate " " $ map show pureVars
+  putStrLn $ intercalate " " $ map show upwardClauses
+  for_ clauses \clause -> do
+    putStrLn $ intercalate " " [show if pos then x else -x | (pos, x) <- clause]
+
 main :: IO ()
 main = do
   args <- getArgs
@@ -371,6 +386,7 @@ main = do
     ["removeUnisignVariables"] -> removeUnisignVariables
     ["removeLitStates"] -> removeLitStates
     ["pushPosNot"] -> pushPosNot
-    _ -> do
+    ["tseytin"] -> tseytin
+    _unsupportedArguments -> do
       hPutStrLn stderr $ "Unsupported arguments " ++ show args
       exitFailure
