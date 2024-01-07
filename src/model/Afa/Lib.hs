@@ -1095,8 +1095,8 @@ type TseytinI d d1 d2 =
   , R.Recur [g1|rec|] () IO
   , R.HyloRecur [g1|rec2|] (Bool, (Bool, Int)) (First [g2|r'|], Signum) IO
   , RTraversable [g2|qs'|] $q [g2|r'|] () (RTraversed [g2|qs'|] ())
-  , RTraversable [g2|qs'|] $q [g2|r'|] (Bool, Int) (RTraversed [g2|qs'|] (Bool, Int))
-  , States (RTraversed [g2|qs'|] (Bool, Int)) $q (Bool, Int)
+  , RTraversable [g2|qs'|] $q [g2|r'|] (Bool, (Bool, Int)) (RTraversed [g2|qs'|] (Bool, (Bool, Int)))
+  , States (RTraversed [g2|qs'|] (Bool, (Bool, Int))) $q (Bool, (Bool, Int))
   , FlattenD d
   , SplitFinalsD d IO
   ) :: Constraint
@@ -1108,6 +1108,7 @@ data CnfAfa = CnfAfa
   , finals :: ![Int]
   , pureVars :: ![Int]
   , upwardClauses :: ![Int]
+  , posqOutputs :: ![Int]
   } deriving Show
 
 tseytin :: forall d d1 d2.
@@ -1278,9 +1279,10 @@ tseytin (init, final, qs) = do
     mapM_
     hylogebra
     (\mark -> void $ traverseR mark qsFlat)
-    (\recur -> traverseR (\x -> snd <$> recur x (First $ Just x, PositiveSignum)) qsFlat)
+    (\recur -> traverseR (\x -> recur x (First $ Just x, PositiveSignum)) qsFlat)
 
-  let qsAssocs = stateList qsOutputs <&> first (stateToIx HM.!)
+  let posqOutputs = [stateToIx HM.! q | (q, (True, _)) <- stateList qsOutputs]
+  let qsAssocs = stateList qsOutputs <&> \(q, (posq, lit)) -> (stateToIx HM.! q, lit)
   let outputs = elems $ array (0, stateCount - 1) qsAssocs
 
   clauses <- reverse <$> readIORef clausesRef

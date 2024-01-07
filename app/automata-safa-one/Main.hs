@@ -348,12 +348,13 @@ tseytin = do
   afa <- PrettyStranger.parse @TextIORefO (PrettyStranger.parseDefinitions txt)
   cnfAfa@Lib.CnfAfa{..} <- Lib.tseytin @TextIORefO afa
   print variableCount
-  putStrLn $ intercalate " " [show if pos then x else -x | (pos, x) <- outputs]
+  putStrLn $ intercalate " " [show if pos then x + 1 else -x - 1 | (pos, x) <- outputs]
   putStrLn $ intercalate " " $ map show finals
   putStrLn $ intercalate " " $ map show pureVars
   putStrLn $ intercalate " " $ map show upwardClauses
+  putStrLn $ intercalate " " $ map show posqOutputs
   for_ clauses \clause -> do
-    putStrLn $ intercalate " " [show if pos then x else -x | (pos, x) <- clause]
+    putStrLn $ intercalate " " [show if pos then x + 1 else -x - 1 | (pos, x) <- clause]
 
 main :: IO ()
 main = do
