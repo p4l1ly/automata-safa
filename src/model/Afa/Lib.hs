@@ -564,7 +564,8 @@ data DelayA d
 type instance Definition (DelayA d) =  -- keyword aliases
   Name "r'" (Creation ([g|mapRecFunR'|] $r '[Q]) ($q -> Either Int $q))
     :+: Name "term'" (Term (Either Int $q) $v [gs|r'|])
-    :+: Name "qs'" (UnionQs (StateArray [gs|r'|]) (RTraversed $qs [gs|r'|]))
+    :+: Name "qs1" (RTraversed $qs [gs|r'|])
+    :+: Name "qs'" (UnionQs (StateArray [gs|r'|]) [gs|qs1|])
     :+: Name "mapK" ([g|mapRecFunCopy|] '[Q] :: *)
     :+: Name "mapF" ($q -> Either Int $q)
     :+: Name "map" (MR.Explicit [k|mapRecCopy|] $r [gs|r'|] (Creation [gs|mapK|] [gs|mapF|]))
@@ -576,11 +577,14 @@ type DelayI d nIO d1 m =
   ( d1 ~ DelayA d
   , Create [g1|mapK|] [g1|mapF|]
   , MR.Recur [g1|map|] m
-  , RTraversable $qs $q $r [g1|r'|] (RTraversed $qs [g1|r'|])
+  , RTraversable $qs $q $r [g1|r'|] [g1|qs1|]
+  , RTraversable [g1|qs1|] $q [g1|r'|] [g1|r'|] [g1|qs1|]
   , R.Recur [g1|rec|] [g1|r'|] (MR.Et [g1|map|] m)
   , MonadFn [g1|build|] m
   , LiftN nIO IO m
   , Term $q $v $r ~ [g|term|]
+  , SplitFinalsD d m
+  , Hashable $q
   )
 delay ::
   forall d nIO d1 m.
@@ -589,6 +593,11 @@ delay ::
   ($r -> m Bool) ->
   m ([g1|r'|], [g1|r'|], [g1|qs'|])
 delay (init, final, qs) isDelayed = do
+  (nonfinals, complexFinals) <- splitFinals @d final
+  when (isJust complexFinals) do error "delay on complexFinals"
+  let nonfinalsHS = HS.fromList nonfinals
+  let qsList = map fst $ stateList qs
+  let noFinals = not $ all (`HS.member` nonfinalsHS) qsList
   state <- liftn @nIO $ newIORef ([], 1)
   let mfun = create @[g1|mapK|] (Right :: [g1|mapF|])
   (init1, final1, qs1) <- MR.runRecur @[g1|map|] mfun \passR ->
@@ -615,10 +624,17 @@ delay (init, final, qs) isDelayed = do
       )
       (\delayR -> (,,) <$> delayR init <*> lift (passR final) <*> traverseR delayR qs)
   (qrs2, q2Next) <- liftn @nIO $ readIORef state
-  let qs2 = StateArray $ listArray (1, q2Next - 1) (reverse qrs2)
+  qs1' <- (`traverseQR` qs1) \q ref ->
+    if HS.member q nonfinalsHS
+      then return ref
+      else buildFree @[g1|build|] (Free $ And (Free $ State $ Left 0) (Pure ref))
+  lfalse <- monadfn @[g1|build|] LFalse
+  let qs2 = StateArray $ listArray (if noFinals then 1 else 0, q2Next - 1)
+        $ (if noFinals then id else (lfalse :)) $ reverse qrs2
   final2 <- buildFree @[g1|build|] $
-    foldr (Free .: And . Free . Not . Free . State . Left) (Pure final1) [1..q2Next - 1]
-  return (init1, final2, UnionQs qs2 qs1)
+    foldr (Free .: And . Free . Not . Free . State) (Free LTrue) $
+      map Left [1..q2Next - 1] ++ map (Right . fst) (stateList qs1)
+  return (init1, final2, UnionQs qs2 qs1')
 
 
 -- explicitToBitvector -----------------------------------------------------------------
