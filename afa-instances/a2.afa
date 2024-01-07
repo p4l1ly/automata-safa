@@ -1,6 +1,8 @@
 @kInitialFormula: sInit
 @kFinalFormula: !sInit
-@sInit: a1 & aF & sLit & fNot & fNot2
+@sInit: a1 & aF & sLit & fNot & fNot2 & s1 & s2
 @sLit: !fNot & fNot2
 @fNot: !(a1 & aF)
 @fNot2: !(a2 & a3 & (a4 | a5))
+@s1: fNot
+@s2: fNot

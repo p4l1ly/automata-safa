@@ -45,7 +45,6 @@ import InversionOfControl.TypeDict
 import System.Environment
 import System.Exit
 import System.IO
-import Data.List
 
 data EmptyO
 type instance Definition EmptyO = End
@@ -348,13 +347,20 @@ tseytin = do
   afa <- PrettyStranger.parse @TextIORefO (PrettyStranger.parseDefinitions txt)
   cnfAfa@Lib.CnfAfa{..} <- Lib.tseytin @TextIORefO afa
   print variableCount
-  putStrLn $ intercalate " " [show if pos then x + 1 else -x - 1 | (pos, x) <- outputs]
-  putStrLn $ intercalate " " $ map show finals
-  putStrLn $ intercalate " " $ map show pureVars
-  putStrLn $ intercalate " " $ map show upwardClauses
-  putStrLn $ intercalate " " $ map show posqOutputs
+  putStrLn $ unwords [show if pos then x + 1 else -x - 1 | (pos, x) <- outputs]
+  putStrLn $ unwords $ map show finals
+  putStrLn $ unwords $ map show pureVars
+  putStrLn $ unwords $ map show upwardClauses
+  putStrLn $ unwords $ map show posqOutputs
   for_ clauses \clause -> do
-    putStrLn $ intercalate " " [show if pos then x + 1 else -x - 1 | (pos, x) <- clause]
+    putStrLn $ unwords [show if pos then x + 1 else -x - 1 | (pos, x) <- clause]
+
+shareStates :: IO ()
+shareStates = do
+  txt <- TIO.getContents
+  afa <- PrettyStranger.parse @TextIORefO (PrettyStranger.parseDefinitions txt)
+  afa' <- Lib.shareStates @TextIORefO afa
+  PrettyStranger.print @TextIORefO afa'
 
 main :: IO ()
 main = do
@@ -388,6 +394,7 @@ main = do
     ["removeLitStates"] -> removeLitStates
     ["pushPosNot"] -> pushPosNot
     ["tseytin"] -> tseytin
+    ["shareStates"] -> shareStates
     _unsupportedArguments -> do
       hPutStrLn stderr $ "Unsupported arguments " ++ show args
       exitFailure

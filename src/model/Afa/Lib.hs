@@ -1306,3 +1306,42 @@ tseytin (init, final, qs) = do
   pureVars <- readIORef pureVarsRef
 
   return CnfAfa{..}
+
+
+-- shareStates -----------------------------------------------------------------
+
+data ShareStatesA d
+type instance Definition (ShareStatesA d) =
+  Name "deref" (Inherit (Explicit $r [g|term|]) [k|deref|])
+    :+: Name "rec" (R.Explicit [k|rcata|] Zero $r ($r, [g|term|]))
+    :+: Name "fqs" (GetF "qs'" (SplitFinals2A d))
+    :+: Follow d
+
+type ShareStatesI d d1 d2 =
+  ( d2 ~ BuildShareSharedTermO d
+  , BuildShareSharedD d2 IO
+  , d1 ~ ShareStatesA d
+  , RTraversable $qs $q $r $r $qs
+  , R.Recur [g1|rec|] $r IO
+  , Term $q $v $r ~ [g|term|]
+  , SplitFinalsD d IO
+  , Hashable $q
+  , Hashable $r
+  ) :: Constraint
+
+shareStates :: forall d d1 d2.
+  (ShareStatesI d d1 d2) =>
+  ($r, $r, $qs) ->
+  IO ($r, $r, $qs)
+shareStates (init, final, qs) = do
+  (nonfinals, complexFinals) <- splitFinals @d final
+  when (isJust complexFinals) do error "shareStates: complexFinals"
+  let nonfinalsHS = HS.fromList nonfinals
+  let rToQ = HM.fromList $ map (\(q, r) -> ((r, HS.member q nonfinalsHS), q)) $ stateList qs
+  R.runRecur @[g1|rec|]
+    ( \rec (r0, fr) -> case fr of
+        State q -> lift $ buildShareShared @d2 r0 $
+          State $ fromMaybe q $ rToQ HM.!? (transition qs q, HS.member q nonfinalsHS)
+        fr -> traverse rec fr >>= lift . buildShareShared @d2 r0
+    )
+    (\recur -> (,,) <$> recur init <*> pure final <*> traverseR recur qs)

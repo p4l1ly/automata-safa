@@ -37,12 +37,22 @@ import InversionOfControl.MonadFn
 import qualified InversionOfControl.Recur as R
 import InversionOfControl.TypeDict
 import System.Mem.StableName
+import System.Random
+import System.IO.Unsafe
 
 type FR f = f (Ref f)
 type R f = IORef (FR f)
 type SN f = StableName (R f)
 type S f = (SN f, R f)
 data Ref f = Ref !(S f) | Subtree !(FR f)
+
+instance Eq (Ref f) where
+  Ref (sn1, _) == Ref (sn2, _) = sn1 == sn2
+  _ == _ = False
+
+instance Hashable (Ref f) where
+  hashWithSalt salt (Ref (sn, _)) = hashWithSalt salt sn
+  hashWithSalt _ (Subtree x) = unsafePerformIO randomIO
 
 data Build
 data Share
