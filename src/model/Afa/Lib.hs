@@ -18,6 +18,8 @@
 {-# LANGUAGE TupleSections #-}
 {-# LANGUAGE ViewPatterns #-}
 {-# LANGUAGE RecordWildCards #-}
+{-# LANGUAGE DeriveAnyClass #-}
+{-# LANGUAGE DeriveGeneric #-}
 
 module Afa.Lib where
 
@@ -55,6 +57,7 @@ import Control.Monad.Identity
 import InversionOfControl.LiftN
 import Data.IORef
 import qualified Afa.IORef as AIO
+import GHC.Generics (Generic)
 
 -- RemoveSingleInit --------------------------------------------------------------------
 
@@ -82,7 +85,7 @@ removeSingleInit afa@(init, final, qs) = do
 
 -- AddInitState ------------------------------------------------------------------------
 
-data AddOneQ q = AddedQ | OriginalQ !q deriving (Eq, Show)
+data AddOneQ q = AddedQ | OriginalQ !q deriving (Eq, Show, Generic, Hashable)
 data AddOneQs qs = AddOneQs qs (R qs)
 
 instance States qs q r => States (AddOneQs qs) (AddOneQ q) r where
@@ -456,7 +459,7 @@ qdnf qs = do
 
 -- qombo -------------------------------------------------------------------------------
 
-data QomboQ q = QomboQ !Int !q deriving (Eq, Show)
+data QomboQ q = QomboQ !Int !q deriving (Eq, Show, Generic, Hashable)
 newtype QomboQs qs = QomboQs (Array Int qs)
 type instance RTraversed (QomboQs qs) r' = QomboQs (RTraversed qs r')
 type instance R (QomboQs qs) = R qs
@@ -1011,12 +1014,17 @@ pushPosNot (init, final, qs) = do
 
 type FlattenD d = FlattenI d (FlattenA d) (FlattenA2 d)
 
+data FlattenO d
+type instance Definition (FlattenO d) =
+  Name "qs" (GetF "qs'" (FlattenA d))
+    :+: Name "term" (GetF "fr'" (FlattenA d))
+    :+: Follow d
+
 data FlattenA d
 type instance Definition (FlattenA d) =
   Name "isTree" (Inherit (Explicit $r Bool) [k|isTree|])
     :+: Name "r'" (AIO.Ref (MultiwayTerm $q $v))
     :+: Name "fr'" (MultiwayTerm $q $v [gs|r'|])
-    :+: Name "r" $r
     :+: Name "deref" (Inherit (Explicit [gs|r'|] [gs|fr'|]) [k|deref|])
     :+: Name "qs'" (RTraversed $qs [gs|r'|])
     :+: Name "rec" (R.Explicit [k|rcata|] Zero $r ($r, [g|term|]))
@@ -1042,9 +1050,9 @@ type FlattenI d d1 d2 =
 
 flatten :: forall d d1 d2.
   (FlattenI d d1 d2) =>
-  $qs ->  -- we support only qs for convenience in tseytin
-  IO [g1|qs'|]
-flatten qs = do
+  ($r, $r, $qs) ->  -- we support only qs for convenience in tseytin
+  IO ([g1|r'|], [g1|r'|], [g1|qs'|])
+flatten (init, final, qs) = do
   R.runRecur @[g1|rec|]
     ( \rec (r0, fr) -> case fr of
         LTrue -> lift $ buildShareShared @d2 r0 LTrueMulti
@@ -1085,7 +1093,7 @@ flatten qs = do
             False -> return [x2']
           lift $ buildShareShared @d2 r0 (OrMulti $ x1s ++ x2s)
     )
-    (`traverseR` qs)
+    (\rec -> (,,) <$> rec init <*> rec final <*> traverseR rec qs)
 
 
 -- tseytin --------------------------------------------------------------------------------------
@@ -1177,7 +1185,7 @@ tseytin (init, final, qs) = do
   let variableCount = qsvarCount - stateCount
 
   -- Flatten
-  qsFlat <- flatten @d qs
+  (_, _, qsFlat) <- flatten @d (init, final, qs)
 
   -- Generate clauses
 

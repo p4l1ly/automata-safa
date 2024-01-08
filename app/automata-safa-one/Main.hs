@@ -11,6 +11,8 @@
 {-# LANGUAGE TypeOperators #-}
 {-# LANGUAGE ViewPatterns #-}
 {-# LANGUAGE RecordWildCards #-}
+{-# LANGUAGE AllowAmbiguousTypes #-}
+{-# LANGUAGE FlexibleContexts #-}
 {-# OPTIONS_GHC -fconstraint-solver-iterations=5 #-}
 {-# OPTIONS_GHC -fplugin InversionOfControl.TcPlugin #-}
 
@@ -59,54 +61,67 @@ type instance
 type TextIORef_Ref = AIO.Ref (Term T.Text T.Text)
 type TextIORef_Term = Term T.Text T.Text TextIORef_Ref
 
+flattenAndHPrint ::
+  forall d.
+  (Lib.FlattenD d, PrettyStranger.PrintD (Lib.FlattenO d)) =>
+  Handle -> ($r, $r, $qs) -> IO ()
+flattenAndHPrint h afa =
+  PrettyStranger.hPrint @(Lib.FlattenO d) h =<< Lib.flatten @d afa
+
+flattenAndPrint ::
+  forall d.
+  (Lib.FlattenD d, PrettyStranger.PrintD (Lib.FlattenO d)) =>
+  ($r, $r, $qs) -> IO ()
+flattenAndPrint afa = flattenAndHPrint @d stdout afa
+
 prettyToPretty :: IO ()
 prettyToPretty = do
   txt <- TIO.getContents
   afa <- PrettyStranger.parse @TextIORefO (PrettyStranger.parseDefinitions txt)
-  PrettyStranger.print @TextIORefO afa
+  flattenAndPrint @TextIORefO afa
 
 removeSingleInit :: IO ()
 removeSingleInit = do
   txt <- TIO.getContents
   afa <- PrettyStranger.parse @TextIORefO (PrettyStranger.parseDefinitions txt)
   afa' <- Lib.removeSingleInit @TextIORefO afa
-  PrettyStranger.print @TextIORefO afa'
+  flattenAndPrint @TextIORefO afa'
 
 addInit :: IO ()
 addInit = do
   txt <- TIO.getContents
   afa <- PrettyStranger.parse @TextIORefO (PrettyStranger.parseDefinitions txt)
   afa' <- Lib.addInit @TextIORefO afa
-  PrettyStranger.print @(Lib.AddInitO TextIORefO) afa'
+  flattenAndPrint @(Lib.AddInitO TextIORefO) afa'
 
 complement :: IO ()
 complement = do
   txt <- TIO.getContents
   afa <- PrettyStranger.parse @TextIORefO (PrettyStranger.parseDefinitions txt)
   Just afa' <- Lib.complement @TextIORefO afa
-  PrettyStranger.print @TextIORefO afa'
+  flattenAndPrint @TextIORefO afa'
 
 unshare :: IO ()
 unshare = do
   txt <- TIO.getContents
   afa <- PrettyStranger.parse @TextIORefO (PrettyStranger.parseDefinitions txt)
   afa' <- Lib.unshare @TextIORefO afa
-  PrettyStranger.print @TextIORefO afa'
+  flattenAndPrint @TextIORefO afa'
 
 initToDnf :: IO ()
 initToDnf = do
   txt <- TIO.getContents
   (init, final, qs) <- PrettyStranger.parse @TextIORefO (PrettyStranger.parseDefinitions txt)
   init' <- Lib.singleToDnf @TextIORefO init
-  PrettyStranger.print @TextIORefO (init', final, qs)
+  flattenAndPrint @TextIORefO (init', final, qs)
 
 boomSeparate :: IO ()
 boomSeparate = do
   txt <- TIO.getContents
   (init, final, qs) <- PrettyStranger.parse @TextIORefO (PrettyStranger.parseDefinitions txt)
   qs1 <- Separ.boomSeparate @TextIORefO qs
-  qs2 <- Separ.unseparate @TextIORefO qs1
-  PrettyStranger.print @TextIORefO (init, final, qs2)
+  qs2 <- Separ.unseparate @(Separ.SeparateO TextIORefO) qs1
+  flattenAndPrint @TextIORefO (init, final, qs2)
 
 isSeparated :: IO ()
 isSeparated = do
@@ -122,8 +137,8 @@ qdnf = do
   (init, final, qs) <- PrettyStranger.parse @TextIORefO (PrettyStranger.parseDefinitions txt)
   Just qs1 <- Separ.trySeparate @TextIORefO qs
   qs2 <- Lib.qdnf @(Separ.SeparateO TextIORefO) qs1
-  qs3 <- Separ.unseparate @TextIORefO qs2
-  PrettyStranger.print @TextIORefO (init, final, qs3)
+  qs3 <- Separ.unseparate @(Separ.SeparateO TextIORefO) qs2
+  flattenAndPrint @TextIORefO (init, final, qs3)
 
 qombo ::
   forall d.
@@ -137,7 +152,7 @@ qombo paths fn = do
       txt <- TIO.hGetContents f
       PrettyStranger.parse @TextIORefO (PrettyStranger.parseDefinitions txt)
   afa' <- Lib.qombo @TextIORefO fn afas
-  PrettyStranger.print @d afa'
+  flattenAndPrint @d afa'
 
 removeFinals ::
   forall d build.
@@ -152,7 +167,7 @@ removeFinals = do
   final1 <-
     buildFix @build $
       foldr (Fix .: And . Fix . Not . Fix . State . fst) (Fix LTrue) (stateList qs1)
-  PrettyStranger.print @d (init1, final1, qs1)
+  flattenAndPrint @d (init1, final1, qs1)
 
 removeFinalsHind ::
   forall d build.
@@ -169,7 +184,7 @@ removeFinalsHind = do
     buildFix @build $
       foldr (Fix .: And . Fix . Not . Fix . State . fst) (Fix LTrue) (stateList qs2)
   qs3 <- Separ.unseparate @d qs2
-  PrettyStranger.print @d (init2, final2, qs3)
+  flattenAndPrint @(Separ.UnseparateO d) (init2, final2, qs3)
 
 hasComplexFinals :: IO ()
 hasComplexFinals = do
@@ -197,7 +212,7 @@ delaySymbolsLowest = do
       Not _ -> True
       LFalse -> True
       _ -> False
-  PrettyStranger.print @(Lib.DelayO TextIORefO) afa'
+  flattenAndPrint @(Lib.DelayO TextIORefO) afa'
 
 share :: IO ()
 share = do
@@ -205,7 +220,7 @@ share = do
   (init, final, qs) <- PrettyStranger.parse @TextIORefO (PrettyStranger.parseDefinitions txt)
   shareR <- AIO.getSharingDetector
   afa' <- (,,) <$> shareR init <*> shareR final <*> traverseR shareR qs
-  PrettyStranger.print @TextIORefO afa'
+  flattenAndPrint @TextIORefO afa'
 
 removeUselessShares :: IO ()
 removeUselessShares = do
@@ -219,7 +234,7 @@ removeUselessShares = do
   countUpR init <> countUpR final <> void (traverseR countUpR qs)
   finalizeR <- finalize
   afa' <- (,,) <$> finalizeR init <*> finalizeR final <*> traverseR finalizeR qs
-  PrettyStranger.print @TextIORefO afa'
+  flattenAndPrint @TextIORefO afa'
 
 checkerV1RemoveFinalsNonsep :: IO ()
 checkerV1RemoveFinalsNonsep = do
@@ -295,8 +310,8 @@ vtfToPretty :: IO ()
 vtfToPretty = do
   txt <- TIO.getContents
   (init, final, qs) <- Vtf.parse @TextIORefO $ Vtf.parseStatements txt
-  qs' <- Separ.unseparate @TextIORefO qs
-  PrettyStranger.print @TextIORefO (init, final, qs')
+  qs' <- Separ.unseparate @(Separ.SeparateO TextIORefO) qs
+  flattenAndPrint @TextIORefO (init, final, qs')
 
 explicitToBitvector :: [String] -> IO ()
 explicitToBitvector paths = do
@@ -311,35 +326,35 @@ explicitToBitvector paths = do
     let barePath = fromJust $ T.stripSuffix ".afa" $ T.pack path
     let path' = T.unpack (T.append barePath ".bitvector.afa")
     withFile path' WriteMode \f ->
-      PrettyStranger.hPrint @(Lib.ExplicitToBitvectorO TextIORefO) f afa
+      flattenAndHPrint @(Lib.ExplicitToBitvectorO TextIORefO) f afa
 
 removeUnreachable :: IO ()
 removeUnreachable = do
   txt <- TIO.getContents
   afa <- PrettyStranger.parse @TextIORefO (PrettyStranger.parseDefinitions txt)
   afa' <- Lib.removeUnreachable @TextIORefO afa
-  PrettyStranger.print @(Lib.RemoveUnreachableO TextIORefO) afa'
+  flattenAndPrint @(Lib.RemoveUnreachableO TextIORefO) afa'
 
 removeUnisignVariables :: IO ()
 removeUnisignVariables = do
   txt <- TIO.getContents
   afa <- PrettyStranger.parse @TextIORefO (PrettyStranger.parseDefinitions txt)
   afa' <- Lib.removeUnisignVariables @TextIORefO afa
-  PrettyStranger.print @TextIORefO afa'
+  flattenAndPrint @TextIORefO afa'
 
 removeLitStates :: IO ()
 removeLitStates = do
   txt <- TIO.getContents
   afa <- PrettyStranger.parse @TextIORefO (PrettyStranger.parseDefinitions txt)
   afa' <- Lib.removeLitStates @TextIORefO afa
-  PrettyStranger.print @TextIORefO afa'
+  flattenAndPrint @TextIORefO afa'
 
 pushPosNot :: IO ()
 pushPosNot = do
   txt <- TIO.getContents
   afa <- PrettyStranger.parse @TextIORefO (PrettyStranger.parseDefinitions txt)
   afa' <- Lib.pushPosNot @TextIORefO afa
-  PrettyStranger.print @TextIORefO afa'
+  flattenAndPrint @TextIORefO afa'
 
 tseytin :: IO ()
 tseytin = do
@@ -360,7 +375,7 @@ shareStates = do
   txt <- TIO.getContents
   afa <- PrettyStranger.parse @TextIORefO (PrettyStranger.parseDefinitions txt)
   afa' <- Lib.shareStates @TextIORefO afa
-  PrettyStranger.print @TextIORefO afa'
+  flattenAndPrint @TextIORefO afa'
 
 main :: IO ()
 main = do

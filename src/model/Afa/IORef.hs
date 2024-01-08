@@ -37,8 +37,7 @@ import InversionOfControl.MonadFn
 import qualified InversionOfControl.Recur as R
 import InversionOfControl.TypeDict
 import System.Mem.StableName
-import System.Random
-import System.IO.Unsafe
+import qualified Data.HashSet as HS
 
 type FR f = f (Ref f)
 type R f = IORef (FR f)
@@ -46,13 +45,14 @@ type SN f = StableName (R f)
 type S f = (SN f, R f)
 data Ref f = Ref !(S f) | Subtree !(FR f)
 
-instance Eq (Ref f) where
+instance Eq (f (Ref f)) => Eq (Ref f) where
   Ref (sn1, _) == Ref (sn2, _) = sn1 == sn2
+  Subtree fr1 == Subtree fr2 = fr1 == fr2
   _ == _ = False
 
-instance Hashable (Ref f) where
-  hashWithSalt salt (Ref (sn, _)) = hashWithSalt salt sn
-  hashWithSalt _ (Subtree x) = unsafePerformIO randomIO
+instance Hashable (f (Ref f)) => Hashable (Ref f) where
+  hashWithSalt salt (Ref (sn, _)) = hashWithSalt salt (False, sn)
+  hashWithSalt salt (Subtree x) = hashWithSalt salt (True, x)
 
 data Build
 data Share
@@ -108,14 +108,12 @@ getSharingDetector = do
       rec (Subtree fr) = go fr
       rec (Ref (name, ioref)) = do
         visited <- readIORef visitedVar
-        (r', visited') <-
-          getCompose $
-            HM.alterF -$ name -$ visited $
-              Compose . \case
-                Nothing -> readIORef ioref >>= fmap (id &&& Just) . go
-                Just r' -> return (r', Just r')
-        writeIORef visitedVar visited'
-        return r'
+        case visited HM.!? name of
+          Nothing -> do
+            r' <- readIORef ioref >>= go
+            modifyIORef' visitedVar $ HM.insert name r'
+            return r'
+          Just r' -> return r'
   return rec
 
 -- The API calls for an applicative functor but the effort is not worth it yet.
@@ -124,21 +122,19 @@ getUnsharingDetector ::
   (FR f -> Bool) ->
   IO (Ref f -> IO (), IO (Ref f -> IO (Ref f)))
 getUnsharingDetector isShareable = do
-  visitedVar <- newIORef HM.empty
+  visitedVar <- newIORef HS.empty
   countsVar <- newIORef HM.empty
   let rec (Ref (name, ioref)) = do
         fr1 <- readIORef ioref
         visited <- readIORef visitedVar
-        visited' <-
-          HM.alterF -$ name -$ visited $ \case
-            Nothing -> do
-              counts <- readIORef countsVar
-              let counts' = foldr (\(Ref (k, _)) -> HM.insertWith (+) k 1) counts fr1
-              writeIORef countsVar counts'
-              fr1 <- traverse rec fr1
-              return $ Just ()
-            Just () -> return (Just ())
-        writeIORef visitedVar visited'
+        if HS.member name visited
+          then return ()
+          else do
+            writeIORef visitedVar (HS.insert name visited)
+            counts <- readIORef countsVar
+            let counts' = foldr (\(Ref (k, _)) -> HM.insertWith (+) k 1) counts fr1
+            writeIORef countsVar counts'
+            mapM_ rec fr1
 
       countUp r@(Ref (name, _)) = do
         modifyIORef countsVar (HM.insertWith (+) name 1)

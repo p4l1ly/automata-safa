@@ -284,6 +284,11 @@ boomSeparate qs = do
   R.runRecur @[g1|rec|] (boomSeparateAlg @(LiftUp d)) \sep -> do
     traverseR (fmap (aqToTuples ltrue) . sep) qs
 
+data UnseparateO d
+type instance Definition (UnseparateO d) =
+  Name "qs" (RTraversed $qs $r)
+    :+: Follow d
+
 data UnseparateA d
 type instance Definition (UnseparateA d) =
   Name "build" (Inherit (Explicit [g|term|] $r) [k|build|])
@@ -297,10 +302,10 @@ type UnseparateI d d1 m =
 unseparate ::
   forall d d1 m qs qs'.
   ( UnseparateI d d1 m
-  , RTraversable qs $q [($r, $r)] $r qs'
+  , RTraversable $qs $q [($r, $r)] $r (RTraversed $qs $r)
   , Term $q $v $r ~ [g|term|]
   ) =>
-  qs -> m qs'
+  $qs -> m (RTraversed $qs $r)
 unseparate qs = do
   let step (ar, qr) = Free . Or (Free (And (Pure ar) (Pure qr)))
   flip traverseR qs $ buildFree @[g1|build|] . foldr step (Free LFalse)

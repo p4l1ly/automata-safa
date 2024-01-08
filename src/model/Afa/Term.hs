@@ -53,6 +53,8 @@ import Generic.Data.Orphans ()
 import InversionOfControl.TypeDict
 import Language.Haskell.TH hiding (Q)
 import Language.Haskell.TH.Quote (QuasiQuoter (..))
+import System.Random
+import System.IO.Unsafe
 
 type family Creation (way :: *) (input :: *) :: *
 
@@ -67,8 +69,23 @@ data Term q v r
   | Not !r
   | And !r !r
   | Or !r !r
-  deriving (Functor, Foldable, Traversable, Show, Eq, Generic, Generic1, Hashable, Hashable1)
-  deriving (Eq1, Show1) via (Generically1 (Term q v))
+  deriving (Functor, Foldable, Traversable, Show, Generic, Generic1)
+  deriving (Show1) via (Generically1 (Term q v))
+
+instance (Eq q, Eq v) => Eq (Term q v r) where
+  LTrue == LTrue = True
+  LFalse == LFalse = True
+  State q1 == State q2 = q1 == q2
+  Var v1 == Var v2 = v1 == v2
+  _ == _ = False
+
+instance (Hashable q, Hashable v) => Hashable (Term q v r) where
+  hashWithSalt salt LTrue = hashWithSalt salt (0 :: Int, 0 :: Int)
+  hashWithSalt salt LFalse = hashWithSalt salt (0 :: Int, 1 :: Int)
+  hashWithSalt salt (State q) = hashWithSalt salt (1 :: Int, q)
+  hashWithSalt salt (Var q) = hashWithSalt salt (2 :: Int, q)
+  hashWithSalt salt _ = unsafePerformIO randomIO
+
 
 data MultiwayTerm q v r
   = LTrueMulti
@@ -78,8 +95,8 @@ data MultiwayTerm q v r
   | NotMulti !r
   | AndMulti ![r]
   | OrMulti ![r]
-  deriving (Functor, Foldable, Traversable, Show, Eq, Generic, Generic1, Hashable, Hashable1)
-  deriving (Eq1, Show1) via (Generically1 (MultiwayTerm q v))
+  deriving (Functor, Foldable, Traversable, Show, Generic, Generic1)
+  deriving (Show1) via (Generically1 (MultiwayTerm q v))
 
 type family TermParam (sel :: QVR) (t :: *) :: * where
   TermParam Q (Term q v r) = q
@@ -88,6 +105,20 @@ type family TermParam (sel :: QVR) (t :: *) :: * where
   TermParam Q (MultiwayTerm q v r) = q
   TermParam V (MultiwayTerm q v r) = v
   TermParam R (MultiwayTerm q v r) = r
+
+instance (Eq q, Eq v) => Eq (MultiwayTerm q v r) where
+  LTrueMulti == LTrueMulti = True
+  LFalseMulti == LFalseMulti = True
+  StateMulti q1 == StateMulti q2 = q1 == q2
+  VarMulti v1 == VarMulti v2 = v1 == v2
+  _ == _ = False
+
+instance (Hashable q, Hashable v) => Hashable (MultiwayTerm q v r) where
+  hashWithSalt salt LTrueMulti = hashWithSalt salt (0 :: Int, 0 :: Int)
+  hashWithSalt salt LFalseMulti = hashWithSalt salt (0 :: Int, 1 :: Int)
+  hashWithSalt salt (StateMulti q) = hashWithSalt salt (1 :: Int, q)
+  hashWithSalt salt (VarMulti q) = hashWithSalt salt (2 :: Int, q)
+  hashWithSalt salt _ = unsafePerformIO randomIO
 
 paramGetter :: String -> Name -> TypeQ
 paramGetter dname x = do

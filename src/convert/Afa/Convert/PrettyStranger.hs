@@ -27,7 +27,7 @@
 module Afa.Convert.PrettyStranger where
 
 import Afa.Convert.Identifier
-import Afa.Term (Term (..), q, r, v)
+import Afa.Term (Term (..), MultiwayTerm (..), q, r, v)
 import Control.Applicative
 import Control.Monad.Free
 import Control.Monad.Writer
@@ -52,6 +52,7 @@ import Afa.States
 import Afa.Build
 import System.IO (Handle, stdout)
 import qualified System.IO
+import Data.Kind
 
 parseWhole :: Parser a -> T.Text -> a
 parseWhole parser str = case Parsec.parse parser str of
@@ -188,8 +189,7 @@ groupDefs defs =
         DInitialStates dterm -> tell (Endo (dterm :), mempty, mempty, mempty)
         DFinalStates dterm -> tell (mempty, Endo (dterm :), mempty, mempty)
 
-type FormatFormulaD d =
-  Follow (FormatFormulaI d (FormatFormulaA d $r) $q $v $r) :: TypeDict
+type FormatFormulaD d = FormatFormulaI d (FormatFormulaA d $r)
 
 data FormatFormulaA d r
 type instance Definition (FormatFormulaA d r) =
@@ -198,32 +198,30 @@ type instance Definition (FormatFormulaA d r) =
     :+: Name "rec" (R.Explicit [k|rcata|] Zero r (r, [g|term|]))
     :+: End
 
-data FormatFormulaI d d1 q v r
-type instance Definition (FormatFormulaI d d1 q v r) =
-  Name "all"
-    ( d1 ~ FormatFormulaA d r
-    , Term q v r ~ [g|term|]
-    , Identify q
-    , Identify v
-    , MonadFn [g1|deref|] IO
-    , MonadFn [g1|isTree|] IO
-    , R.Recur [g1|rec|] T.Text IO
-    )
-    :+: End
+type FormatFormulaI d d1 =
+  ( d1 ~ FormatFormulaA d $r
+  , MultiwayTerm $q $v $r ~ [g|term|]
+  , Identify $q
+  , Identify $v
+  , MonadFn [g1|deref|] IO
+  , MonadFn [g1|isTree|] IO
+  , R.Recur [g1|rec|] T.Text IO
+  ) :: Constraint
+
 formatFormula ::
-  forall d d1 q v r t a.
-  ( ToConstraint (Follow (FormatFormulaI d d1 q v r))
+  forall d d1 t a.
+  ( FormatFormulaI d d1
   , t ~ R.Et [g1|rec|]
   ) =>
   IO
-    ( ((r -> t IO T.Text) -> t IO a) -> IO a
+    ( (($r -> t IO T.Text) -> t IO a) -> IO a
     , IO [(Int, T.Text)]
     )
 formatFormula = do
   vFIx <- newIORef (0 :: Int)
   stack <- newIORef ([] :: [(Int, T.Text)])
 
-  let algebra :: (r -> t IO T.Text) -> (r, [g|term|]) -> t IO T.Text
+  let algebra :: ($r -> t IO T.Text) -> ($r, [g|term|]) -> t IO T.Text
       algebra rec (r, fr) = do
         lift (monadfn @[g1|isTree|] r) >>= \case
           True -> contents
@@ -237,92 +235,49 @@ formatFormula = do
           contents :: R.Et [g1|rec|] IO T.Text
           contents =
             case fr of
-              LTrue -> return "kTrue"
-              LFalse -> return "kFalse"
-              State q -> return $ T.cons 's' (identify q)
-              Var v -> return $ T.cons 'a' (identify v)
-              Not !r -> do
-                !r' <- rec r
-                lift (monadfn @[g1|isTree|] r) >>= \case
-                  True ->
-                    lift (monadfn @[g1|deref|] r) <&> \case
-                      And _ _ -> T.concat ["!(", r', ")"]
-                      Or _ _ -> T.concat ["!(", r', ")"]
-                      _ -> T.cons '!' r'
-                  False -> return $ T.cons '!' r'
-              And !a !b -> do
-                !a' <- rec a
-                !b' <- rec b
-                a'' <-
-                  lift (monadfn @[g1|isTree|] a) >>= \case
-                    True -> do
-                      lift (monadfn @[g1|deref|] a) <&> \case
-                        Or _ _ -> T.concat ["(", a', ")"]
-                        _ -> a'
-                    False -> return a'
-                b'' <-
-                  lift (monadfn @[g1|isTree|] b) >>= \case
-                    True ->
-                      lift (monadfn @[g1|deref|] b) <&> \case
-                        Or _ _ -> T.concat ["(", b', ")"]
-                        _ -> b'
-                    False -> return b'
-                return $ T.concat [a'', " & ", b'']
-              Or !a !b -> do
-                !a' <- rec a
-                !b' <- rec b
-                at <- lift $ monadfn @[g1|deref|] a
-                bt <- lift $ monadfn @[g1|deref|] b
-                a'' <-
-                  lift (monadfn @[g1|isTree|] a) >>= \case
-                    True -> do
-                      lift (monadfn @[g1|deref|] a) <&> \case
-                        And _ _ -> T.concat ["(", a', ")"]
-                        _ -> a'
-                    False -> return a'
-                b'' <-
-                  lift (monadfn @[g1|isTree|] b) >>= \case
-                    True ->
-                      lift (monadfn @[g1|deref|] b) <&> \case
-                        And _ _ -> T.concat ["(", b', ")"]
-                        _ -> b'
-                    False -> return b'
-                return $ T.concat [a'', " | ", b'']
+              LTrueMulti -> return "kTrue"
+              LFalseMulti -> return "kFalse"
+              StateMulti q -> return $ T.cons 's' (identify q)
+              VarMulti v -> return $ T.cons 'a' (identify v)
+              NotMulti !r -> do
+                T.cons '!' <$> rec r
+              AndMulti xs -> do
+                !xs' <- mapM rec xs
+                return $ T.concat ["(", T.intercalate " & " xs', ")"]
+              OrMulti xs -> do
+                !xs' <- mapM rec xs
+                return $ T.concat ["(", T.intercalate " | " xs', ")"]
 
   return (R.runRecur @[g1|rec|] algebra, readIORef stack)
 
-hPrint ::
-  forall d q v r d1 qs.
-  ( Term q v r ~ [g|term|]
-  , ToConstraint (FormatFormulaD d)
-  , States qs q r
-  ) =>
-  Handle -> (r, r, qs) -> IO ()
+unparen :: T.Text -> T.Text
+unparen t = case T.uncons t of
+  Just ('(', t') -> T.init t'
+  _ -> t
+
+
+type PrintD d = (FormatFormulaD d, States $qs $q $r) :: Constraint
+
+hPrint :: forall d. PrintD d => Handle -> ($r, $r, $qs) -> IO ()
 hPrint h (init, final, qs) = do
   (runConvert, getShared) <- formatFormula @d
 
   runConvert \convert -> do
     lift $ TIO.hPutStr h "@kInitialFormula: "
-    lift . TIO.hPutStrLn h =<< convert init
+    lift . TIO.hPutStrLn h . unparen =<< convert init
     lift $ TIO.hPutStr h "@kFinalFormula: "
-    lift . TIO.hPutStrLn h =<< convert final
+    lift . TIO.hPutStrLn h . unparen =<< convert final
     for_ (stateList qs) \(q, r) -> do
       lift $ TIO.hPutStr h "@s"
       lift $ TIO.hPutStr h (identify q)
       lift $ TIO.hPutStr h ": "
-      lift . TIO.hPutStrLn h =<< convert r
+      lift . TIO.hPutStrLn h . unparen =<< convert r
 
   getShared >>= mapM_ \(i, txt) -> do
     TIO.hPutStr h "@f"
     System.IO.hPutStr h (show i)
     TIO.hPutStr h ": "
-    TIO.hPutStrLn h txt
+    TIO.hPutStrLn h $ unparen txt
 
-print ::
-  forall d q v r d1 qs.
-  ( Term q v r ~ [g|term|]
-  , ToConstraint (FormatFormulaD d)
-  , States qs q r
-  ) =>
-  (r, r, qs) -> IO ()
+print :: forall d. PrintD d => ($r, $r, $qs) -> IO ()
 print = hPrint @d stdout

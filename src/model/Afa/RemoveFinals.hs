@@ -18,6 +18,8 @@
 {-# OPTIONS_GHC -fplugin InversionOfControl.TcPlugin #-}
 {-# LANGUAGE ViewPatterns #-}
 {-# OPTIONS_GHC -fconstraint-solver-iterations=10 #-}
+{-# LANGUAGE DeriveGeneric #-}
+{-# LANGUAGE DeriveAnyClass #-}
 
 module Afa.RemoveFinals where
 
@@ -51,8 +53,9 @@ import qualified Afa.Lib as Lib
 import Data.Foldable
 import Control.Monad.Identity
 import Control.Lens ((&), traversed, traverseOf, _1)
+import GHC.Generics (Generic)
 
-data SyncVar q v = VVar v | FVar | QVar q deriving (Eq, Show)
+data SyncVar q v = VVar !v | FVar | QVar !q deriving (Eq, Show, Generic, Hashable)
 
 data RemoveFinalsO d
 type instance Definition (RemoveFinalsO d) =
