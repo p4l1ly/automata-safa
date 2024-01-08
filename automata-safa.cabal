@@ -19,6 +19,7 @@ library
     Afa.Lib
     Afa.States
     Afa.RemoveFinals
+    Afa.ShallowHashable
   build-depends:
     base >=4.17.0.0 && <4.18,
     generic-data ^>=1.0.0.0,
@@ -42,6 +43,7 @@ library convert
     Afa.Convert.PrettyStranger
     Afa.Convert.Vtf
     Afa.Convert.Identifier
+    Afa.Convert.Ltl
   build-depends:
     base >=4.17.0.0 && <4.18,
     attoparsec ^>=0.14.4,
@@ -54,6 +56,9 @@ library convert
     mtl ^>=2.2.2 && < 2.4,
     array ^>=0.5.4.0,
     data-fix ^>=0.3.2,
+    generic-data ^>=1.0.0.0,
+    hashable ^>=1.4.2.0,
+    random ^>=1.2.1.1,
     automata-safa,
     inversion-of-control,
   hs-source-dirs:      src/convert

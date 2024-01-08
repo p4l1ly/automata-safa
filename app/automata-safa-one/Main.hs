@@ -21,6 +21,7 @@ module Main where
 import Afa.Build
 import qualified Afa.Convert.PrettyStranger as PrettyStranger
 import qualified Afa.Convert.Vtf as Vtf
+import qualified Afa.Convert.Ltl as Ltl
 import qualified Afa.Delit as Delit
 import qualified Afa.IORef as AIO
 import qualified Afa.Lib as Lib
@@ -52,11 +53,10 @@ data EmptyO
 type instance Definition EmptyO = End
 
 data TextIORefO
-type instance
-  Definition TextIORefO =
-    Name "qs" (PrettyStranger.Qs TextIORef_Ref)
-      :+: Name "term" TextIORef_Term
-      :+: Follow (Delit.IORefDelitO AIO.IORefO EmptyO)
+type instance Definition TextIORefO =
+  Name "qs" (PrettyStranger.Qs TextIORef_Ref)
+    :+: Name "term" TextIORef_Term
+    :+: Follow (Delit.IORefDelitO AIO.IORefO EmptyO)
 
 type TextIORef_Ref = AIO.Ref (Term T.Text T.Text)
 type TextIORef_Term = Term T.Text T.Text TextIORef_Ref
@@ -377,6 +377,12 @@ shareStates = do
   afa' <- Lib.shareStates @TextIORefO afa
   flattenAndPrint @TextIORefO afa'
 
+ltlToPretty :: IO ()
+ltlToPretty = do
+  txt <- TIO.getContents
+  afa <- Ltl.textToAfa txt
+  PrettyStranger.print @Ltl.AfaO afa
+
 main :: IO ()
 main = do
   args <- getArgs
@@ -410,6 +416,7 @@ main = do
     ["pushPosNot"] -> pushPosNot
     ["tseytin"] -> tseytin
     ["shareStates"] -> shareStates
+    ["ltlToPretty"] -> ltlToPretty
     _unsupportedArguments -> do
       hPutStrLn stderr $ "Unsupported arguments " ++ show args
       exitFailure

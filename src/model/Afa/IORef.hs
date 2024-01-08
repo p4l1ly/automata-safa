@@ -38,12 +38,23 @@ import qualified InversionOfControl.Recur as R
 import InversionOfControl.TypeDict
 import System.Mem.StableName
 import qualified Data.HashSet as HS
+import System.Random
+import System.IO.Unsafe
+import Afa.ShallowHashable
 
 type FR f = f (Ref f)
 type R f = IORef (FR f)
 type SN f = StableName (R f)
 type S f = (SN f, R f)
 data Ref f = Ref !(S f) | Subtree !(FR f)
+
+instance ShallowEq (Ref f) where
+  Ref (sn1, _) `shallowEq` Ref (sn2, _) = sn1 == sn2
+  _ `shallowEq` _ = False
+
+instance ShallowHashable (Ref f) where
+  shallowHash salt (Ref (sn, _)) = hashWithSalt salt sn
+  shallowHash salt (Subtree x) = unsafePerformIO randomIO
 
 instance Eq (f (Ref f)) => Eq (Ref f) where
   Ref (sn1, _) == Ref (sn2, _) = sn1 == sn2
@@ -89,17 +100,16 @@ replace ref@(Ref (_, ioref)) val = do
   writeIORef ioref val
   return ref
 
-getSharingDetector :: (Traversable f, Hashable (f (SN f))) => IO (Ref f -> IO (Ref f))
+getSharingDetector :: (Traversable f, Hashable (FR f)) => IO (Ref f -> IO (Ref f))
 getSharingDetector = do
   visitedVar <- newIORef HM.empty
   dbVar <- newIORef HM.empty
   let go fr = do
         fr1 <- traverse rec fr
-        let fr2 = fr1 <&> \(Ref (name, _)) -> name
         db <- readIORef dbVar
         (r', db') <-
           getCompose $
-            HM.alterF -$ fr2 -$ db $
+            HM.alterF -$ fr1 -$ db $
               Compose . \case
                 Nothing -> shareTree fr1 <&> (id &&& Just)
                 Just r' -> return (r', Just r')
@@ -118,7 +128,7 @@ getSharingDetector = do
 
 -- The API calls for an applicative functor but the effort is not worth it yet.
 getUnsharingDetector ::
-  (Traversable f, Hashable (f (SN f))) =>
+  Traversable f =>
   (FR f -> Bool) ->
   IO (Ref f -> IO (), IO (Ref f -> IO (Ref f)))
 getUnsharingDetector isShareable = do
