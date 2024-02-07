@@ -383,6 +383,14 @@ ltlToPretty = do
   afa <- Ltl.textToAfa txt
   PrettyStranger.print @Ltl.AfaO afa
 
+hasSimpleInit :: IO ()
+hasSimpleInit = do
+  txt <- TIO.getContents
+  (init, _, _) <- PrettyStranger.parse @TextIORefO (PrettyStranger.parseDefinitions txt)
+  AIO.deref init >>= \case
+    State _ -> exitSuccess
+    _nonSimple -> exitFailure
+
 main :: IO ()
 main = do
   args <- getArgs
@@ -390,6 +398,7 @@ main = do
     ["prettyToPretty"] -> prettyToPretty
     ["removeSingleInit"] -> removeSingleInit
     ["addInit"] -> addInit
+    ["hasSimpleInit"] -> hasSimpleInit
     ["complement"] -> complement
     ["unshare"] -> unshare
     ["initToDnf"] -> initToDnf

@@ -109,10 +109,13 @@ instance
         then build LFalseMulti
         else do
           let xsAndVals = filter (\(_, val) -> case val of LTrueMulti -> False; _ -> True) $ zip xs vals
-          let xsDedup = HS.fromList $ map fst xsAndVals
-          if or [HS.member x xsDedup | (_, NotMulti x) <- xsAndVals]
-            then build LFalseMulti
-            else build (AndMulti $ HS.toList xsDedup)
+          if null xsAndVals
+            then build LTrueMulti
+            else do
+              let xsDedup = HS.fromList $ map fst xsAndVals
+              if or [HS.member x xsDedup | (_, NotMulti x) <- xsAndVals]
+                then build LFalseMulti
+                else build (AndMulti $ HS.toList xsDedup)
 
     fr@(OrMulti xs) -> do
       vals <- for xs deref
@@ -120,10 +123,13 @@ instance
         then build LTrueMulti
         else do
           let xsAndVals = filter (\(_, val) -> case val of LFalseMulti -> False; _ -> True) $ zip xs vals
-          let xsDedup = HS.fromList $ map fst xsAndVals
-          if or [HS.member x xsDedup | (_, NotMulti x) <- xsAndVals]
-            then build LTrueMulti
-            else build (OrMulti $ HS.toList xsDedup)
+          if null xsAndVals
+            then build LFalseMulti
+            else do
+              let xsDedup = HS.fromList $ map fst xsAndVals
+              if or [HS.member x xsDedup | (_, NotMulti x) <- xsAndVals]
+                then build LTrueMulti
+                else build (OrMulti $ HS.toList xsDedup)
 
     fr -> build fr
     where

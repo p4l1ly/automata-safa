@@ -1141,8 +1141,8 @@ tseytin :: forall d d1 d2.
   IO CnfAfa
 tseytin (init, final, qs) = do
   -- Enumerate states, init is zero
-  initQ <- monadfn @[g1|deref|] init <&> \case
-    State q -> q
+  initQ <- monadfn @[g1|deref|] init >>= \case
+    State q -> return q
     _unsupported -> error "singleton init expected"
 
   stateToIxRef <- newIORef $ HM.singleton initQ 0
@@ -1352,4 +1352,4 @@ shareStates (init, final, qs) = do
           State $ fromMaybe q $ rToQ HM.!? (transition qs q, HS.member q nonfinalsHS)
         fr -> traverse rec fr >>= lift . buildShareShared @d2 r0
     )
-    (\recur -> (,,) <$> recur init <*> pure final <*> traverseR recur qs)
+    (\recur -> (,,) <$> recur init <*> recur final <*> traverseR recur qs)
