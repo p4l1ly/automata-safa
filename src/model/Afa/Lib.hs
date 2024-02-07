@@ -1128,7 +1128,7 @@ type TseytinI d d1 d2 =
 data CnfAfa = CnfAfa
   { variableCount :: !Int
   , outputs :: ![(Bool, Int)]
-  , clauses :: ![[(Bool, Int)]]
+  , clauses :: ![(Bool, [(Bool, Int)])]
   , finals :: ![Int]
   , pureVars :: ![Int]
   , upwardClauses :: ![Int]
@@ -1190,7 +1190,7 @@ tseytin (init, final, qs) = do
   -- Generate clauses
 
   trueRef <- newIORef Nothing
-  clausesRef <- newIORef []
+  clausesRef <- newIORef ([] :: [(Bool, [(Bool, Int)])])
   clauseCountRef <- newIORef 0
   upwardClausesRef <- newIORef []
   pureVarsRef <- newIORef [0..stateCount - 1]
@@ -1201,7 +1201,7 @@ tseytin (init, final, qs) = do
           Nothing -> do
             count <- readIORef counter
             writeIORef counter (count + 1)
-            modifyIORef' clausesRef ([(True, count)] :)
+            modifyIORef' clausesRef ((False, [(True, count)]) :)
             writeIORef trueRef (Just count)
             return count
 
@@ -1242,24 +1242,21 @@ tseytin (init, final, qs) = do
 
             let zeroUpClauses = [[(False, count), lit] | lit <- lits]
             let zeroDownClause = (True, count) : map (first not) lits
-            let allClauses = zeroDownClause : zeroUpClauses
+            let allClauses | isPureQ = (True, zeroDownClause) : map (False,) zeroUpClauses
+                  | otherwise = map (False,) $ zeroDownClause : zeroUpClauses
 
+            writeIORef clauseCountRef (clauseCount + len + 1)
+            modifyIORef' clausesRef (allClauses ++)
             case sig of
               _ | isPureQ -> do
-                writeIORef clauseCountRef (clauseCount + len)
                 modifyIORef' pureVarsRef (count :)
-                modifyIORef' upwardClausesRef ([clauseCount .. clauseCount + len - 1] ++)
-                modifyIORef' clausesRef (zeroUpClauses ++)
+                modifyIORef' upwardClausesRef ([clauseCount .. clauseCount + len] ++)
                 return (True, (True, count))
               PositiveSignum -> do
-                writeIORef clauseCountRef (clauseCount + len + 1)
                 modifyIORef' pureVarsRef (count :)
-                modifyIORef' upwardClausesRef (clauseCount + len :)
-                modifyIORef' clausesRef (allClauses ++)
+                modifyIORef' upwardClausesRef (clauseCount + len :)  -- clauses will be reversed
                 return (False, (True, count))
-              _negOrBi -> do
-                writeIORef clauseCountRef (clauseCount + len + 1)
-                modifyIORef' clausesRef (allClauses ++)
+              _negOrBi ->
                 return (False, (True, count))
 
         OrMulti xs -> R.BeforeAfter do
@@ -1279,24 +1276,21 @@ tseytin (init, final, qs) = do
             let zeroDownClauses =
                   [[(True, count), (not litsig, litvar)] | (litsig, litvar) <- lits]
             let zeroUpClause = (False, count) : lits
-            let allClauses = zeroUpClause : zeroDownClauses
+            let allClauses | isPureQ = (False, zeroUpClause) : map (True,) zeroDownClauses
+                  | otherwise = map (False,) $ zeroUpClause : zeroDownClauses
 
+            writeIORef clauseCountRef (clauseCount + len + 1)
+            modifyIORef' clausesRef (allClauses ++)
             case sig of
               _ | isPureQ -> do
-                writeIORef clauseCountRef (clauseCount + 1)
                 modifyIORef' pureVarsRef (count :)
-                modifyIORef' upwardClausesRef (clauseCount :)
-                modifyIORef' clausesRef (zeroUpClause :)
+                modifyIORef' upwardClausesRef ([clauseCount .. clauseCount + len] ++)
                 return (True, (True, count))
               PositiveSignum -> do
-                writeIORef clauseCountRef (clauseCount + len + 1)
                 modifyIORef' pureVarsRef (count :)
-                modifyIORef' upwardClausesRef ([clauseCount .. clauseCount + len - 1] ++)
-                modifyIORef' clausesRef (allClauses ++)
+                modifyIORef' upwardClausesRef ([clauseCount .. clauseCount + len - 1] ++)  -- clauses will be reversed
                 return (False, (True, count))
-              _negOrBi -> do
-                writeIORef clauseCountRef (clauseCount + len + 1)
-                modifyIORef' clausesRef (allClauses ++)
+              _negOrBi ->
                 return (False, (True, count))
 
   qsOutputs <- R.runHyloRecur @[g1|rec2|]

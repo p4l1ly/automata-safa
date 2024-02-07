@@ -367,8 +367,9 @@ tseytin = do
   putStrLn $ unwords $ map show pureVars
   putStrLn $ unwords $ map show upwardClauses
   putStrLn $ unwords $ map show posqOutputs
-  for_ clauses \clause -> do
-    putStrLn $ unwords [show if pos then x + 1 else -x - 1 | (pos, x) <- clause]
+  for_ clauses \(optional, clause) -> do
+    putStr $ unwords [show if pos then x + 1 else -x - 1 | (pos, x) <- clause]
+    putStrLn $ if optional then " 0" else ""
 
 shareStates :: IO ()
 shareStates = do
