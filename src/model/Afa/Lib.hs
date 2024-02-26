@@ -58,6 +58,7 @@ import InversionOfControl.LiftN
 import Data.IORef
 import qualified Afa.IORef as AIO
 import GHC.Generics (Generic)
+import Afa.ShallowHashable
 
 -- RemoveSingleInit --------------------------------------------------------------------
 
@@ -1063,35 +1064,11 @@ flatten (init, final, qs) = do
         And x1 x2 -> do
           x1' <- rec x1
           x2' <- rec x2
-          x1s <- lift (monadfn @[g1|isTree|] x1) >>= \case
-            True -> do
-              lift (monadfn @[g1|deref|] x1') <&> \case
-                AndMulti xs -> xs
-                _nonassoc -> [x1']
-            False -> return [x1']
-          x2s <- lift (monadfn @[g1|isTree|] x2) >>= \case
-            True -> do
-              lift (monadfn @[g1|deref|] x2') <&> \case
-                AndMulti xs -> xs
-                _nonassoc -> [x2']
-            False -> return [x2']
-          lift $ buildShareShared @d2 r0 (AndMulti $ x1s ++ x2s)
+          lift $ buildShareShared @d2 r0 (andMulti [x1', x2'])
         Or x1 x2 -> do
           x1' <- rec x1
           x2' <- rec x2
-          x1s <- lift (monadfn @[g1|isTree|] x1) >>= \case
-            True -> do
-              lift (monadfn @[g1|deref|] x1') <&> \case
-                OrMulti xs -> xs
-                _nonassoc -> [x1']
-            False -> return [x1']
-          x2s <- lift (monadfn @[g1|isTree|] x2) >>= \case
-            True -> do
-              lift (monadfn @[g1|deref|] x2') <&> \case
-                OrMulti xs -> xs
-                _nonassoc -> [x2']
-            False -> return [x2']
-          lift $ buildShareShared @d2 r0 (OrMulti $ x1s ++ x2s)
+          lift $ buildShareShared @d2 r0 (orMulti [x1', x2'])
     )
     (\rec -> (,,) <$> rec init <*> rec final <*> traverseR rec qs)
 
@@ -1226,7 +1203,7 @@ tseytin (init, final, qs) = do
             (_, (litsig, litvar)) <- aft
             return (False, (not litsig, litvar))
 
-        AndMulti xs -> R.BeforeAfter do
+        AndMulti (map unshallow . HS.toList -> xs) -> R.BeforeAfter do
           let R.BeforeAfter bef = for xs \x -> recur x (First $ Just x, sig)
           aft <- bef
           return $ do
@@ -1259,7 +1236,7 @@ tseytin (init, final, qs) = do
               _negOrBi ->
                 return (False, (True, count))
 
-        OrMulti xs -> R.BeforeAfter do
+        OrMulti (map unshallow . HS.toList -> xs) -> R.BeforeAfter do
           let R.BeforeAfter bef = for xs \x -> recur x (First $ Just x, sig)
           aft <- bef
           return $ do

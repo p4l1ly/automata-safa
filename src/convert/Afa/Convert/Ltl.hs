@@ -12,6 +12,8 @@
 {-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE BlockArguments #-}
 {-# LANGUAGE TupleSections #-}
+{-# LANGUAGE UndecidableInstances #-}
+{-# LANGUAGE FlexibleInstances #-}
 {-# OPTIONS_GHC -fplugin InversionOfControl.TcPlugin #-}
 
 module Afa.Convert.Ltl where
@@ -45,6 +47,7 @@ import qualified InversionOfControl.Recur as R
 import Control.Monad.Trans
 import Control.Monad.Free
 import Afa.ShallowHashable
+import Data.Traversable
 
 data Ltl rec
   = Var !Int
@@ -63,12 +66,12 @@ data Ltl rec
   deriving (Functor, Foldable, Traversable, Show, Generic, Generic1)
   deriving (Show1) via (Generically1 Ltl)
 
-instance ShallowEq rec => Eq (Ltl rec) where
+instance Eq (Shallow rec) => Eq (Ltl rec) where
   LTrue == LTrue = True
   LFalse == LFalse = True
   Var v1 == Var v2 = v1 == v2
-  And rs1 == And rs2 = and $ zipWith shallowEq rs1 rs2
-  Or rs1 == Or rs2 = and $ zipWith shallowEq rs1 rs2
+  And rs1 == And rs2 = and $ zipWith (\a b -> Shallow a == Shallow b) rs1 rs2
+  Or rs1 == Or rs2 = and $ zipWith (\a b -> Shallow a == Shallow b) rs1 rs2
   Not r1 == Not r2 = r1 `shallowEq` r2
   Next r1 == Next r2 = r1 `shallowEq` r2
   Globally r1 == Globally r2 = r1 `shallowEq` r2
@@ -79,7 +82,7 @@ instance ShallowEq rec => Eq (Ltl rec) where
   StrongRelease r11 r12 == StrongRelease r21 r22 = r11 `shallowEq` r21 && r12 `shallowEq` r22
   _ == _ = False
 
-instance ShallowHashable r => Hashable (Ltl r) where
+instance Hashable (Shallow r) => Hashable (Ltl r) where
   hashWithSalt salt LTrue = hashWithSalt' salt 143080932
   hashWithSalt salt LFalse = hashWithSalt' salt 3211304
   hashWithSalt salt (Var q) = hashWithSalt (hashWithSalt' salt 398201981) q
@@ -94,11 +97,19 @@ instance ShallowHashable r => Hashable (Ltl r) where
   hashWithSalt salt (Release r1 r2) = shallowHash (shallowHash (hashWithSalt' salt 938563) r1) r2
   hashWithSalt salt (StrongRelease r1 r2) = shallowHash (shallowHash (hashWithSalt' salt 37258433) r1) r2
 
-instance ShallowEq (Fix f) where
-  shallowEq _ _ = False
+instance Eq (Shallow (Fix f)) where
+  _ == _ = False
 
-instance ShallowHashable (Fix f) where
-  shallowHash _ _ = unsafePerformIO randomIO
+instance Hashable (Shallow (Fix f)) where
+  hashWithSalt _ _ = unsafePerformIO randomIO
+
+instance Eq a => Eq (Shallow (Free f a)) where
+  (Shallow (Pure a)) == (Shallow (Pure b)) = a == b
+  _ == _ = False
+
+instance Hashable a => Hashable (Shallow (Free f a)) where
+  hashWithSalt salt (Shallow (Pure a)) = hashWithSalt salt a
+  hashWithSalt salt _ = unsafePerformIO randomIO
 
 data EmptyO
 type instance Definition EmptyO = End
@@ -165,7 +176,7 @@ term =
 preprocess :: Fix Ltl -> IO LtlRef
 preprocess ltl = do
   ltl1 <- buildFix @LtlBuild $ pushNeg True ltl
-  sharingDetector <- AIO.getSharingDetector
+  sharingDetector <- AIO.getSharingDetector traverse
   ltl2 <- sharingDetector ltl1
   (countUpR, finalize) <- AIO.getUnsharingDetector
     (\case Var _ -> False; LTrue -> False; LFalse -> False; _shareables -> True)
@@ -222,41 +233,43 @@ toAfa ltl = do
           LTrue -> buildSh Afa.LTrueMulti
           LFalse -> buildSh Afa.LFalseMulti
           Var q -> buildSh $ Afa.VarMulti q
-          And xs -> buildSh $ Afa.AndMulti xs
-          Or xs -> buildSh $ Afa.OrMulti xs
+          And xs -> buildSh $ Afa.andMulti xs
+          Or xs -> buildSh $ Afa.orMulti xs
           Not x -> buildSh $ Afa.NotMulti x  -- Assumption: pushNeg has been applied.
           Next x -> newState False $ \qix -> (x,) <$> buildSh (Afa.StateMulti qix)
           Until x y -> newState False $ \qix -> do
-            andNode <- buildFree @AfaBuild $ Free $ Afa.AndMulti [Free $ Afa.StateMulti qix, Pure x]
-            orNode <- buildSh $ Afa.OrMulti [y, andNode]
+            qNode <- monadfn @AfaBuild $ Afa.StateMulti qix
+            andNode <- monadfn @AfaBuild $ Afa.andMulti [qNode, x]
+            orNode <- buildSh $ Afa.orMulti [y, andNode]
             return (orNode, orNode)
           StrongRelease x y -> newState False $ \qix -> do
-            orNode <- buildFree @AfaBuild $ Free $ Afa.OrMulti [Free $ Afa.StateMulti qix, Pure x]
-            andNode <- buildSh $ Afa.AndMulti [y, orNode]
+            qNode <- monadfn @AfaBuild $ Afa.StateMulti qix
+            orNode <- monadfn @AfaBuild $ Afa.orMulti [qNode, x]
+            andNode <- buildSh $ Afa.andMulti [y, orNode]
             return (andNode, andNode)
           WeakUntil x y -> do
             newState True $ \qix -> do
               qNode <- monadfn @AfaBuild $ Afa.StateMulti qix
-              andNode <- monadfn @AfaBuild $ Afa.AndMulti [qNode, x]
-              orNode <- monadfn @AfaBuild $ Afa.OrMulti [y, andNode]
-              result <- buildSh $ Afa.OrMulti [qNode, y]
+              andNode <- monadfn @AfaBuild $ Afa.andMulti [qNode, x]
+              orNode <- monadfn @AfaBuild $ Afa.orMulti [y, andNode]
+              result <- buildSh $ Afa.orMulti [qNode, y]
               return (orNode, result)
           Release x y -> do
             newState True $ \qix -> do
               qNode <- monadfn @AfaBuild $ Afa.StateMulti qix
-              orNode <- monadfn @AfaBuild $ Afa.OrMulti [qNode, x]
-              andNode <- monadfn @AfaBuild $ Afa.AndMulti [y, orNode]
-              result <- buildSh $ Afa.OrMulti [qNode, andNode]
+              orNode <- monadfn @AfaBuild $ Afa.orMulti [qNode, x]
+              andNode <- monadfn @AfaBuild $ Afa.andMulti [y, orNode]
+              result <- buildSh $ Afa.orMulti [qNode, andNode]
               return (andNode, result)
           Globally x -> do
             newState True $ \qix -> do
               qNode <- buildSh $ Afa.StateMulti qix
-              andNode <- monadfn @AfaBuild $ Afa.AndMulti [qNode, x]
+              andNode <- monadfn @AfaBuild $ Afa.andMulti [qNode, x]
               return (andNode, qNode)
           Finally x -> do
             newState False $ \qix -> do
               qNode <- monadfn @AfaBuild $ Afa.StateMulti qix
-              orNode <- buildSh $ Afa.OrMulti [qNode, x]
+              orNode <- buildSh $ Afa.orMulti [qNode, x]
               return (orNode, orNode)
     )
     ($ ltl)
@@ -266,9 +279,10 @@ toAfa ltl = do
   final <-
     if null nonfinals
       then monadfn @AfaBuild Afa.LTrueMulti
-      else
-        buildFix @AfaBuild $ Fix $ Afa.AndMulti $
-          map (Fix . Afa.NotMulti . Fix . Afa.StateMulti) nonfinals
+      else do
+        nqs <- for nonfinals \q -> do
+          monadfn @AfaBuild (Afa.StateMulti q) >>= monadfn @AfaBuild . Afa.NotMulti
+        monadfn @AfaBuild $ Afa.andMulti nqs
 
   return (init, final, Afa.StateList states)
 

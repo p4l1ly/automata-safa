@@ -48,13 +48,13 @@ type SN f = StableName (R f)
 type S f = (SN f, R f)
 data Ref f = Ref !(S f) | Subtree !(FR f)
 
-instance ShallowEq (Ref f) where
-  Ref (sn1, _) `shallowEq` Ref (sn2, _) = sn1 == sn2
-  _ `shallowEq` _ = False
+instance Eq (Shallow (Ref f)) where
+  Shallow (Ref (sn1, _)) == Shallow (Ref (sn2, _)) = sn1 == sn2
+  _ == _ = False
 
-instance ShallowHashable (Ref f) where
-  shallowHash salt (Ref (sn, _)) = hashWithSalt salt sn
-  shallowHash salt (Subtree x) = unsafePerformIO randomIO
+instance Hashable (Shallow (Ref f)) where
+  hashWithSalt salt (Shallow (Ref (sn, _))) = hashWithSalt salt sn
+  hashWithSalt salt (Shallow (Subtree x)) = unsafePerformIO randomIO
 
 instance Eq (f (Ref f)) => Eq (Ref f) where
   Ref (sn1, _) == Ref (sn2, _) = sn1 == sn2
@@ -100,12 +100,12 @@ replace ref@(Ref (_, ioref)) val = do
   writeIORef ioref val
   return ref
 
-getSharingDetector :: (Traversable f, Hashable (FR f)) => IO (Ref f -> IO (Ref f))
-getSharingDetector = do
+getSharingDetector :: Hashable (FR f) => SameTraverse IO f (Ref f) -> IO (Ref f -> IO (Ref f))
+getSharingDetector sameTraverse = do
   visitedVar <- newIORef HM.empty
   dbVar <- newIORef HM.empty
   let go fr = do
-        fr1 <- traverse rec fr
+        fr1 <- sameTraverse rec fr
         db <- readIORef dbVar
         (r', db') <-
           getCompose $

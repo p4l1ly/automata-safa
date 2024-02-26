@@ -53,6 +53,8 @@ import Afa.Build
 import System.IO (Handle, stdout)
 import qualified System.IO
 import Data.Kind
+import qualified Data.HashSet as HS
+import Afa.ShallowHashable
 
 parseWhole :: Parser a -> T.Text -> a
 parseWhole parser str = case Parsec.parse parser str of
@@ -241,10 +243,10 @@ formatFormula = do
               VarMulti v -> return $ T.cons 'a' (identify v)
               NotMulti !r -> do
                 T.cons '!' <$> rec r
-              AndMulti xs -> do
+              AndMulti (map unshallow . HS.toList -> xs) -> do
                 !xs' <- mapM rec xs
                 return $ T.concat ["(", T.intercalate " & " xs', ")"]
-              OrMulti xs -> do
+              OrMulti (map unshallow . HS.toList -> xs) -> do
                 !xs' <- mapM rec xs
                 return $ T.concat ["(", T.intercalate " | " xs', ")"]
 

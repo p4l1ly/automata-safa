@@ -12,6 +12,7 @@
 {-# LANGUAGE TypeFamilies #-}
 {-# LANGUAGE TypeOperators #-}
 {-# LANGUAGE UndecidableInstances #-}
+{-# LANGUAGE FlexibleContexts #-}
 
 module Afa.Term (
   Term (..),
@@ -42,6 +43,9 @@ module Afa.Term (
   (:&:) ((:&:)),
   TermParam,
   MultiwayTerm(..),
+  andMulti,
+  orMulti,
+  sameTraverse
 ) where
 
 import Data.Functor.Classes (Eq1, Show1)
@@ -57,6 +61,7 @@ import System.Random
 import System.IO.Unsafe
 import Afa.ShallowHashable
 import Data.List
+import qualified Data.HashSet as HS
 
 type family Creation (way :: *) (input :: *) :: *
 
@@ -74,7 +79,7 @@ data Term q v r
   deriving (Functor, Foldable, Traversable, Show, Generic, Generic1)
   deriving (Show1) via (Generically1 (Term q v))
 
-instance (Eq q, Eq v, ShallowEq r) => Eq (Term q v r) where
+instance (Eq q, Eq v, Eq (Shallow r)) => Eq (Term q v r) where
   LTrue == LTrue = True
   LFalse == LFalse = True
   State q1 == State q2 = q1 == q2
@@ -84,7 +89,7 @@ instance (Eq q, Eq v, ShallowEq r) => Eq (Term q v r) where
   Or r11 r12 == Or r21 r22 = r11 `shallowEq` r21 && r12 `shallowEq` r22
   _ == _ = False
 
-instance (Hashable q, Hashable v, ShallowHashable r) => Hashable (Term q v r) where
+instance (Hashable q, Hashable v, Hashable (Shallow r)) => Hashable (Term q v r) where
   hashWithSalt salt LTrue = hashWithSalt' salt 988431
   hashWithSalt salt LFalse = hashWithSalt' salt 1438231
   hashWithSalt salt (State q) = hashWithSalt (hashWithSalt' salt 4331) q
@@ -100,10 +105,28 @@ data MultiwayTerm q v r
   | StateMulti !q
   | VarMulti !v
   | NotMulti !r
-  | AndMulti ![r]
-  | OrMulti ![r]
-  deriving (Functor, Foldable, Traversable, Show, Generic, Generic1)
-  deriving (Show1) via (Generically1 (MultiwayTerm q v))
+  | AndMulti !(HS.HashSet (Shallow r))
+  | OrMulti !(HS.HashSet (Shallow r))
+  deriving (Foldable, Show, Generic)
+  -- deriving (Show1) via (Generically1 (MultiwayTerm q v))
+
+
+sameTraverse :: (Applicative f, Hashable (Shallow b)) => (b -> f b) -> MultiwayTerm q v b -> f (MultiwayTerm q v b)
+sameTraverse fn LTrueMulti = pure LTrueMulti
+sameTraverse fn LFalseMulti = pure LFalseMulti
+sameTraverse fn x@(StateMulti q) = pure x
+sameTraverse fn x@(VarMulti v) = pure x
+sameTraverse fn (NotMulti r) = NotMulti <$> fn r
+sameTraverse fn (AndMulti r) = do
+  AndMulti . HS.fromList . map Shallow <$> traverse (fn . unshallow) (HS.toList r)
+sameTraverse fn (OrMulti r) =
+  OrMulti . HS.fromList . map Shallow <$> traverse (fn . unshallow) (HS.toList r)
+
+
+andMulti :: (Eq (Shallow r), Hashable (Shallow r)) => [r] -> MultiwayTerm q v r
+andMulti = AndMulti . HS.fromList . map Shallow
+orMulti :: (Eq (Shallow r), Hashable (Shallow r)) => [r] -> MultiwayTerm q v r
+orMulti = OrMulti . HS.fromList . map Shallow
 
 type family TermParam (sel :: QVR) (t :: *) :: * where
   TermParam Q (Term q v r) = q
@@ -113,24 +136,24 @@ type family TermParam (sel :: QVR) (t :: *) :: * where
   TermParam V (MultiwayTerm q v r) = v
   TermParam R (MultiwayTerm q v r) = r
 
-instance (Eq q, Eq v, ShallowEq r) => Eq (MultiwayTerm q v r) where
+instance (Eq q, Eq v, Eq (Shallow r)) => Eq (MultiwayTerm q v r) where
   LTrueMulti == LTrueMulti = True
   LFalseMulti == LFalseMulti = True
   StateMulti q1 == StateMulti q2 = q1 == q2
   VarMulti v1 == VarMulti v2 = v1 == v2
   NotMulti r1 == NotMulti r2 = r1 `shallowEq` r2
-  AndMulti rs1 == AndMulti rs2 = and $ zipWith shallowEq rs1 rs2
-  OrMulti rs1 == OrMulti rs2 = and $ zipWith shallowEq rs1 rs2
+  AndMulti rs1 == AndMulti rs2 = rs1 == rs2
+  OrMulti rs1 == OrMulti rs2 = rs1 == rs2
   _ == _ = False
 
-instance (Hashable q, Hashable v, ShallowHashable r) => Hashable (MultiwayTerm q v r) where
+instance (Hashable q, Hashable v, Hashable (Shallow r)) => Hashable (MultiwayTerm q v r) where
   hashWithSalt salt LTrueMulti = hashWithSalt' salt 1454735963
   hashWithSalt salt LFalseMulti = hashWithSalt' salt 434085917
   hashWithSalt salt (StateMulti q) = hashWithSalt (hashWithSalt' salt 2844348065) q
   hashWithSalt salt (VarMulti v) = hashWithSalt (hashWithSalt' salt 13096731) v
   hashWithSalt salt (NotMulti r) = shallowHash (hashWithSalt' salt 4545191) r
-  hashWithSalt salt (AndMulti rs) = foldl' shallowHash (hashWithSalt' salt 693727) rs
-  hashWithSalt salt (OrMulti rs) = foldl' shallowHash (hashWithSalt' salt 943218321) rs
+  hashWithSalt salt (AndMulti rs) = foldl' hashWithSalt (hashWithSalt' salt 693727) rs
+  hashWithSalt salt (OrMulti rs) = foldl' hashWithSalt (hashWithSalt' salt 943218321) rs
 
 paramGetter :: String -> Name -> TypeQ
 paramGetter dname x = do

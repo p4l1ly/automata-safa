@@ -13,6 +13,7 @@
 {-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE AllowAmbiguousTypes #-}
 {-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE BangPatterns #-}
 {-# OPTIONS_GHC -fconstraint-solver-iterations=5 #-}
 {-# OPTIONS_GHC -fplugin InversionOfControl.TcPlugin #-}
 
@@ -56,7 +57,8 @@ data TextIORefO
 type instance Definition TextIORefO =
   Name "qs" (PrettyStranger.Qs TextIORef_Ref)
     :+: Name "term" TextIORef_Term
-    :+: Follow (Delit.IORefDelitO AIO.IORefO EmptyO)
+    -- :+: Follow (AIO.IORefO EmptyO)
+    :+: Follow (Delit.DelitO AIO.IORefO EmptyO)
 
 type TextIORef_Ref = AIO.Ref (Term T.Text T.Text)
 type TextIORef_Term = Term T.Text T.Text TextIORef_Ref
@@ -65,14 +67,15 @@ flattenAndHPrint ::
   forall d.
   (Lib.FlattenD d, PrettyStranger.PrintD (Lib.FlattenO d)) =>
   Handle -> ($r, $r, $qs) -> IO ()
-flattenAndHPrint h afa =
-  PrettyStranger.hPrint @(Lib.FlattenO d) h =<< Lib.flatten @d afa
+flattenAndHPrint h afa = do
+  afa' <- Lib.flatten @d afa
+  PrettyStranger.hPrint @(Lib.FlattenO d) h afa'
 
 flattenAndPrint ::
   forall d.
   (Lib.FlattenD d, PrettyStranger.PrintD (Lib.FlattenO d)) =>
   ($r, $r, $qs) -> IO ()
-flattenAndPrint afa = flattenAndHPrint @d stdout afa
+flattenAndPrint = flattenAndHPrint @d stdout
 
 prettyToPretty :: IO ()
 prettyToPretty = do
@@ -214,11 +217,20 @@ delaySymbolsLowest = do
       _ -> False
   flattenAndPrint @(Lib.DelayO TextIORefO) afa'
 
+flatShare :: IO ()
+flatShare = do
+  txt <- TIO.getContents
+  afa' <- PrettyStranger.parse @TextIORefO (PrettyStranger.parseDefinitions txt)
+  (init, final, qs) <- Lib.flatten @TextIORefO afa'
+  shareR <- AIO.getSharingDetector sameTraverse
+  afa' <- (,,) <$> shareR init <*> shareR final <*> traverseR shareR qs
+  PrettyStranger.print @(Lib.FlattenO TextIORefO) afa'
+
 share :: IO ()
 share = do
   txt <- TIO.getContents
   (init, final, qs) <- PrettyStranger.parse @TextIORefO (PrettyStranger.parseDefinitions txt)
-  shareR <- AIO.getSharingDetector
+  shareR <- AIO.getSharingDetector traverse
   afa' <- (,,) <$> shareR init <*> shareR final <*> traverseR shareR qs
   flattenAndPrint @TextIORefO afa'
 
@@ -230,7 +242,7 @@ removeUselessShares = do
     Not _ -> True
     And _ _ -> True
     Or _ _ -> True
-    _ -> False
+    _terminal -> False
   countUpR init <> countUpR final <> void (traverseR countUpR qs)
   finalizeR <- finalize
   afa' <- (,,) <$> finalizeR init <*> finalizeR final <*> traverseR finalizeR qs
@@ -359,7 +371,7 @@ pushPosNot = do
 tseytin :: IO ()
 tseytin = do
   txt <- TIO.getContents
-  afa <- PrettyStranger.parse @TextIORefO (PrettyStranger.parseDefinitions txt)
+  !afa <- PrettyStranger.parse @TextIORefO (PrettyStranger.parseDefinitions txt)
   cnfAfa@Lib.CnfAfa{..} <- Lib.tseytin @TextIORefO afa
   print variableCount
   putStrLn $ unwords [show if pos then x + 1 else -x - 1 | (pos, x) <- outputs]
@@ -415,6 +427,7 @@ main = do
     ["hasFinals"] -> hasFinals
     ["hasComplexFinals"] -> hasComplexFinals
     ["delaySymbolsLowest"] -> delaySymbolsLowest
+    ["flatShare"] -> flatShare
     ["share"] -> share
     ["removeUselessShares"] -> removeUselessShares
     ["checkerV1RemoveFinalsNonsep"] -> checkerV1RemoveFinalsNonsep

@@ -11,6 +11,7 @@
 {-# LANGUAGE TypeFamilies #-}
 {-# LANGUAGE TypeOperators #-}
 {-# LANGUAGE UndecidableInstances #-}
+{-# LANGUAGE ViewPatterns #-}
 {-# OPTIONS_GHC -fplugin InversionOfControl.TcPlugin #-}
 
 module Afa.Delit where
@@ -20,9 +21,10 @@ import InversionOfControl.Lift
 import InversionOfControl.MonadFn
 import InversionOfControl.TypeDict
 import Data.Traversable
-
+import Control.Monad
 import Data.Hashable
 import qualified Data.HashSet as HS
+import Afa.ShallowHashable
 
 data Delit (xBuild :: *) (xDeref :: *) (xIsTree :: *) (xShare :: *) (xReplace :: *)
 type DelitKBuild q v r x = Explicit (Term q v r) r x
@@ -85,7 +87,7 @@ instance
   , MonadFn0 (Explicit r Bool xIsTree) m
   , MonadFn0 (Explicit r r xShare) m
   , MonadFn0 (Explicit (r, MultiwayTerm q v r) r xReplace) m
-  , Hashable r
+  , Hashable (Shallow r)
   ) =>
   MonadFn0 (Explicit (MultiwayTerm q v r) r (Delit xBuild xDeref xIsTree xShare xReplace)) m
   where
@@ -103,33 +105,61 @@ instance
               return r''
         _unmodifiedTerm -> build fr
 
-    fr@(AndMulti xs) -> do
+    fr@(AndMulti (map unshallow . HS.toList -> xs)) -> do
       vals <- for xs deref
-      if any (\case LFalseMulti -> True; _ -> False) vals
+      if any (\case LFalseMulti -> True; _ok -> False) vals
         then build LFalseMulti
         else do
-          let xsAndVals = filter (\(_, val) -> case val of LTrueMulti -> False; _ -> True) $ zip xs vals
+          let xsAndVals = [x | x@(_, val) <- zip xs vals, case val of LTrueMulti -> False; _ok -> True]
           if null xsAndVals
             then build LTrueMulti
             else do
-              let xsDedup = HS.fromList $ map fst xsAndVals
-              if or [HS.member x xsDedup | (_, NotMulti x) <- xsAndVals]
-                then build LFalseMulti
-                else build (AndMulti $ HS.toList xsDedup)
+              trees <- for xsAndVals (isTree . fst)
+              let grandchildren = [ys | (AndMulti ys, True) <- zip vals trees]
+              flattened <- case grandchildren of
+                [] -> return $ Just HS.empty
+                gs0:gss -> do
+                  vals <- for gss $ mapM (deref . unshallow) . HS.toList
+                  return $ foldM checkAndUnion gs0 $ zip vals gss
+              let handled (AndMulti _) True = True
+                  handled _ _ = False
+              let freechildren =
+                    [ ([val], HS.singleton (Shallow x))
+                    | ((x, val), tr) <- zip xsAndVals trees
+                    , not $ handled val tr
+                    ]
+              let flattened' = flattened >>= \fl -> foldM checkAndUnion fl freechildren
+              case flattened' of
+                Nothing -> build LFalseMulti
+                Just xs' -> build $ AndMulti xs'
 
-    fr@(OrMulti xs) -> do
+    fr@(OrMulti (map unshallow . HS.toList -> xs)) -> do
       vals <- for xs deref
-      if any (\case LTrueMulti -> True; _ -> False) vals
+      if any (\case LTrueMulti -> True; _ok -> False) vals
         then build LTrueMulti
         else do
-          let xsAndVals = filter (\(_, val) -> case val of LFalseMulti -> False; _ -> True) $ zip xs vals
+          let xsAndVals = [x | x@(_, val) <- zip xs vals, case val of LFalseMulti -> False; _ok -> True]
           if null xsAndVals
             then build LFalseMulti
             else do
-              let xsDedup = HS.fromList $ map fst xsAndVals
-              if or [HS.member x xsDedup | (_, NotMulti x) <- xsAndVals]
-                then build LTrueMulti
-                else build (OrMulti $ HS.toList xsDedup)
+              trees <- for xsAndVals (isTree . fst)
+              let grandchildren = [ys | (OrMulti ys, True) <- zip vals trees]
+              flattened <- case grandchildren of
+                [] -> return $ Just HS.empty
+                gs0:gss -> do
+                  vals <- for gss $ mapM (deref . unshallow) . HS.toList
+                  return $ foldM checkAndUnion gs0 $ zip vals gss
+              let handled (OrMulti _) True = True
+                  handled _ _ = False
+              let freechildren =
+                    [ ([val], HS.singleton (Shallow x))
+                    | ((x, val), tr) <- zip xsAndVals trees
+                    , not $ handled val tr
+                    ]
+              let flattened' = flattened >>= \fl -> foldM checkAndUnion fl freechildren
+              case flattened' of
+                Nothing -> build LTrueMulti
+                Just xs' -> build $ OrMulti xs'
 
     fr -> build fr
     where
@@ -139,8 +169,19 @@ instance
       share = monadfn0 @(Explicit r r xShare)
       replace = monadfn0 @(Explicit (r, MultiwayTerm q v r) r xReplace)
 
-data IORefDelitO (d :: * -> *) (cont :: *)
+data DelitO (d :: * -> *) (cont :: *)
 type instance
-  Definition (IORefDelitO d cont) =
+  Definition (DelitO d cont) =
     Name "build" (Delit [gc|build|] [gc|deref|] [gc|isTree|] [gc|share|] [gc|replace|])
       :+: Follow (d cont)
+
+checkAndUnion ::
+  ( Hashable (Shallow r)
+  , Eq (Shallow r)
+  )
+  => HS.HashSet (Shallow r)
+  -> ([MultiwayTerm q v r], HS.HashSet (Shallow r))
+  -> Maybe (HS.HashSet (Shallow r))
+checkAndUnion old (vals, new)
+  | or [Shallow x `elem` old | (NotMulti x) <- vals] = Nothing
+  | otherwise = Just $ HS.union new old
