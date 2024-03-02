@@ -23,6 +23,7 @@ import Afa.Build
 import qualified Afa.Convert.PrettyStranger as PrettyStranger
 import qualified Afa.Convert.Vtf as Vtf
 import qualified Afa.Convert.Ltl as Ltl
+import qualified Afa.Convert.Smv as Smv
 import qualified Afa.Delit as Delit
 import qualified Afa.IORef as AIO
 import qualified Afa.Lib as Lib
@@ -82,6 +83,13 @@ prettyToPretty = do
   txt <- TIO.getContents
   afa <- PrettyStranger.parse @TextIORefO (PrettyStranger.parseDefinitions txt)
   flattenAndPrint @TextIORefO afa
+
+prettyToSmv :: IO ()
+prettyToSmv = do
+  txt <- TIO.getContents
+  afa <- PrettyStranger.parse @TextIORefO (PrettyStranger.parseDefinitions txt)
+  afa' <- Lib.flatten @TextIORefO afa
+  Smv.hPrint @(Lib.FlattenO TextIORefO) stdout afa'
 
 removeSingleInit :: IO ()
 removeSingleInit = do
@@ -409,6 +417,7 @@ main = do
   args <- getArgs
   case args of
     ["prettyToPretty"] -> prettyToPretty
+    ["prettyToSmv"] -> prettyToSmv
     ["removeSingleInit"] -> removeSingleInit
     ["addInit"] -> addInit
     ["hasSimpleInit"] -> hasSimpleInit

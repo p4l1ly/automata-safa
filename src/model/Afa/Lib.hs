@@ -271,7 +271,7 @@ splitFinals final =
       where
         self' = ((Any False, Endo id), Just r0)
 
--- splitFinals2
+-- splitFinals2 ------------------------------------------------------------------------
 
 data Finalness = Final | Complex | Nonfinal deriving (Eq, Show, Ord)
 
@@ -640,6 +640,37 @@ delay (init, final, qs) isDelayed = do
       map Left [1..q2Next - 1] ++ map (Right . fst) (stateList qs1)
   return (init1, final2, UnionQs qs2 qs1')
 
+-- getVars ---------------------------------------------------------------------------
+
+type GetVarsD d = GetVarsI d (GetVarsA d)
+
+data GetVarsA d
+type instance Definition (GetVarsA d) =
+  Name "rec" (R.Explicit [k|cata|] Zero $r [g|term|])
+    :+: End
+
+type GetVarsI d d1 =
+  ( d1 ~ GetVarsA d
+  , R.Recur [g1|rec|] () IO
+  , MultiwayTerm $q $v $r ~ [g|term|]
+  , RTraversable $qs $q $r () (RTraversed $qs ())
+  , Hashable $v
+  ) :: Constraint
+
+getVars :: forall d d1.
+  (GetVarsI d d1) =>
+  ($r, $r, $qs) ->
+  IO [$v]
+getVars (init, final, qs) = do
+  varsV <- newIORef HS.empty
+  R.runRecur @[g1|rec|]
+    ( \rec -> \case
+        VarMulti v -> lift $ modifyIORef' varsV (HS.insert v)
+        fr -> traverse_ rec fr
+    )
+    ( \get -> get init *> get final *> traverseR get qs )
+  vars <- readIORef varsV
+  return $ HS.toList vars
 
 -- explicitToBitvector -----------------------------------------------------------------
 
@@ -1231,7 +1262,6 @@ tseytin (init, final, qs) = do
                 return (True, (True, count))
               PositiveSignum -> do
                 modifyIORef' pureVarsRef (count :)
-                modifyIORef' upwardClausesRef (clauseCount + len :)  -- clauses will be reversed
                 return (False, (True, count))
               _negOrBi ->
                 return (False, (True, count))
@@ -1265,7 +1295,6 @@ tseytin (init, final, qs) = do
                 return (True, (True, count))
               PositiveSignum -> do
                 modifyIORef' pureVarsRef (count :)
-                modifyIORef' upwardClausesRef ([clauseCount .. clauseCount + len - 1] ++)  -- clauses will be reversed
                 return (False, (True, count))
               _negOrBi ->
                 return (False, (True, count))
@@ -1324,3 +1353,95 @@ shareStates (init, final, qs) = do
         fr -> traverse rec fr >>= lift . buildShareShared @d2 r0
     )
     (\recur -> (,,) <$> recur init <*> recur final <*> traverseR recur qs)
+
+
+-- splitFinalsMulti -------------------------------------------------------------------------
+
+data SplitFinalsMultiA d
+type instance Definition (SplitFinalsMultiA d) =
+  Name "deref" (Inherit (Explicit $r [g|term|]) [k|deref|])
+    :+: Name "rec" (R.Explicit [k|rcata|] Zero $r ($r, [g|term|]))
+    :+: End
+
+type SplitFinalsMultiI d d1 d2 m =
+  ( d2 ~ BuildShareSharedTermO d
+  , BuildShareSharedD d2 m
+  , d1 ~ SplitFinalsMultiA d
+  , MultiwayTerm $q $v $r ~ [g|term|]
+  , MonadFn [g1|deref|] m
+  , R.Recur [g1|rec|] ((Any, Endo [$q]), Maybe $r) m
+  , Hashable (Shallow $r)
+  ) :: Constraint
+
+type SplitFinalsMultiD d m =
+  SplitFinalsMultiI d (SplitFinalsMultiA d) (BuildShareSharedTermO d) m
+
+splitFinalsMulti ::
+  forall d m d1 d2.
+  SplitFinalsMultiI d d1 d2 m =>
+  $r -> m ([$q], Maybe $r)
+splitFinalsMulti final =
+  R.runRecur @[g1|rec|] alg \rec -> do
+    ((_, nonfinals), complex) <- rec final
+    return (appEndo nonfinals [], complex)
+  where
+    alg rec (r0, term) = case term of
+      NotMulti r -> do
+        lift (monadfn @[g1|deref|] r) >>= \case
+          StateMulti q -> return ((Any True, Endo (q :)), Nothing)
+          _nonstate -> return self'
+      AndMulti (map unshallow . HS.toList -> rs) -> do
+        qcomplexes <- traverse rec rs
+        let (qs, complexes) = unzip qcomplexes
+        (mconcat qs,) <$> case catMaybes complexes of
+          [] -> return Nothing
+          [complex] -> return $ Just complex
+          complexes
+            | any (getAny . fst) qs ->
+                Just <$> lift (buildShareShared @d2 r0 $ AndMulti $ HS.fromList $ map Shallow complexes)
+            | otherwise -> return $ Just r0
+      LTrueMulti -> return ((Any True, Endo id), Nothing)
+      _other -> return self'
+      where
+        self' = ((Any False, Endo id), Just r0)
+
+-- splitFinalsMulti2 ------------------------------------------------------------------------
+
+data SplitFinalsMulti2A d
+type instance Definition (SplitFinalsMulti2A d) =
+  Name "rec" (R.Explicit [k|cata|] Zero $r [g|term|])
+    :+: Name "qs'" (RTraversed $qs Finalness)
+    :+: End
+
+type SplitFinalsMulti2I d d1 =
+  ( d1 ~ SplitFinalsMulti2A d
+  , R.Recur [g1|rec|] () IO
+  , SplitFinalsMultiD d IO
+  , RTraversable $qs $q (Qs.R $qs) Finalness [g1|qs'|]
+  , States [g1|qs'|] $q Finalness
+  )
+
+type SplitFinalsMulti2D d = SplitFinalsMulti2I d (SplitFinalsMulti2A d)
+
+splitFinalsMulti2 ::
+  forall d d1.
+  SplitFinalsMulti2I d d1 =>
+  $r -> $qs -> IO ([g1|qs'|], Maybe $r)
+splitFinalsMulti2 final qs = do
+  (nonfinals, complex) <- splitFinalsMulti @d final
+
+  complexQsV <- newIORef []
+  R.runRecur @[g1|rec|]
+    ( \rec -> \case
+        StateMulti q -> lift $ modifyIORef' complexQsV (q:)
+        fr -> traverse_ rec fr
+    )
+    ( for_ complex )
+  complexQs <- readIORef complexQsV
+
+  let qs1 = runIdentity $ traverseR (const $ Identity Final) qs
+  let qs2 = redirect qs1 $
+        map (, Complex) complexQs
+        ++ map (, Nonfinal) nonfinals
+
+  return (qs2, complex)
