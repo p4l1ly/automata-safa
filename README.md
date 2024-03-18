@@ -1,7 +1,16 @@
 # automata-safa
 
 This is a tool for constructing fairly nice symbolic alternating finite automata with bitvector
-symbols. It's under vast reconstruction.
+symbols. It is dependent on https://github.com/p4l1ly/inversion-of-control/
+
+## Usage
+
+Currently, a single executable is implemented `automata-safa-one`, which outputs a single automaton, as a result of an operation on an input automaton (or automata).
+The operation is given by the first argument of the command.
+If the operation works with a single automaton, the input is read from the standard input.
+Otherwise, the input is read from the files given as following arguments.
+
+The list of operations is quickly accessible in `app/automata-safa-one/Main.hs`, see the function `main`.
 
 # Format Specification
 
