@@ -1,0 +1,3 @@
+@kInitialFormula: sInit
+@kFinalFormula: !sInit
+@sInit: a & (!a | sInit)

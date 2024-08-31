@@ -1,0 +1,7 @@
+@kInitialFormula: sInit
+@kFinalFormula: !sInit & !sSkip1 & !sSkip2
+@sInit: sSkip1 | sSkip2
+@sSkip1: a & sFinal1
+@sSkip2: !a & sFinal2
+@sFinal1: sFinal1
+@sFinal2: sFinal2
