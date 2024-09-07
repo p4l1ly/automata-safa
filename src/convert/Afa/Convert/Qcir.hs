@@ -162,7 +162,8 @@ hPrint h (init, final, qs) = do
   case transition finalnesses initQ of
     Afa.Lib.Final -> do
       TIO.hPutStrLn h [i|exists(x)|]
-      TIO.hPutStrLn h [i|output(x)|]
+      TIO.hPutStrLn h [i|output(y)|]
+      TIO.hPutStrLn h [i|y = or(x, -x)|]
     _nonfinal
       | qcount == 1 -> do
           let ls = T.intercalate ", " $ map (\q -> [i|l1_#{q}|]) qnames
