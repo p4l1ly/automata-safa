@@ -1,0 +1,129 @@
+\documentclass{article}
+
+\usepackage[utf8]{inputenc}
+\usepackage{amsmath}
+\usepackage[text={16cm, 20cm}]{geometry}
+
+\title{Translating AFA emptiness to QBF}
+\author{Pavol Vargovčík \\ ivargovcik@fit.vutbr.cz}
+\date{}
+
+\begin{document}
+\maketitle
+
+\begin{abstract}
+This report describes our reduction of language emptiness problem of symbolic alternating finite automata (AFA) to satisfiability of quantified boolean formulae (QBF).
+Both problems are PSpace-complete, our reduction is quadratic in the number of AFA states.
+\end{abstract}
+
+\section{Introduction}
+
+The benchmark sets of AFA instances is growing, which could be used to evaluate the performance of QSAT solvers.
+We have used the non-copying iterative squaring method from \cite{bmc2qbf, rintanen2001partial, biere2004resolve} to translate the emptiness problem of AFA to QBF.
+
+\section{Preliminaries}
+
+\paragraph{Quantified Boolean Formulae.}
+QBF is a boolean formula where variables are existentially ($\exists$) or universally ($\forall$) quantified. A formula is in prenex normal form if all quantifiers are at the beginning of the formula.
+
+\paragraph{Alternating Finite Automata.}
+We use a definition of AFA from \cite{antisat}. AFA is a quintuple $(Q, V, \delta, \iota, F)$, where
+\begin{itemize}
+  \item $Q$ is a finite set of \emph{states},
+  \item $V$ is a finite set of \emph{symbol variables},
+  \item $\delta: Q \rightarrow \mathcal{B}^+(Q \cup \mathcal{B}(V))$ is a \emph{transition function}, where each state has an assigned \emph{transition formula}, which is a boolean formula where states do not appear under negations,
+  \item $\iota \in Q$ is an initial state,
+  \item and $F \subseteq Q$ is a set of final states.
+\end{itemize}
+
+A \emph{configuration} is a set of states.
+%
+A \emph{run} is a sequence of configurations $k_1 k_2 \cdots k_n$ where each pair of subsequent configurations is in a \emph{transition relation}, formally
+\[\forall i \in {2 \cdots n}. \exists a \subseteq V. k_i \cup a \models \bigwedge_{q \in k_{i-1}} \delta(q)\]
+i.e. transition formula of each state from $k_{i-1}$ is satisfied under a single assignment where symbol variables have arbitrary values and states that are not in $k_i$ have value 0 and states from $k_i$ have value 1.
+%
+A run is \emph{initial} if it starts in the \emph{initial configuration} $k_1 = \{\iota\}$.
+A run is \emph{final} if it ends in a final configuration $k_n \subseteq F$.
+A run is \emph{accepting} if it is both initial and final.
+A run is \emph{simple} if it visits each configuration at most once.
+%
+The language of AFA is non-empty iff there exists an accepting run, and also, obviously, iff there exists a simple accepting run.
+
+\section{Translation}
+
+Here we describe our form of non-copying iterative squaring method from \cite{bmc2qbf} to translate the emptiness problem of AFA to QBF.
+%
+We will define a relation $T^i(k_i, l_i, h_i)$, where $k_i, l_i$ are configurations and $h_i$ is a boolean variable. The relation represents a sequence of configurations $k_i \cdots l_i$ of length $2^i$, and either
+\begin{itemize}
+  \item it is a run,
+  \item its suffix is an initial run; this option is enforced if $h_i = 1$.
+\end{itemize}
+
+The top-level QBF $\exists k.~ T^{|Q|}(k, F, 1)$ will thus search for an initial run with up to $2^{|Q|}$ configurations (note that a simple accepting run cannot have more configurations) that ends in $F$.
+To disprove the language emptiness, it is sufficient to find runs that end precisely in $F$ -- there is no need to check all subsets of $F$ (this is due to sumbsumption in AFA, more detail in \cite{antisat}).
+
+\[
+\begin{aligned}
+  T^i(k_i, l_i, h_i) &&=&&& \exists m_i, g_i~ \forall c_i~ \exists k_{i-1}, l_{i-1}, h_{i-1}.~ \\
+  &&&&& \left(
+    \begin{aligned}
+      c_i &&& \;?\; && k_{i-1} = k_i && \land && l_{i-1} = m_i \\
+          &&& \;:\; && k_{i-1} = m_i && \land && l_{i-1} = l_i
+    \end{aligned}
+  \right) \\
+  && \land &&& (c_i \;?\; h_i \implies h_{i-1} \;:\; g_i \implies h_{i-1}) \\
+  && \land &&& ((g_i \land c_i) \lor T^{i-1}(k_{i-1}, l_{i-1}, h_{i-1}))
+\end{aligned}
+\]
+
+The notation ``$\text{antecedent} \;?\; \text{positive consequent} : \text{negative consequent}$'' is a ternary ``if-then-else'' operator.
+
+We split the sequence of configurations $k_i \cdots l_i$ into two halves $k_i \cdots m_i$ and $m_i \cdots l_i$.
+We recur into each half independently (this is why the algorithm is polynomial in space --- we need to keep only a logarithmic part of the search space in memory).
+The boolean variable $c_i$ selects which half we are resolving. If $c_i=1$, we are resolving the first half and therefore $k_{i-1} = k_i$ and $l_{i-1} = m_i$; otherwise, we are resolving the second half and $k_{i-1} = m_i$ and $l_{i-1} = l_i$. This is just the non-copying iterative squaring, as presented in \cite{bmc2qbf}.
+
+If the boolean variable $g_i$ is true, we enforce that the suffix of the second half is an initial run.
+This is not a requirement --- the variable $g_i$ is existentially quantified.
+But if $g_i$ is true,
+\begin{itemize}
+\item if we are resolving the second half ($c_i = 0$), we must ensure that its suffix is really an initial run, by setting $h_{i-1}$ to true (see $g_i \implies h_{i-1}$),
+\item we do not need to resolve the first half at all, that is the case $(g_i \land c_i)$.
+\end{itemize}
+
+\paragraph{Single transition QBF.}
+A special case is the bottom-level QBF $T^1(k_1, l_1, h_1)$, which constrains a single transition
+
+\[
+\begin{aligned}
+  T^1(k_1, l_1, h_1) &&= \exists a. &&& (h_1 \implies k_1[\iota]) \\
+  && \land &&& \bigwedge_{q \in Q} k_1[q] \implies \delta(q)_{V = a,\; Q = l_1} 
+\end{aligned}
+\]
+
+If an initial run is required ($h_1 = 1$), the predecessor configuration $k_1$ must contain the initial state $\iota$. The transition formula of each state in $k_1$ must be satisfied under the assignment where symbol variables have arbitrary values and states are assigned according to their containment in $l_1$.
+
+\paragraph{Zero step AFA.}
+The QBF defined above finds runs with at least a single transition. Therefore, we must specially handle the case when $\iota \in F$, in which case we just generate a trivial QBF $\exists x. x \lor \neg x$ (the QCIR format does not support true/false literals, so this is the equivalent for ``true'').
+
+\paragraph{Top-level QBF.}
+We have already mentioned that the top-level QBF is $\exists k.~ T^{|Q|}(k, F, 1)$.
+Note that $k$ is unconstrained and $F$ and $1$ are constants.
+Constants are not allowed in QCIR, so we propagate them into the body of the definition of $T^{|Q|}$.
+Similarly, as an optimization, we remove the quantifier $\exists k$, and instead we remove the constraints posed by $k_i$ in the body of $T^{|Q|}$, namely, we remove the equivalences $k_{i-1} = k_i$.
+
+\paragraph{Single-state AFA.}
+The BooleGuru translator of QCIR to QDIMACS requires that every quantified variable has an occurence in the body of the formula, which is not the case for AFA with a single state.
+Therefore, we handle them in a special way.
+
+\section{Experimental Results.}
+We have briefly tried our translation on the AFA instances from \cite{antisat}.
+The result of the translation is quadratic to the number of AFA states, which was already an obstacle for larger instances.
+We have skipped the instances that had more than 200 AFA states, and still the resulting QCIR files have as much as 17GB in total and the QDIMACS files have 36GB, while the AFA files have only 386MB.
+
+The QBF solvers were not competitive with specialized AFA model checkers, however, the generated QBF can be used to compare QBF solvers to each other and to to improve them to handle model checking problems faster.
+We have tried DepQBF, RareQSAT, QFun, and Caqe (via PyQBF interface), from which Caqe performed the best.
+
+\bibliographystyle{alpha}
+\bibliography{main}
+
+\end{document}

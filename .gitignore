@@ -4,3 +4,9 @@ Session.vim
 target/
 .dockerignore
 .vim/
+*.aux
+*.bbl
+*.blg
+*.log
+*.pdf
+*.rubbercache
