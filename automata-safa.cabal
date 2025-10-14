@@ -21,17 +21,17 @@ library
     Afa.RemoveFinals
     Afa.ShallowHashable
   build-depends:
-    base >=4.17.0.0 && <4.18,
-    generic-data ^>=1.0.0.0,
-    mtl ^>=2.2.2 && <2.4,
+    base >=4.17.0.0 && <4.21,
+    generic-data >=1.0.0.0 && <1.2,
+    mtl >=2.2.2 && <2.4,
     unordered-containers ^>=0.2.19.1,
     hashable ^>=1.4.2.0,
-    template-haskell ^>=2.19.0.0,
+    template-haskell >=2.19.0.0 && <2.23,
     composition-extra ^>=2.0.0,
     data-fix ^>=0.3.2,
-    free ^>=5.1.10,
+    free >=5.1.10 && <5.3,
     array ^>=0.5.4.0,
-    lens ^>=5.2,
+    lens >=5.2 && <5.4,
     random ^>=1.2.1.1,
     inversion-of-control,
   hs-source-dirs:      src/model
@@ -47,18 +47,18 @@ library convert
     Afa.Convert.Smv
     Afa.Convert.Qcir
   build-depends:
-    base >=4.17.0.0 && <4.18,
+    base >=4.17.0.0 && <4.21,
     attoparsec ^>=0.14.4,
     attoparsec-expr ^>=0.1.1.2,
-    text ^>=2.0.1,
+    text >=2.0.1 && <2.2,
     interpolate ^>=0.2.1,
-    free ^>=5.1.10,
+    free >=5.1.10 && <5.3,
     unordered-containers ^>=0.2.19.1,
     composition ^>=1.0.2.2,
-    mtl ^>=2.2.2 && < 2.4,
+    mtl >=2.2.2 && < 2.4,
     array ^>=0.5.4.0,
     data-fix ^>=0.3.2,
-    generic-data ^>=1.0.0.0,
+    generic-data >=1.0.0.0 && <1.2,
     hashable ^>=1.4.2.0,
     random ^>=1.2.1.1,
     automata-safa,
@@ -69,12 +69,12 @@ library convert
 executable automata-safa-one
   main-is:             Main.hs
   build-depends:
-    base >=4.17.0.0 && <4.18,
-    text ^>=2.0.1,
+    base >=4.17.0.0 && <4.21,
+    text >=2.0.1 && <2.2,
     unordered-containers ^>=0.2.19.1,
     data-fix ^>=0.3.2,
     composition-extra ^>=2.0.0,
-    free ^>=5.1.10,
+    free >=5.1.10 && <5.3,
     interpolate ^>=0.2.1,
     automata-safa,
     automata-safa:convert,

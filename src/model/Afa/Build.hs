@@ -58,21 +58,17 @@ type instance Definition (BuildShareSharedA d) =
     :+: Name "isTree" (Inherit (Explicit [g|r|] Bool) [k|isTree|])
     :+: End
 
-data BuildShareSharedI d d1 (m :: * -> *)
-type instance Definition (BuildShareSharedI d d1 m) =
-  Name "all"
-    ( d1 ~ BuildShareSharedA d
-    , MonadFn [g1|build|] m
-    , MonadFn [g1|share|] m
-    , MonadFn [g1|isTree|] m
-    )
-    :+: End
+type BuildShareSharedI d d1 (m :: * -> *) =
+  ( d1 ~ BuildShareSharedA d
+  , MonadFn [g1|build|] m
+  , MonadFn [g1|share|] m
+  , MonadFn [g1|isTree|] m
+  )
 
-type BuildShareSharedD d m =
-  ToConstraint (Follow (BuildShareSharedI d (BuildShareSharedA d) m))
+type BuildShareSharedD d m = BuildShareSharedI d (BuildShareSharedA d) m
 
 buildShareShared :: forall d d1 m.
-  ToConstraint (Follow (BuildShareSharedI d d1 m)) =>
+  BuildShareSharedI d d1 m =>
   [g|r|] -> [g|fr'|] -> m [g|r'|]
 buildShareShared r fr' = do
   r' <- monadfn @[g1|build|] fr'

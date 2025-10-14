@@ -74,7 +74,7 @@ parseDefinitions str = parseWhole (many defParser) str'
         <$> (char '@' *> Parsec.takeWhile (/= ':') <* char ':')
         <*> Parsec.takeWhile (/= '@')
 
-type ParseD d = Follow (ParseI d (ParseA d $r) $r) :: TypeDict
+type ParseD d = Follow (ParseI d (ParseA d $r) $r)
 
 data ParseA d r
 type instance Definition (ParseA d r) =
@@ -82,21 +82,18 @@ type instance Definition (ParseA d r) =
     :+: Name "build" (Inherit (Explicit [g|term|] r) [k|build|])
     :+: End
 
-data ParseI d d1 r
-type instance Definition (ParseI d d1 r) =
-  Name "all"
-    ( d1 ~ ParseA d r
-    , Term T.Text T.Text r ~ [g|term|]
-    , MonadFn [g1|share|] IO
-    , MonadFn [g1|build|] IO
-    )
-    :+: End
+type ParseI d d1 r =
+  ( d1 ~ ParseA d r
+  , Term T.Text T.Text r ~ [g|term|]
+  , MonadFn [g1|share|] IO
+  , MonadFn [g1|build|] IO
+  ) :: Constraint
 
 type Qs r = StateHashMap T.Text r
 
 parse ::
   forall d r d1.
-  (ToConstraint (Follow (ParseI d d1 r))) =>
+  ParseI d d1 r =>
   [AfaDefinition] ->
   IO (r, r, StateHashMap T.Text r)
 parse (groupDefs -> (init, final, formulae, states)) = do

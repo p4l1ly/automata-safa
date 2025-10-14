@@ -26,7 +26,6 @@ import InversionOfControl.TypeDict
 import InversionOfControl.MonadFn
 import InversionOfControl.Lift
 import qualified InversionOfControl.Recur as R
-import qualified InversionOfControl.MapRecur as MR
 import Afa.Term hiding (Q)
 import Afa.Build
 import Data.Functor
